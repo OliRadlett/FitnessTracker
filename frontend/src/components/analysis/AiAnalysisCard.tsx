@@ -21,10 +21,12 @@ export interface AiAnalysisCardProps {
 
   /** Button label when no analysis exists yet */
   buttonLabel?: string;
+  /** Optional icon shown inside the button */
+  buttonIcon?: React.ReactNode;
   /** Button aria-label when no analysis exists yet */
   buttonAriaLabel?: string;
-  /** Emoji shown in the empty state */
-  emptyEmoji?: string;
+  /** Emoji or icon shown in the empty state */
+  emptyEmoji?: React.ReactNode;
   /** Title text in the empty state */
   emptyTitle?: string;
   /** Description text in the empty state */
@@ -48,10 +50,10 @@ export function AiAnalysisCard({
   isLoading,
   isRefreshing,
   onRefresh,
-  buttonLabel = 'Analyze with AI',
+   buttonIcon,
+   buttonLabel = 'Analyze with AI',
   buttonAriaLabel = 'Analyze with AI',
-  emptyEmoji = '🧠',
-  emptyTitle = 'No AI analysis yet',
+  emptyEmoji = '🧠',  emptyTitle = 'No AI analysis yet',
   emptyDescription = 'Click to generate an AI-powered analysis.',
   analyzingText = 'Analyzing with Gemini... This may take 10-20 seconds.',
   subtitle,
@@ -75,7 +77,7 @@ export function AiAnalysisCard({
             aria-label={buttonAriaLabelRefresh}
             className="px-3 py-1.5 text-xs bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors disabled:opacity-50"
           >
-            {buttonLabelCurrent}
+            {buttonIcon ? <span className="inline-flex items-center gap-1">{buttonIcon}{buttonLabelCurrent}</span> : buttonLabelCurrent}
           </button>
         </div>
       </CardHeader>
@@ -117,7 +119,7 @@ export function AiAnalysisCard({
       {/* Empty state */}
       {!isLoading && !analysis && !isRefreshing && !mutationError && !queryError && (
         <div className="text-center py-6">
-          <p className="text-3xl mb-2">{emptyEmoji}</p>
+           <p className="text-3xl mb-2">{emptyEmoji}</p>
           <p className="text-muted text-sm">{emptyTitle}</p>
           <p className="text-muted text-xs mt-1">{emptyDescription}</p>
         </div>

@@ -7,6 +7,7 @@ import type { Event, EventResult } from '@/lib/api';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { formatTSB } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
+import { Flag, BarChart3, Medal } from 'lucide-react';
 
 // Formats like "3:24:10" / "3h 24m". Returns the raw string if unparseable.
 function formatFinishingTime(secondsOrStr: string | number | undefined | null): string {
@@ -29,7 +30,7 @@ function ResultBadge({ result }: { result: EventResult }) {
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
       {result.personal_best && (
         <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-400 font-medium">
-          🏅 PB
+          <Medal className="w-3 h-3 inline mr-1" />PB
         </span>
       )}
       {bits.map((b) => (
@@ -129,7 +130,7 @@ export function EventResultPanel({ event }: { event: Event }) {
               onClick={() => setShowForm((s) => !s)}
               className="min-h-[44px] flex items-center text-xs text-accent hover:text-accent/80 font-medium"
             >
-              🏁 Log result
+              <Flag className="w-3 h-3 mr-1" /> Log result
             </button>
           )}
 
@@ -268,7 +269,7 @@ function Retrospective({ eventId }: { eventId: string }) {
         onClick={() => setOpen((o) => !o)}
         className="text-[11px] text-accent hover:text-accent/80"
       >
-        {open ? 'Hide retrospective ▴' : '📊 Post-race retrospective ▾'}
+        {open ? 'Hide retrospective' : <><BarChart3 className="w-3 h-3 mr-1" />Post-race retrospective</>}
       </button>
       {open && (
         <div className="mt-1.5 text-xs text-muted space-y-1">

@@ -16,6 +16,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Dumbbell, Bike, Bed, AlertTriangle, MapPin, Target, Link as LinkIcon, TrendingUp, TrendingDown, Clock, Check, Flag, X, Upload } from 'lucide-react';
 import type {
   Goal,
   TrainingPlan,
@@ -48,10 +49,10 @@ import { StrengthSuggestionsCard } from './StrengthSuggestionsCard';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
-const SPORT_EMOJI: Record<string, string> = {
-  cycle: '🚴',
-  strength: '🏋️',
-  rest: '😴',
+const SPORT_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  cycle: Bike,
+  strength: Dumbbell,
+  rest: Bed,
 };
 
 const DAY_TYPE_BADGES: Record<string, string> = {
@@ -150,11 +151,11 @@ function getBadgeStatus(day: TrainingWeekDay | undefined, status: DayStatus): st
   return 'pending';
 }
 
-/** Trend arrow for the weekly conformity strip. */
-const TREND_ARROW: Record<string, { symbol: string; className: string }> = {
-  improving: { symbol: '↑', className: 'text-positive' },
-  declining: { symbol: '↓', className: 'text-warning' },
-  stable: { symbol: '→', className: 'text-muted' },
+/** Trend arrow for the weekly conformity strip — V2.1 uses lucide icons. */
+const TREND_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
+  improving: TrendingUp,
+  declining: TrendingDown,
+  stable: Clock,
 };
 
 // ─── Component ────────────────────────────────────────────────────────────
@@ -234,8 +235,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     enabled: !!token,
   });
 
-  // Phase 2 — active goals for the plan → goal direction (day cards show a
-  // 🎯 count badge, the expanded panel lists supporting goals). Shares the
+   // Phase 2 — active goals for the plan → goal direction (day cards show a
+  // target count badge, the expanded panel lists supporting goals). Shares the
   // ['goals', 'active'] cache entry with the goals page — no extra fetch.
   const goalsQuery = useQuery({
     queryKey: ['goals', 'active'],
@@ -464,7 +465,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       {refreshResult && !refreshError && (
         <div className="space-y-1">
           <p className="text-xs text-muted">
-            ✓ Refreshed {refreshResult.refreshed.length} cycle day
+          <Check className="w-3 h-3 text-positive inline mr-1" />
+          Refreshed {refreshResult.refreshed.length} cycle day
             {refreshResult.refreshed.length === 1 ? '' : 's'}
             {refreshResult.strength_refreshed.length > 0 &&
               ` + ${refreshResult.strength_refreshed.length} strength exercise${refreshResult.strength_refreshed.length === 1 ? '' : 's'}`}
@@ -477,7 +479,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
               className="text-xs text-warning"
               title="Zones stay FTP-anchored; fitted critical power is shown for reference only"
             >
-              ⚠️ Fitted critical power ({Math.round(refreshResult.cp_ftp_mismatch.critical_power)}W)
+               <AlertTriangle className="w-3 h-3 text-warning inline mr-1" />
+               Fitted critical power ({Math.round(refreshResult.cp_ftp_mismatch.critical_power)}W)
               differs from FTP ({Math.round(refreshResult.cp_ftp_mismatch.ftp)}W) by{' '}
               {refreshResult.cp_ftp_mismatch.pct_diff.toFixed(0)}% — check your FTP is current.
             </p>
@@ -534,12 +537,12 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             ) : (
               <span className="text-xs text-muted italic">No scored days yet</span>
             )}
-            {conformity.trend && TREND_ARROW[conformity.trend] && (
+            {conformity.trend && TREND_ICON[conformity.trend] && (
               <span
                 title={`${conformity.trend} vs previous weeks`}
-                className={`text-base font-semibold ${TREND_ARROW[conformity.trend].className}`}
+                className="text-base"
               >
-                {TREND_ARROW[conformity.trend].symbol}
+                {React.createElement(TREND_ICON[conformity.trend], { className: 'w-4 h-4' })}
               </span>
             )}
             {sportChips.map(([sport, pct]) => (
@@ -548,8 +551,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
                 className="inline-flex items-center gap-1 text-xs text-foreground bg-surface-light/60 rounded-full px-2 py-0.5"
                 title={`${sport} adherence`}
               >
-                <span>{SPORT_EMOJI[sport] ?? '📌'}</span>
-                <span className="font-medium">{Math.round(pct)}%</span>
+              {(() => { const Icon = SPORT_ICON[sport]; return Icon ? <Icon className="w-3 h-3" /> : null; })()}
+              <span className="font-medium">{Math.round(pct)}%</span>
               </span>
             ))}
             <button
@@ -558,7 +561,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
               title="Auto-link synced activities/lifting sessions to plan days"
               className="ml-auto px-2 py-0.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-foreground hover:bg-surface-light transition-colors disabled:opacity-40"
             >
-              {linkActivities.isPending ? 'Linking…' : '🔗 Link activities'}
+                  {linkActivities.isPending ? 'Linking…' : <><LinkIcon className="w-3 h-3" /> Link activities</>}
             </button>
           </div>
 
@@ -702,18 +705,14 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         <div className="rounded-xl border border-accent/40 bg-surface-light/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-foreground">
-              {expandedDay.sport === 'cycle'
-                ? '🚴'
-                : expandedDay.sport === 'strength'
-                  ? '🏋️'
-                  : '😴'}{' '}
-              {expandedDay.day_date.slice(0, 10)} details
+            {(() => { const Icon = SPORT_ICON[expandedDay.sport]; return Icon ? <Icon className="w-4 h-4 inline" /> : null; })()}
+            {expandedDay.day_date.slice(0, 10)} details
             </h4>
             <button
               onClick={() => setExpandedDayId(null)}
               className="text-xs text-muted hover:text-foreground px-2 py-0.5 rounded hover:bg-surface-light/50 transition-colors"
             >
-              ✕ Close
+              <X className="w-3 h-3 mr-1" /> Close
             </button>
           </div>
           <ExpandedPanel
@@ -768,7 +767,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         (e) => e.event_date >= weekStart && e.event_date <= addDays(weekStart, 6),
       ) && (
         <p className="text-xs text-muted">
-          🏁 Event this week:{' '}
+          <Flag className="w-3 h-3 inline mr-1" />Event this week:{' '}
           {events
             .filter((e) => e.event_date >= weekStart && e.event_date <= addDays(weekStart, 6))
             .map((e) => e.name)
@@ -860,7 +859,7 @@ function DayCard({
               className="text-[10px] px-1 rounded text-muted hover:text-accent"
               title={day?.planned_route_id ? 'Change route' : 'Assign route'}
             >
-              🗺️
+              <MapPin className="w-3 h-3" />
             </button>
           )}
           <ConformityBadge
@@ -878,7 +877,7 @@ function DayCard({
               day?.completed ? 'text-positive' : 'text-muted hover:text-foreground'
             }`}
           >
-            ✓
+            <Check className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -889,7 +888,7 @@ function DayCard({
         <>
           {/* Type row */}
           <div className="flex items-center gap-1.5">
-            <span>{SPORT_EMOJI[day.sport] ?? '📌'}</span>
+             {(() => { const Icon = SPORT_ICON[day.sport]; return Icon ? <Icon className="w-3 h-3" /> : <span className="text-xs">?</span>; })()}
             <span
               className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
                 DAY_TYPE_BADGES[day.planned_type] ?? 'bg-surface-light/20 text-muted border-muted/30'
@@ -941,14 +940,16 @@ function DayCard({
               className="text-xs text-muted truncate"
               title={`Supports goals: ${(goalNames ?? []).join(', ')} — expand for details`}
             >
-              🎯 {goalCount} goal{goalCount === 1 ? '' : 's'}
+               <Target className="w-3 h-3 text-accent" />
+               {goalCount} goal{goalCount === 1 ? '' : 's'}
             </p>
           )}
 
           {/* Route indicator (cycle days — collapsed card) */}
           {day.sport === 'cycle' && !expanded && (day.planned_route_id || day.actual_activity?.route_id) && (
             <p className="text-[10px] text-muted truncate" title={day.actual_activity?.route_name || undefined}>
-              🗺️ {day.actual_activity?.route_name || 'Route assigned'}
+               <MapPin className="w-3 h-3 text-muted" />
+               {day.actual_activity?.route_name || 'Route assigned'}
             </p>
           )}
 
@@ -972,7 +973,8 @@ function DayCard({
                   }`}
                   title={day.bad_weather.level}
                 >
-                  ⚠️ {day.bad_weather.reason}
+                   <AlertTriangle className="w-3 h-3 text-orange-400" />
+                 {day.bad_weather.reason}
                 </span>
               )}
             </div>
@@ -1136,13 +1138,13 @@ function ExpandedPanel({
           {day.actual_activity?.route_id ? (
             <div className="flex items-center gap-2">
               <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
-                {day.actual_activity.route_name || 'Linked route ✓'}
+                {day.actual_activity.route_name || 'Linked route'}
               </span>
             </div>
           ) : day.planned_route_id ? (
             <div className="flex items-center gap-2">
               <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
-                {day.route_matches?.find(m => m.route_id === day.planned_route_id)?.name || 'Route assigned ✓'}
+                {day.route_matches?.find(m => m.route_id === day.planned_route_id)?.name || 'Route assigned'}
               </span>
               <button
                 onClick={onOpenRoutePicker}
@@ -1163,7 +1165,7 @@ function ExpandedPanel({
               onClick={onOpenRoutePicker}
               className="text-[10px] text-accent hover:text-accent/80"
             >
-              🗺️ Pick a route...
+              <MapPin className="w-3 h-3 mr-1" /> Pick a route...
             </button>
           )}
         </div>
@@ -1194,7 +1196,7 @@ function ExpandedPanel({
               onClick={onOpenWahooPush}
               className="text-[10px] text-accent hover:text-accent/80"
             >
-              📤 Push to Wahoo
+              <Upload className="w-3 h-3 inline mr-1" /> Push to Wahoo
             </button>
           )}
         </div>
@@ -1215,7 +1217,7 @@ function ExpandedPanel({
                 title={`View ${goalShortLabel(g)} in goals`}
                 className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-light/40 transition-colors"
               >
-                <span aria-hidden="true">🎯</span>
+                <Target className="w-3 h-3 text-accent" aria-hidden="true" />
                 <span className="text-xs text-foreground truncate">{goalShortLabel(g)}</span>
                 <span className="text-xs text-muted tabular-nums shrink-0">{progress.toFixed(0)}%</span>
                 <span className="ml-auto text-accent text-xs shrink-0" aria-hidden="true">→</span>

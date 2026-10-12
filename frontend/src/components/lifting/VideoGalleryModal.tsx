@@ -5,6 +5,7 @@ import type { LiftVideo } from '@/lib/api';
 import { VideoEmbed } from '@/components/lifting/VideoEmbed';
 import { VideoAnalysisPanel } from '@/components/lifting/VideoAnalysisPanel';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { Video } from 'lucide-react';
 
 interface VideoGalleryModalProps {
   title: string;
@@ -21,7 +22,7 @@ export function VideoGalleryModal({
 }: VideoGalleryModalProps) {
   return (
     <Modal open={open} onClose={onClose} size="lg" aria-label={title}>
-      <ModalHeader title={title} onClose={onClose} icon="📹" />
+      <ModalHeader title={title} onClose={onClose} icon={<Video className="w-5 h-5" />} />
 
       {videos.length === 0 ? (
         <p className="text-muted text-center py-8">No videos attached.</p>

@@ -5,24 +5,25 @@ import Link from 'next/link';
 import type { Goal, GoalProjectionResponse } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
 import { GoalPlanDaysLink } from '@/components/goals/GoalPlanDaysLink';
+import { Zap, Scale, Dumbbell, Calendar, Bike, TrendingUp, Wind, Weight, Trophy, Heart, Activity, Target } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
-/** Icon per metric keyword — best-effort visual hint. */
-function metricIcon(goal: Goal): string {
+/** Icon per metric keyword — best-effort visual hint. V2.1: lucide icons. */
+function metricIcon(goal: Goal): React.ElementType {
   const m = goal.metric ?? '';
-  if (m.includes('ftp')) return '⚡';
-  if (m === 'body_weight') return '⚖️';
-  if (m.includes('1rm')) return '🏋️';
-  if (m.includes('sessions')) return '📅';
-  if (m.includes('distance')) return '🚴';
-  if (m.includes('tss')) return '📈';
-  if (m.includes('vo2max')) return '🫁';
-  if (m.includes('bw_ratio')) return '💪';
-  if (m.includes('big3')) return '🏆';
-  if (m === 'resting_hr') return '❤️';
-  if (m === 'hrv_ms') return '🫀';
-  return '🎯';
+  if (m.includes('ftp')) return Zap;
+  if (m === 'body_weight') return Scale;
+  if (m.includes('1rm')) return Dumbbell;
+  if (m.includes('sessions')) return Calendar;
+  if (m.includes('distance')) return Bike;
+  if (m.includes('tss')) return TrendingUp;
+  if (m.includes('vo2max')) return Wind;
+  if (m.includes('bw_ratio')) return Weight;
+  if (m.includes('big3')) return Trophy;
+  if (m === 'resting_hr') return Heart;
+  if (m === 'hrv_ms') return Activity;
+  return Target;
 }
 
 /** Human-readable filter context, e.g. "Back Squat" or "cycling". */
@@ -196,7 +197,9 @@ export function GoalCard({
     >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-lg" aria-hidden="true">{icon}</span>
+          <span className="text-lg" aria-hidden="true">
+            {React.createElement(icon, { className: 'w-5 h-5' })}
+          </span>
           <div className="min-w-0">
             <p className="text-sm font-medium text-foreground truncate">{label}</p>
             {filterLabel && <p className="text-xs text-accent truncate">{filterLabel}</p>}

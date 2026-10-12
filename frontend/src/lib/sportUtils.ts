@@ -60,6 +60,20 @@ export function getSportEmoji(sportType: string): string {
   return '⚡';
 }
 
+/**
+ * V2.1: Replaces getSportEmoji in data surfaces. Returns a short label
+ * for the colored dot + label pattern in calendar grid.
+ * Used by CalendarAgendaView, DayDetailPanel, and calendar page.
+ */
+export function getSportIconName(sportType: string): string {
+  if (matches(sportType, CYCLING_KEYWORDS)) return 'Bike';
+  if (matches(sportType, RUNNING_KEYWORDS)) return 'PersonRunning';
+  if (matches(sportType, STRENGTH_KEYWORDS)) return 'Dumbbell';
+  if (matches(sportType, SWIMMING_KEYWORDS)) return 'Swimmer';
+  if (matches(sportType, WALKING_KEYWORDS)) return 'Footprints';
+  return 'Zap';
+}
+
 /** Human label for raw plan/sport codes (`cycle` → "Cycling"). */
 export function sportLabel(sport: string | null | undefined): string {
   if (sport == null || sport === '') return '—';

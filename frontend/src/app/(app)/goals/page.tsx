@@ -13,6 +13,7 @@ import { usePageTitle } from '@/lib/usePageTitle';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Target } from 'lucide-react';
 import { SkeletonLine } from '@/components/ui/Skeleton';
 
 type StatusTab = 'active' | 'achieved' | 'expired' | 'all';
@@ -75,7 +76,7 @@ export default function GoalsPage() {
     <div className="space-y-6">
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <PageHeader
-        title="🎯 Goals"
+         title="Goals"
         actions={
           <button
             onClick={() => setShowCreate(true)}
@@ -128,7 +129,7 @@ export default function GoalsPage() {
         </div>
       ) : (
         <EmptyState
-          icon="🎯"
+          icon={<Target className="w-8 h-8 text-muted" />}
           title={tab === 'all' ? 'No goals yet' : `No ${tab} goals`}
           description="Set targets for FTP, 1RM, body weight, weekly sessions, and more — they track themselves as you train."
           action={{ label: '+ New Goal', onClick: () => setShowCreate(true) }}

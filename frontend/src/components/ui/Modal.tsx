@@ -173,14 +173,14 @@ export function Modal({ open, onClose, children, size = 'lg', 'aria-label': aria
 interface ModalHeaderProps {
   title: string;
   onClose: () => void;
-  icon?: string;
+  icon?: React.ReactNode;
 }
 
 export function ModalHeader({ title, onClose, icon }: ModalHeaderProps) {
   return (
     <div className="flex items-center justify-between mb-4">
       <h3 className="text-lg font-semibold text-foreground flex items-center gap-2">
-        {icon && <span aria-hidden="true">{icon}</span>}
+        {icon && <span aria-hidden="true" className="w-5 h-5 flex items-center">{icon}</span>}
         {title}
       </h3>
       <button type="button" onClick={onClose} className="text-muted hover:text-foreground min-h-[44px] min-w-[44px] flex items-center justify-center" aria-label="Close">

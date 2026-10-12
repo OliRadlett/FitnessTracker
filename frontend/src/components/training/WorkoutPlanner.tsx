@@ -14,13 +14,14 @@ import type {
   RouteMatchResponse,
   RouteData,
 } from '@/lib/api';
+import { Bike, RotateCw, ArrowRight, AlertTriangle, Target, MapPin, ClipboardList, Ruler, Mountain, Timer, Flame } from 'lucide-react';
 
 const ZONE_LABELS: Record<string, string> = {
-  z1: '🟢 Z1 — Very Easy',
-  z2: '🔵 Z2 — Easy',
-  z3: '🟡 Z3 — Moderate',
-  z4: '🟠 Z4 — Hard',
-  z5: '🔴 Z5 — Very Hard',
+  z1: 'Z1 — Very Easy',
+  z2: 'Z2 — Easy',
+  z3: 'Z3 — Moderate',
+  z4: 'Z4 — Hard',
+  z5: 'Z5 — Very Hard',
 };
 
 const DURATION_OPTIONS = [
@@ -73,10 +74,10 @@ function ExpandableRouteMatch({
             <p className="text-sm font-medium text-white truncate">{match.route_name}</p>
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-muted mt-1 ml-5">
-            <span>📏 {formatDistance(match.distance_meters)}</span>
-            <span>⛰️ {formatElevation(match.elevation_gain_meters)}</span>
-            {match.avg_duration_min != null && <span>⏱ {Math.round(match.avg_duration_min)}min</span>}
-            <span>🚴 {match.ride_count} rides</span>
+           <span><Ruler className="w-3 h-3 mr-1" />{formatDistance(match.distance_meters)}</span>
+            <span><Mountain className="w-3 h-3 mr-1" />{formatElevation(match.elevation_gain_meters)}</span>
+            {match.avg_duration_min != null && <span><Timer className="w-3 h-3 mr-1" />{Math.round(match.avg_duration_min)}min</span>}
+            <span><Bike className="w-3 h-3 mr-1" />{match.ride_count} rides</span>
           </div>
         </div>
         <div className="text-right shrink-0 ml-3">
@@ -128,7 +129,7 @@ function ExpandableRouteMatch({
             )}
             <div className="bg-surface/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-muted">Type</div>
-              <div className="text-sm font-semibold text-foreground">{match.is_loop ? '🔄 Loop' : '➡️ Point-to-point'}</div>
+              <div className="text-sm font-semibold text-foreground">{match.is_loop ? <><RotateCw className="w-3 h-3 mr-1" />Loop</> : <><ArrowRight className="w-3 h-3 mr-1" />Point-to-point</>}</div>
             </div>
             <div className="bg-surface/60 rounded-lg p-2 text-center">
               <div className="text-[10px] text-muted">Confidence</div>
@@ -326,7 +327,7 @@ export function WorkoutPlanner({
       });
     },
     onSuccess: () => {
-      setApplyMsg('✓ Added to plan day.');
+      setApplyMsg('Added to plan day.');
       if (planId) {
         queryClient.invalidateQueries({ queryKey: ['plan-week', planId] });
         queryClient.invalidateQueries({ queryKey: ['plan-conformity', planId] });
@@ -336,7 +337,7 @@ export function WorkoutPlanner({
       }
     },
     onError: (err: Error) => {
-      setApplyMsg(`⚠️ ${err.message}`);
+      setApplyMsg(err.message);
     },
   });
 
@@ -368,8 +369,8 @@ export function WorkoutPlanner({
   if (!zonesData?.ftp_watts) {
     return (
       <Card className="border-yellow-500/30 bg-yellow-500/5">
-        <p className="text-sm text-yellow-400">
-          ⚠️ Set your FTP on the{' '}
+        <p className="text-sm text-yellow-400 flex items-center">
+          <AlertTriangle className="w-4 h-4 mr-1" />Set your FTP on the
           <Link href="/cycling" className="underline hover:text-yellow-300">Cycling page</Link>{' '}
           to use the Workout Planner.
         </p>
@@ -382,7 +383,7 @@ export function WorkoutPlanner({
       {/* Zone Reference + Readiness */}
       <Card>
         <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-          <span>🎯</span> Workout Zones
+          <Target className="w-4 h-4 mr-2" /> Workout Zones
           <span className="text-sm font-normal text-muted">(FTP: {Math.round(zonesData.ftp_watts)}W)</span>
         </h3>
 
@@ -469,7 +470,7 @@ export function WorkoutPlanner({
       {/* Workout Planner Form */}
       <Card>
         <h3 className="text-lg font-bold text-foreground mb-4 flex items-center gap-2">
-          <span>📋</span> Plan a Workout
+          <ClipboardList className="w-4 h-4 mr-2" /> Plan a Workout
         </h3>
 
         <div className="flex flex-wrap gap-4 mb-4">
@@ -533,19 +534,19 @@ export function WorkoutPlanner({
             disabled={planMutation.isPending}
             className="px-5 py-2.5 bg-accent/20 text-accent border border-accent/30 rounded-lg hover:bg-accent/30 transition-colors font-medium text-sm disabled:opacity-50"
           >
-            {planMutation.isPending ? 'Planning...' : '🎯 Plan Workout'}
+            {planMutation.isPending ? 'Planning...' : <><Target className="w-4 h-4 mr-1" />Plan Workout</>}
           </button>
           <button
             onClick={handleMatchRoutes}
             disabled={matchMutation.isPending}
             className="px-5 py-2.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-lg hover:bg-blue-500/30 transition-colors font-medium text-sm disabled:opacity-50"
           >
-            {matchMutation.isPending ? 'Finding...' : '🗺️ Find Matching Routes'}
+            {matchMutation.isPending ? 'Finding...' : <><MapPin className="w-4 h-4 mr-1" />Find Matching Routes</>}
           </button>
         </div>
 
         {error && (
-          <p className="text-xs text-warning mt-3">⚠️ {error}</p>
+          <p className="text-xs text-warning mt-3 flex items-center"><AlertTriangle className="w-3 h-3 mr-1" />{error}</p>
         )}
       </Card>
 
@@ -553,7 +554,7 @@ export function WorkoutPlanner({
       {plan && (
         <Card className="border-accent/30 bg-accent/5">
           <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
-            <span>🎯</span> Workout Targets
+            <Target className="w-4 h-4 mr-2" /> Workout Targets
             <span className="text-sm font-normal text-muted">
               {plan.zone_name} · {plan.duration_minutes} min
             </span>
@@ -587,7 +588,7 @@ export function WorkoutPlanner({
           </div>
 
           <div className="mt-3 flex gap-4 text-xs text-muted">
-            <span>🔥 Est. {plan.estimated_calories_low}–{plan.estimated_calories_high} cal</span>
+            <span><Flame className="w-3 h-3 inline mr-1" />Est. {plan.estimated_calories_low}–{plan.estimated_calories_high} cal</span>
           </div>
 
           {/* RM1 — write-back to a plan day (standalone section kept, now with write). */}
@@ -602,7 +603,7 @@ export function WorkoutPlanner({
                 <option value="">Add to plan day…</option>
                 {(planDays ?? []).map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.day_date} — {d.sport}{d.sport !== 'rest' ? ` (${d.planned_type})` : ''}{d.completed ? ' ✓' : ''}
+                    {d.day_date} — {d.sport}{d.sport !== 'rest' ? ` (${d.planned_type})` : ''}{d.completed ? ' (done)' : ''}
                   </option>
                 ))}
               </select>
@@ -627,7 +628,7 @@ export function WorkoutPlanner({
       {showRoutes && routeMatches && (
         <Card>
           <h3 className="text-lg font-bold text-foreground mb-3 flex items-center gap-2">
-            <span>🗺️</span> Matching Routes
+            <MapPin className="w-4 h-4" /> Matching Routes
           </h3>
 
           {routeMatches.matches.length === 0 ? (

@@ -10,7 +10,7 @@ interface MetricCardProps {
   value: string | number | undefined | null;
   color: string;
   unit?: string;
-  icon?: string;
+  icon?: React.ReactNode;
   subtitle?: string;
   subtext?: string;
   tooltip?: string;
@@ -118,7 +118,7 @@ export function MetricCard({
   return (
     <Card className="group relative">
       <div className="flex items-center gap-1 mb-1">
-        {icon && <span className="text-base">{icon}</span>}
+        {icon && <span className="text-base w-5 flex items-center justify-center">{icon}</span>}
         <p className="text-sm text-muted">{label}</p>
         {tooltip && (
           <span className="text-muted text-xs cursor-help" title={tooltip} tabIndex={0} aria-label={tooltip}>ⓘ</span>

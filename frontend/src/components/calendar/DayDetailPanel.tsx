@@ -16,11 +16,12 @@ import type {
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { SectionLabel } from '@/components/ui/SectionLabel';
 import {
-  getSportEmoji,
   getSportTextColor,
   isStrengthType,
   isCyclingOrRunning,
 } from '@/lib/sportUtils';
+import { getSportColor } from '@/lib/sportUtils';
+import { Moon, Bed, Flame, Ruler, Dumbbell, AlarmClock } from 'lucide-react';
 
 // ─── Lifting Session Notes Editor ──────────────────────────────────────────
 
@@ -232,7 +233,7 @@ export function DayDetailPanel({
           {hasSleep && (
             <div className="bg-surface-light/50 rounded-xl border border-surface-light p-4">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">{'😴'}</span>
+                <Moon className="w-5 h-5 text-muted" />
                 <h3 className="text-sm font-semibold text-foreground uppercase tracking-wider">Sleep</h3>
               </div>
               {daySleepLog ? (
@@ -285,8 +286,8 @@ export function DayDetailPanel({
                   {/* Bedtime / Wake */}
                   {(daySleepLog.sleep_start || daySleepLog.sleep_end) && (
                     <div className="mt-2 pt-2 border-t border-surface-light flex justify-between text-xs text-muted">
-                      <span>{'🛏️'} {formatTime(daySleepLog.sleep_start)}</span>
-                      <span>{'\u23F0'} {formatTime(daySleepLog.sleep_end)}</span>
+                      <span><Bed className="w-3 h-3 inline mr-1" />{formatTime(daySleepLog.sleep_start)}</span>
+                      <span><AlarmClock className="w-3 h-3 inline mr-1" />{formatTime(daySleepLog.sleep_end)}</span>
                     </div>
                   )}
                 </>
@@ -325,11 +326,9 @@ export function DayDetailPanel({
               className="bg-surface-light/50 rounded-xl border border-surface-light hover:border-accent/30 transition-colors p-5"
             >
               {/* Header */}
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-2xl">
-                  {getSportEmoji(activity.sport_type)}
-                </span>
-                <div className="flex-1 min-w-0">
+               <div className="flex items-center gap-3 mb-3">
+                 <span className={`w-6 h-6 rounded-full ${getSportColor(activity.sport_type)}`} aria-hidden="true" />
+                 <div className="flex-1 min-w-0">
                   <Link
                     href={`/activities?activity=${activity.id}`}
                     className="hover:text-accent transition-colors"
@@ -397,7 +396,7 @@ export function DayDetailPanel({
                   <span>{'\u2764\uFE0F'} {Math.round(activity.average_heartrate)} bpm</span>
                 )}
                 {activity.calories != null && (
-                  <span>{'🔥'} {Math.round(activity.calories)} cal</span>
+                  <span><Flame className="w-3 h-3 inline mr-1" />{Math.round(activity.calories)} cal</span>
                 )}
                 {activity.elevation_gain_meters != null && (
                   <span>
@@ -426,11 +425,9 @@ export function DayDetailPanel({
             key={entry.id}
             className="bg-surface-light/50 rounded-xl border border-surface-light p-5"
           >
-            <div className="flex items-center gap-3 mb-2">
-              <span className="text-2xl">
-                {getSportEmoji(entry.sport_type)}
-              </span>
-              <div className="flex-1 min-w-0">
+             <div className="flex items-center gap-3 mb-2">
+               <span className={`w-6 h-6 rounded-full ${getSportColor(entry.sport_type)}`} aria-hidden="true" />
+               <div className="flex-1 min-w-0">
                 <h3 className="text-foreground font-semibold truncate">
                   {entry.name}
                 </h3>
@@ -446,7 +443,7 @@ export function DayDetailPanel({
                 <span>{'\u23F1'} {formatDuration(entry.duration_seconds)}</span>
               )}
               {entry.distance_meters != null && (
-                <span>{'📏'} {formatDistance(entry.distance_meters)}</span>
+                <span><Ruler className="w-3 h-3 inline mr-1" />{formatDistance(entry.distance_meters)}</span>
               )}
               {entry.tss != null && (
                 <span>{'\u26A1'} {Math.round(entry.tss)} TSS</span>
@@ -470,7 +467,7 @@ export function DayDetailPanel({
             className="bg-surface-light/50 rounded-xl border border-purple-500/20 p-5"
           >
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-2xl">{'🏋️'}</span>
+              <Dumbbell className="w-6 h-6 text-purple-400" />
               <div className="flex-1 min-w-0">
                 <Link
                   href={`/lifting?session=${session.id}`}

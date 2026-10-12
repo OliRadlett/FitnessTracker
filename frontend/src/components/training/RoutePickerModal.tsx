@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
+import { MapPin } from 'lucide-react';
 import type { RouteSummary } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { formatElevation } from '@/lib/utils';
@@ -64,7 +65,7 @@ export function RoutePickerModal({
 
   return (
     <Modal open={open} onClose={onClose} size="xl" aria-label="Pick a route">
-      <ModalHeader title="Pick a Route" onClose={onClose} icon="🗺️" />
+      <ModalHeader title="Pick a Route" onClose={onClose} icon={<MapPin className="w-5 h-5" />} />
 
       {/* Filters */}
       <div className="flex flex-wrap gap-2 mb-4">

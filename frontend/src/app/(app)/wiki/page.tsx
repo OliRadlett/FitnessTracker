@@ -6,6 +6,7 @@ import { Card, CardTitle } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Changelog } from '@/components/ui/Changelog';
 import { usePageTitle } from '@/lib/usePageTitle';
+import { Search, Rocket, BookOpen, Beaker, Lightbulb, Scale, Apple, Cloud, ClipboardList, Target, Play, Newspaper, Check } from 'lucide-react';
 
 /** Inline link used throughout the wiki to jump to the feature page being described. */
 function WikiLink({ href, children }: { href: string; children: React.ReactNode }) {
@@ -19,18 +20,18 @@ function WikiLink({ href, children }: { href: string; children: React.ReactNode 
 // ── Section definitions ──────────────────────────────────────────────────────
 
 const sections = [
-  { id: 'overview', label: 'Overview', icon: '🔍' },
-  { id: 'getting-started', label: 'Getting Started', icon: '🚀' },
-  { id: 'glossary', label: 'Metrics Glossary', icon: '📖' },
-  { id: 'science', label: 'Science & Research', icon: '🧪' },
-  { id: 'maximizing-impact', label: 'Maximizing Impact', icon: '💡' },
-  { id: 'weakness-analysis', label: 'Weakness Analysis', icon: '⚖️' },
-  { id: 'ride-fueling', label: 'Ride Fueling', icon: '🍌' },
-  { id: 'weather-integration', label: 'Weather Integration', icon: '🌦️' },
-  { id: 'training-plans', label: 'Training Plans & Conformity', icon: '📋' },
-  { id: 'goals-projections', label: 'Goals & Projections', icon: '🎯' },
-  { id: 'relive-3d', label: '3D Ride Replay', icon: '🎬' },
-  { id: 'changelog', label: "What's New", icon: '🆕' },
+  { id: 'overview', label: 'Overview', icon: Search },
+  { id: 'getting-started', label: 'Getting Started', icon: Rocket },
+  { id: 'glossary', label: 'Metrics Glossary', icon: BookOpen },
+  { id: 'science', label: 'Science & Research', icon: Beaker },
+  { id: 'maximizing-impact', label: 'Maximizing Impact', icon: Lightbulb },
+  { id: 'weakness-analysis', label: 'Weakness Analysis', icon: Scale },
+  { id: 'ride-fueling', label: 'Ride Fueling', icon: Apple },
+  { id: 'weather-integration', label: 'Weather Integration', icon: Cloud },
+  { id: 'training-plans', label: 'Training Plans & Conformity', icon: ClipboardList },
+  { id: 'goals-projections', label: 'Goals & Projections', icon: Target },
+  { id: 'relive-3d', label: '3D Ride Replay', icon: Play },
+  { id: 'changelog', label: "What's New", icon: Newspaper },
 ];
 
 // ── Glossary entries (alphabetical) ─────────────────────────────────────────
@@ -204,7 +205,7 @@ export default function WikiPage() {
                   : 'text-muted hover:text-foreground hover:bg-surface-light/50'
               }`}
             >
-              <span aria-hidden="true">{s.icon}</span>
+              {React.createElement(s.icon, { className: 'w-4 h-4' })}
               {s.label}
             </button>
           ))}
@@ -222,7 +223,7 @@ export default function WikiPage() {
         {/* ─── 1. Overview ──────────────────────────────────────── */}
         <section id="overview">
           <Card>
-            <CardTitle>🔍 Overview</CardTitle>
+            <CardTitle><Search className="w-5 h-5 inline mr-1.5 -mt-0.5" /> Overview</CardTitle>
             <div className="space-y-4 text-sm text-muted leading-relaxed">
               <p>
                 <strong className="text-foreground">FitTrack</strong> is a personal fitness tracker designed for{' '}
@@ -251,7 +252,7 @@ export default function WikiPage() {
                     'Structured training plans',
                   ].map((f) => (
                     <li key={f} className="flex items-start gap-2">
-                      <span className="text-positive mt-0.5" aria-hidden="true">✓</span>
+                      <Check className="w-4 h-4 text-positive mt-0.5 shrink-0" aria-hidden="true" />
                       <span>{f}</span>
                     </li>
                   ))}
@@ -264,7 +265,7 @@ export default function WikiPage() {
         {/* ─── 2. Getting Started ───────────────────────────────── */}
         <section id="getting-started">
           <Card>
-            <CardTitle>🚀 Getting Started</CardTitle>
+            <CardTitle><Rocket className="w-5 h-5 inline mr-1.5 -mt-0.5" /> Getting Started</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <div>
                 <h3 className="text-foreground font-semibold mb-2">Connect Your Integrations</h3>
@@ -331,7 +332,7 @@ export default function WikiPage() {
         {/* ─── 3. Metrics Glossary ─────────────────────────────── */}
         <section id="glossary">
           <Card>
-            <CardTitle>📖 Metrics Glossary</CardTitle>
+            <CardTitle><BookOpen className="w-5 h-5 inline mr-1.5 -mt-0.5" /> Metrics Glossary</CardTitle>
             <p className="text-sm text-muted mb-6">
               All metrics tracked or calculated by FitTrack, listed alphabetically.
             </p>
@@ -353,7 +354,7 @@ export default function WikiPage() {
         {/* ─── 4. Science & Research ────────────────────────────── */}
         <section id="science">
           <Card>
-            <CardTitle>🧪 Science & Research</CardTitle>
+            <CardTitle><Beaker className="w-5 h-5 inline mr-1.5 -mt-0.5" /> Science & Research</CardTitle>
             <div className="space-y-8 text-sm text-muted leading-relaxed">
               {/* Training Load Model */}
               <div>
@@ -508,7 +509,7 @@ export default function WikiPage() {
         {/* ─── 5. Maximizing Impact ────────────────────────────── */}
         <section id="maximizing-impact">
           <Card>
-            <CardTitle>💡 Maximizing Impact</CardTitle>
+            <CardTitle><Lightbulb className="w-5 h-5 inline mr-1.5 -mt-0.5" /> Maximizing Impact</CardTitle>
             <div className="space-y-4 text-sm text-muted leading-relaxed">
               {[
                 {
@@ -584,7 +585,7 @@ export default function WikiPage() {
         {/* ─── 6. Weakness Analysis ────────────────────────────── */}
         <section id="weakness-analysis">
           <Card>
-            <CardTitle>⚖️ Weakness Analysis</CardTitle>
+            <CardTitle>Weakness Analysis</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <p>
                 Weakness Analysis cross-examines your lifting and cycling data to identify{' '}
@@ -651,7 +652,7 @@ export default function WikiPage() {
         {/* ─── 7. Ride Fueling ──────────────────────────────────── */}
         <section id="ride-fueling">
           <Card>
-            <CardTitle>🍌 Ride Fueling</CardTitle>
+            <CardTitle><Apple className="w-5 h-5 inline mr-1.5 -mt-0.5" /> Ride Fueling</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <p>
                 Proper fueling is critical for sustained cycling performance. FitTrack generates personalised fuel
@@ -738,7 +739,7 @@ export default function WikiPage() {
         {/* ─── 8. Weather Integration ───────────────────────────── */}
         <section id="weather-integration">
           <Card>
-            <CardTitle>🌦️ Weather Integration</CardTitle>
+            <CardTitle><Cloud className="w-5 h-5 inline mr-1.5 -mt-0.5" /> Weather Integration</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <p>
                 FitTrack integrates with <strong className="text-foreground">Open-Meteo</strong>, a free weather API
@@ -792,7 +793,7 @@ export default function WikiPage() {
         {/* ─── 9. Training Plans & Conformity ───────────────────── */}
         <section id="training-plans">
           <Card>
-            <CardTitle>📋 Training Plans & Conformity</CardTitle>
+            <CardTitle>Training Plans & Conformity</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <p>
                 Training plans let you structure your week with sport-aware day editors, drag-to-swap scheduling,
@@ -890,7 +891,7 @@ export default function WikiPage() {
         {/* ─── 10. Goals & Projections ──────────────────────────── */}
         <section id="goals-projections">
           <Card>
-            <CardTitle>🎯 Goals & Projections</CardTitle>
+            <CardTitle>Goals & Projections</CardTitle>
             <div className="space-y-6 text-sm text-muted leading-relaxed">
               <p>
                 Goals let you define specific training targets and track progress with data-driven weekly
@@ -945,7 +946,7 @@ export default function WikiPage() {
         {/* ─── 11. 3D Ride Replay ───────────────────────────────── */}
         <section id="relive-3d">
           <Card>
-            <CardTitle>🎬 3D Ride Replay</CardTitle>
+            <CardTitle>3D Ride Replay</CardTitle>
             <div className="space-y-4 text-sm text-muted leading-relaxed">
               <p>
                 Relive any cycling ride as a full-screen 3D film: your bike on a real-terrain
@@ -1020,7 +1021,7 @@ export default function WikiPage() {
         {/* ─── 12. What's New ──────────────────────────────────── */}
         <section id="changelog">
           <Card>
-            <CardTitle>🆕 What's New</CardTitle>
+            <CardTitle><Newspaper className="w-5 h-5 inline mr-1.5 -mt-0.5" /> What&apos;s New</CardTitle>
             <div className="text-sm text-muted leading-relaxed">
               <p className="mb-4">
                 Recent features and improvements shipped to FitTrack.

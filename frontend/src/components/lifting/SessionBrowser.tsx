@@ -8,8 +8,9 @@ import {
   ChevronRight,
   RotateCcw,
   Search,
-  SlidersHorizontal,
+  Dumbbell,
   X,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
@@ -431,14 +432,14 @@ export function SessionBrowser({
           </div>
         ) : filtering ? (
           <EmptyState
-            icon="🔍"
+            icon={<Search className="w-8 h-8 text-muted" />}
             title="No sessions match these filters"
             description="Try widening the date range or clearing the search — your sessions are still here."
             action={{ label: 'Clear filters', onClick: resetFilters }}
           />
         ) : (
           <EmptyState
-            icon="🏋️"
+            icon={<Dumbbell className="w-8 h-8 text-muted" />}
             title="No lifting sessions recorded"
             description="Create your first session, or jump straight into the Live Lift tracker to start logging sets in real time."
             action={{ label: 'Start Live Session', href: '/lifting/live' }}

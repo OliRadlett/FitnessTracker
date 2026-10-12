@@ -38,6 +38,7 @@ import { ActivityRow, SessionRow, ListSkeleton } from '@/components/dashboard/he
 import { HealthAlertsSection } from '@/components/health/HealthAlertsSection';
 import { GoalsSection } from './GoalsSection';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
+import { Zap, Dumbbell, Heart, Moon, Trophy, Calendar, Bell, Flame, BarChart3, Bike } from 'lucide-react';
 import { CrossDomainInsightsCard } from '@/components/dashboard/CrossDomainInsightsCard';
 import { MonthlySummarySection, YearlySummarySection } from './PeriodSummaries';
 import type { PeriodSummaryProps } from './PeriodSummaries';
@@ -256,7 +257,7 @@ export function WeeklyTab({
                 value={weeklyReport.total_tss.toFixed(0)}
                 subtitle={`${weeklyReport.cardio_sessions} cardio sessions`}
                 color="text-blue-400"
-                icon="⚡"
+                icon={<Zap className="w-5 h-5" />}
                 tooltip="Training Stress Score for the viewed week (Monday–Sunday). 100 TSS = 1 hour at FTP."
               />
               <MetricCard
@@ -264,7 +265,7 @@ export function WeeklyTab({
                 value={`${weeklyReport.lifting_volume_kg.toLocaleString()} kg`}
                 subtitle={`${weeklyReport.lifting_sessions} lifting sessions`}
                 color="text-purple-400"
-                icon="🏋️"
+                icon={<Dumbbell className="w-5 h-5" />}
                 tooltip="Lifting volume (sets × reps × weight) for the viewed week."
               />
               <MetricCard
@@ -272,28 +273,28 @@ export function WeeklyTab({
                 value={weeklyReport.avg_recovery != null ? `${weeklyReport.avg_recovery.toFixed(0)}%` : '—'}
                 subtitle={weeklyReport.avg_hrv_ms != null ? `HRV ${weeklyReport.avg_hrv_ms.toFixed(0)} ms` : 'Weekly average'}
                 color={(weeklyReport.avg_recovery ?? 0) >= 70 ? 'text-positive' : 'text-warning'}
-                icon="❤️"
+                icon={<Heart className="w-5 h-5" />}
               />
               <MetricCard
                 label="Sleep"
                 value={weeklyReport.avg_sleep_hours != null ? `${weeklyReport.avg_sleep_hours.toFixed(1)}h` : '—'}
                 subtitle="Nightly average"
                 color="text-positive"
-                icon="😴"
+                icon={<Moon className="w-5 h-5" />}
               />
               <MetricCard
                 label="PRs"
                 value={weeklyReport.new_prs}
                 subtitle="New records"
                 color={weeklyReport.new_prs > 0 ? 'text-yellow-400' : 'text-muted'}
-                icon="🏆"
+                icon={<Trophy className="w-5 h-5" />}
               />
               <MetricCard
                 label="Week"
                 value={`${weeklyReport.lifting_sessions + weeklyReport.cardio_sessions} sessions`}
                 subtitle={`${weeklyReport.week_start} → ${weeklyReport.week_end}`}
                 color="text-muted"
-                icon="📅"
+                icon={<Calendar className="w-5 h-5" />}
               />
             </div>
           )
@@ -326,7 +327,7 @@ export function WeeklyTab({
               : (summary?.latest_strain ?? 0) >= 10 ? 'text-yellow-400'
               : 'text-positive'
             }
-            icon="💪"
+            icon={<Dumbbell className="w-5 h-5" />}
             tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out. Based on time in HR zones."
           />
           <MetricCard
@@ -334,7 +335,7 @@ export function WeeklyTab({
             value={summary?.active_alerts_count ?? 0}
             subtitle="Health warnings"
             color={(summary?.active_alerts_count ?? 0) > 0 ? 'text-warning' : 'text-positive'}
-            icon="🔔"
+            icon={<Bell className="w-5 h-5" />}
             tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies."
           />
         </div>
@@ -353,7 +354,7 @@ export function WeeklyTab({
                 value={summary ? `${summary.weekly_volume_kg.toLocaleString()} kg` : '—'}
                 subtitle={`${summary?.weekly_sessions ?? 0} lifting sessions`}
                 color="text-accent"
-                icon="🏋️"
+                icon={<Dumbbell className="w-5 h-5" />}
                 tooltip="Total lifting volume (sets × reps × weight) this week. Track progressive overload by comparing week-to-week."
               />
               <MetricCard
@@ -361,7 +362,7 @@ export function WeeklyTab({
                 value={summary ? `${(summary.weekly_distance_meters / 1000).toFixed(1)} km` : '—'}
                 subtitle="Cycling, running, etc."
                 color="text-positive"
-                icon="🚴"
+                icon={<Bike className="w-5 h-5" />}
                 tooltip="Total cardio distance this week across all activities."
               />
               <MetricCard
@@ -369,7 +370,7 @@ export function WeeklyTab({
                 value={summary?.weekly_tss?.toFixed(0) ?? '—'}
                 subtitle="Training Stress Score"
                 color="text-blue-400"
-                icon="⚡"
+                icon={<Zap className="w-5 h-5" />}
                 tooltip="Weekly Training Stress Score — composite measure of workout difficulty. 100 TSS = 1 hour at FTP. Aim for consistent weekly TSS with periodic recovery weeks."
               />
               {!hasReadiness && (
@@ -378,7 +379,7 @@ export function WeeklyTab({
                   value={summary?.latest_recovery?.toFixed(1) ?? '—'}
                   subtitle={summary?.latest_hrv_ms ? `HRV: ${summary.latest_hrv_ms.toFixed(0)}ms` : 'No data'}
                   color={(summary?.latest_recovery ?? 0) >= 70 ? 'text-positive' : 'text-warning'}
-                  icon="❤️"
+                  icon={<Heart className="w-5 h-5" />}
                   tooltip="Whoop recovery score (0-100%). Green (70%+): ready to train hard. Yellow (50-69%): moderate. Red (<50%): consider rest."
                 />
               )}
@@ -391,7 +392,7 @@ export function WeeklyTab({
                   : (summary?.latest_strain ?? 0) >= 10 ? 'text-yellow-400'
                   : 'text-positive'
                 }
-                icon="💪"
+                icon={<Dumbbell className="w-5 h-5" />}
                 tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out."
               />
               <MetricCard
@@ -399,7 +400,7 @@ export function WeeklyTab({
                 value={summary?.active_alerts_count ?? 0}
                 subtitle="Health warnings"
                 color={(summary?.active_alerts_count ?? 0) > 0 ? 'text-warning' : 'text-muted'}
-                icon="🔔"
+                icon={<Bell className="w-5 h-5" />}
                 tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies."
               />
             </>
@@ -580,7 +581,7 @@ export function WeeklyTab({
               value={streaks.current_streak_days > 0 ? `${streaks.current_streak_days} days` : '—'}
               subtitle={streaks.current_streak_days > 0 ? 'Keep it going!' : 'Start training today'}
               color="text-orange-400"
-              icon="🔥"
+              icon={<Flame className="w-5 h-5" />}
               tooltip="Consecutive days with at least one training session. Consistency is key to long-term progress."
             />
             <MetricCard
@@ -588,7 +589,7 @@ export function WeeklyTab({
               value={streaks.longest_streak_days > 0 ? `${streaks.longest_streak_days} days` : '—'}
               subtitle="All-time record"
               color="text-yellow-400"
-              icon="🏆"
+              icon={<Trophy className="w-5 h-5" />}
               tooltip="Your all-time record for consecutive training days."
             />
             <MetricCard
@@ -600,7 +601,7 @@ export function WeeklyTab({
                 : streaks.weekly_consistency_pct >= 50 ? 'text-yellow-400'
                 : 'text-warning'
               }
-              icon="📊"
+              icon={<BarChart3 className="w-5 h-5" />}
               tooltip="Percentage of weeks where you completed 3+ training sessions. 75%+ is excellent consistency."
             />
             <MetricCard
@@ -612,7 +613,7 @@ export function WeeklyTab({
               }
               subtitle="Total sessions"
               color="text-blue-400"
-              icon="📅"
+              icon={<Calendar className="w-5 h-5" />}
               tooltip="Total training sessions completed this month across all activities."
             />
           </div>

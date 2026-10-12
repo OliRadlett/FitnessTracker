@@ -29,8 +29,8 @@ import { SkeletonMetric } from '@/components/ui/Skeleton';
 import { weatherEmoji } from '@/lib/utils';
 import { getCurrentWeek, toDateStr } from '@/lib/training/week';
 import { timeRangeDays, useTimeRange } from '@/lib/time-range';
-import { GoalsSection } from './GoalsSection';
 import { TodayAdaptiveAction } from './TodayAdaptiveAction';
+import { GoalsSection } from './GoalsSection';
 import { MetricCard } from '@/components/ui/MetricCard';
 import { RespiratoryRateCard } from '@/components/health/RespiratoryRateCard';
 import { SleepDebtCard } from '@/components/health/SleepDebtCard';
@@ -38,6 +38,7 @@ import { SleepConsistencyCard } from '@/components/health/SleepConsistencyCard';
 import { OptimalBedtimeCard } from '@/components/health/OptimalBedtimeCard';
 import { formatDistance, formatDuration, formatTSB, getActiveLocale } from '@/lib/utils';
 import { ListSkeleton } from '@/components/dashboard/helpers';
+import { Calendar, Heart, Moon, Bell, Zap, Dumbbell, Bike, Clock } from 'lucide-react';
 
 // ── Sport emoji for plan day ──────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ export function TodayTab({
   if (!todaySummary) {
     return (
       <EmptyState
-        icon="📅"
+        icon={<Calendar className="w-8 h-8 text-muted" />}
         title="No data for today"
         description="Log a session or sync a provider — your daily summary appears here."
         action={{ label: 'Start a live session', href: '/lifting/live' }}
@@ -246,7 +247,7 @@ export function TodayTab({
             value={todaySummary.latest_recovery != null ? `${todaySummary.latest_recovery.toFixed(0)}%` : '—'}
             subtitle={todaySummary.latest_hrv_ms != null ? `HRV: ${todaySummary.latest_hrv_ms.toFixed(0)}ms` : 'No data'}
             color={(todaySummary.latest_recovery ?? 0) >= 70 ? 'text-positive' : (todaySummary.latest_recovery ?? 0) >= 50 ? 'text-yellow-400' : 'text-warning'}
-            icon="❤️"
+            icon={<Heart className="w-5 h-5" />}
           />
         )}
         {respiratoryRate ? (
@@ -257,7 +258,7 @@ export function TodayTab({
             value={todaySummary.latest_sleep_hours != null ? `${todaySummary.latest_sleep_hours.toFixed(1)}h` : '—'}
             subtitle="Last night"
             color={(todaySummary.latest_sleep_hours ?? 0) >= 7 ? 'text-positive' : (todaySummary.latest_sleep_hours ?? 0) >= 6 ? 'text-yellow-400' : 'text-warning'}
-            icon="😴"
+            icon={<Moon className="w-5 h-5" />}
           />
         )}
         <MetricCard
@@ -265,7 +266,7 @@ export function TodayTab({
           value={todaySummary.latest_strain != null ? todaySummary.latest_strain.toFixed(1) : '—'}
           subtitle="Whoop strain (0-21)"
           color={(todaySummary.latest_strain ?? 0) >= 14 ? 'text-warning' : (todaySummary.latest_strain ?? 0) >= 10 ? 'text-yellow-400' : 'text-positive'}
-          icon="💪"
+          icon={<Dumbbell className="w-5 h-5" />}
           tooltip="Whoop Strain (0-21) measures cardiovascular load. 0-9: low, 10-13: moderate, 14-17: high, 18+: all-out. Based on time in HR zones."
         />
         <MetricCard
@@ -273,7 +274,7 @@ export function TodayTab({
           value={todaySummary.active_alerts}
           subtitle="Health warnings"
           color={todaySummary.active_alerts > 0 ? 'text-warning' : 'text-positive'}
-          icon="🔔"
+          icon={<Bell className="w-5 h-5" />}
           tooltip="Health alerts triggered by declining HRV, elevated respiratory rate, poor sleep, or other anomalies. Check the Weekly tab for details."
         />
       </div>
@@ -330,7 +331,7 @@ export function TodayTab({
             value={todaySummary.today_tss > 0 ? todaySummary.today_tss.toFixed(0) : '—'}
             subtitle={todaySummary.today_tss > 0 ? 'Training Stress Score' : 'Nothing logged yet'}
             color="text-blue-400"
-            icon="⚡"
+            icon={<Zap className="w-5 h-5" />}
             tooltip="Training Stress Score — composite measure of workout difficulty based on intensity and duration. 100 TSS = 1 hour at FTP. Higher means harder."
           />
           <MetricCard
@@ -338,7 +339,7 @@ export function TodayTab({
             value={todaySummary.today_volume_kg > 0 ? `${todaySummary.today_volume_kg.toLocaleString()} kg` : '—'}
             subtitle={todaySummary.today_volume_kg > 0 ? 'Lifting volume' : 'Nothing logged yet'}
             color="text-purple-400"
-            icon="🏋️"
+            icon={<Dumbbell className="w-5 h-5" />}
             tooltip="Total lifting volume (sets × reps × weight) for today. Track progressive overload by comparing week-to-week."
           />
           <MetricCard
@@ -346,7 +347,7 @@ export function TodayTab({
             value={todaySummary.today_distance_meters > 0 ? formatDistance(todaySummary.today_distance_meters) : '—'}
             subtitle={todaySummary.today_distance_meters > 0 ? 'Cardio distance' : 'Nothing logged yet'}
             color="text-positive"
-            icon="🚴"
+            icon={<Bike className="w-5 h-5" />}
             tooltip="Total distance from all cardio activities today (cycling, running, etc.)."
           />
           <MetricCard
@@ -354,7 +355,7 @@ export function TodayTab({
             value={todaySummary.today_duration_seconds > 0 ? formatDuration(todaySummary.today_duration_seconds) : '—'}
             subtitle={todaySummary.today_duration_seconds > 0 ? 'Training time' : 'Nothing logged yet'}
             color="text-muted"
-            icon="⏱️"
+            icon={<Clock className="w-5 h-5" />}
             tooltip="Total elapsed time across all activities and lifting sessions today."
           />
         </div>

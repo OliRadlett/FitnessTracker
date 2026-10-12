@@ -13,6 +13,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { TrainingWeekDay } from '@/lib/api';
 import { useAuthFetch, pushPlanDayToWahoo, removePlanDayFromWahoo } from '@/lib/api';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { Upload } from 'lucide-react';
 
 interface WahooPushModalProps {
   open: boolean;
@@ -86,7 +87,7 @@ export function WahooPushModal({ open, onClose, planId, day }: WahooPushModalPro
 
   return (
     <Modal open={open} onClose={onClose} size="lg" aria-label="Push to Wahoo">
-      <ModalHeader title="Push to Wahoo" onClose={onClose} icon="📤" />
+      <ModalHeader title="Push to Wahoo" onClose={onClose} icon={<Upload className="w-5 h-5" />} />
 
       <p className="text-xs text-muted mb-4">
         {day.day_date.slice(0, 10)} · {day.sport === 'cycle' ? 'Cycle' : day.sport}

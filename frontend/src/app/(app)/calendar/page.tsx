@@ -34,12 +34,12 @@ import {
   getSportColor,
   getSportTextColor,
   getSportBorderColor,
-  getSportEmoji,
   isStrengthType,
   getRecoveryColor,
 } from '@/lib/sportUtils';
 import { DayDetailPanel } from '@/components/calendar/DayDetailPanel';
 import { CalendarAgendaView } from '@/components/calendar/CalendarAgendaView';
+import { Bike, Dumbbell, Footprints } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -345,10 +345,10 @@ export default function CalendarPage() {
                             title={`${format(day, 'MMM d')}: ${formatStat(activity)}`}
                             className={`rounded px-1.5 py-0.5 text-[11px] leading-tight truncate border ${getSportBorderColor(activity.sport_type)} ${getSportColor(activity.sport_type)}/10 ${matchesSportFilter(activity.sport_type) ? '' : 'opacity-30'}`}
                           >
-                            <span className={getSportTextColor(activity.sport_type)}>
-                              {getSportEmoji(activity.sport_type)}{' '}
-                              {formatStat(activity)}
-                            </span>
+                             <span className={`w-2 h-2 rounded-full ${getSportColor(activity.sport_type)} inline-block`} aria-hidden="true" />
+                             <span className={getSportTextColor(activity.sport_type)}>
+                               {formatStat(activity)}
+                             </span>
                           </div>
                         ))}
                         {dayActivities.length > 2 && (
@@ -386,14 +386,14 @@ export default function CalendarPage() {
           )}
           <div className="flex flex-wrap gap-4">
             {[
-              { label: 'Cycling', emoji: '🚴', color: 'text-blue-400' },
-              { label: 'Running', emoji: '🏃', color: 'text-green-400' },
-              { label: 'Strength', emoji: '🏋️', color: 'text-purple-400' },
-              { label: 'Swimming', emoji: '🏊', color: 'text-cyan-400' },
-              { label: 'Walking / Hiking', emoji: '🥾', color: 'text-amber-400' },
-            ].map(({ label, emoji, color }) => (
+              { label: 'Cycling', icon: Bike, color: 'text-blue-400' },
+              { label: 'Running', icon: Bike, color: 'text-green-400' },
+              { label: 'Strength', icon: Dumbbell, color: 'text-purple-400' },
+              { label: 'Swimming', icon: Bike, color: 'text-cyan-400' },
+              { label: 'Walking / Hiking', icon: Footprints, color: 'text-amber-400' },
+            ].map(({ label, icon: Icon, color }) => (
               <div key={label} className="flex items-center gap-1.5 text-xs">
-                <span>{emoji}</span>
+                <Icon className="w-3 h-3" />
                 <span className={`${color}`}>{label}</span>
               </div>
             ))}
