@@ -336,8 +336,10 @@ No DB migration required for the three endpoints (columns already exist).
 - [ ] Fix `CODEMAP.md:20` + `training_plan.py:789` docstrings; deprecate `TrainingPlanUpdate.days`.
 - **Acceptance**: `/training?plan=&day=` lands in Plan mode with the day open; add/delete/swap/move each work from one call; the UI never sends a full `days` array.
 
-### Phase 1 — Plan mode (the unified editor)
+### Phase 1 — Plan mode (the unified editor) — ✅ **shipped** (PR #262)
 > Spec: [`training-plan-mode-spec.md`](training-plan-mode-spec.md). **Prep first**: land the `/training` Playwright guard, and keep the editor + day grid **session-scoped** (a date → list of sessions) so [`multi-sport days`](training-multi-sport-days.md) stays purely additive.
+>
+> **Deviations as shipped**: `WeeklyView.tsx` was kept as the week view (extended with All-weeks + drag) rather than renamed to `plan/PlanMode.tsx` — cosmetic; a rename is optional. `WorkoutPlanner`/`PlanBuilder` are deleted; the destructive full-array save is gone from the UI. The zones reference needed no move (`/cycling` already renders `PowerZonesDisplay`). The unplanned strip shipped with a small backend addition (`activity_id`/`lifting_session_id` on the day PATCH, ownership-validated). **Not E2E-guarded**: the drag→swap/move gesture (HTML5 DnD is flaky in Playwright) — needs a manual check.
 - [ ] `plan/DayEditor` (from `PlanBuilder.DayEditor` + `WeeklyView.ExpandedPanel`), instant commits + debounce; actuals + `DayConformityPanel`.
 - [ ] `plan/PrescriptionPanel` absorbing `WorkoutPlanner`; delete `WorkoutPlanner.tsx`.
 - [ ] `WeekMasterBar`/`DayCell` as the editable cards; drag→swap/move resolver; ⇄ picker; move/swap/duplicate/delete/copy-session actions **with `ConfirmDialog`s on the destructive ones**.
