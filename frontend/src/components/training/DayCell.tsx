@@ -43,6 +43,13 @@ export interface DayCellProps {
   /** Opens the missed-day quick actions (only shown when status is 'missed'). */
   onOpenMissed?: () => void;
   busy: boolean;
+  /** Desktop drag-and-drop: drag a day card onto another to swap or move it. */
+  draggable?: boolean;
+  onDragStart?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: () => void;
+  onDragEnd?: () => void;
+  isDropTarget?: boolean;
 }
 
 export function DayCell({
@@ -60,6 +67,12 @@ export function DayCell({
   onToggleCompleted,
   onOpenMissed,
   busy,
+  draggable,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  isDropTarget,
 }: DayCellProps) {
   const status = day ? getStatus(day, todayStr) : 'neutral';
   const badgeStatus = getBadgeStatus(day, status);
@@ -84,10 +97,15 @@ export function DayCell({
         expanded
           ? 'bg-surface-light/40 border-accent/40'
           : 'bg-surface-light/20 border-surface-light/50 hover:bg-surface-light/30'
-      } ${isToday ? 'ring-1 ring-accent/60' : ''} ${highlighted ? 'ring-2 ring-accent' : ''} ${missedRing} ${statusColor ? `border-l-2 ${statusColor}` : ''}`}
+      } ${isToday ? 'ring-1 ring-accent/60' : ''} ${highlighted ? 'ring-2 ring-accent' : ''} ${missedRing} ${isDropTarget ? 'ring-2 ring-accent border-accent' : ''} ${statusColor ? `border-l-2 ${statusColor}` : ''}`}
       onClick={onToggleExpand}
       role="button"
       tabIndex={0}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') onToggleExpand();
       }}

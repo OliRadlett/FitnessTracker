@@ -288,6 +288,32 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     setMissedDayId(null);
   };
 
+  // Drag-and-drop on the week grid: drop onto an occupied (uncompleted) day to
+  // swap, or onto an empty slot to move. Completed days are refused.
+  const handleDropDate = (sourceDate: string, targetDate: string) => {
+    const source = daysByDate.get(sourceDate);
+    if (!source || source.completed) {
+      toastError("Completed days can't be moved");
+      return;
+    }
+    const target = daysByDate.get(targetDate);
+    if (target) {
+      if (target.completed) {
+        toastError("Completed days can't be swapped");
+        return;
+      }
+      ops.swapDays.mutate(
+        { dayId: source.id, targetDayId: target.id },
+        { onError: (err: Error) => toastError(err.message || 'Could not swap those days') },
+      );
+    } else {
+      ops.moveDay.mutate(
+        { dayId: source.id, targetDate },
+        { onError: (err: Error) => toastError(err.message || 'Could not move that day') },
+      );
+    }
+  };
+
   // ── Derived data ────────────────────────────────────────────────────────
   const weekData = weekQuery.data;
   const weekStart = weekData?.week_start ?? addDays(getWeek1Start(plan.start_date), (currentWeek - 1) * 7);
@@ -643,6 +669,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
           onToggleExpand={setExpandedDayId}
           onToggleCompleted={(dayId, completed) => toggleCompleted.mutate({ dayId, completed })}
           onOpenMissed={setMissedDayId}
+          onDropDate={handleDropDate}
           busy={
             toggleCompleted.isPending ||
             assignRoute.isPending ||
