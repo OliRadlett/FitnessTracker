@@ -75,6 +75,7 @@ export function useInstantDayEdit(planId: string | null, week: number | null) {
       queryClient.invalidateQueries({ queryKey: ['day-conformity'] });
       queryClient.invalidateQueries({ queryKey: ['training-plans'] });
       queryClient.invalidateQueries({ queryKey: ['live-plan-today'] });
+      queryClient.invalidateQueries({ queryKey: ['plan-unplanned', planId] });
     },
   });
 }

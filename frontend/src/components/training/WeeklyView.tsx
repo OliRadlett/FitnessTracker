@@ -43,6 +43,7 @@ import { PlanGoalsStrip } from './PlanGoalsStrip';
 import { MissedDayPopover } from './MissedDayPopover';
 import { SPORT_ICON } from './dayCellShared';
 import { DayEditor } from './plan/DayEditor';
+import { UnplannedStrip } from './plan/UnplannedStrip';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
 import { WahooPushModal } from './WahooPushModal';
@@ -677,6 +678,10 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             opBusy
           }
         />
+      )}
+
+      {view === 'week' && (
+        <UnplannedStrip planId={plan.id} week={currentWeek} days={weekData?.days ?? []} />
       )}
 
       {/* Full-width expanded day detail panel — renders UNDERNEATH the 7-column grid */}

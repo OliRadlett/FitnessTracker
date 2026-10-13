@@ -38,7 +38,6 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { Chart } from '@/components/charts/Chart';
 import { CreatePlanPanel } from '@/components/training/plan/CreatePlanPanel';
 import { WeeklyView } from '@/components/training/WeeklyView';
-import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
 import { EventResultPanel } from '@/components/training/EventResultPanel';
 import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
@@ -293,10 +292,6 @@ export default function TrainingPage() {
               </button>
             </div>
           )}
-
-          {/* RM1: the standalone Workout Planner (absorbed into the day editor
-              in Phase 1). Kept here for parity until then. */}
-          <WorkoutPlanner planId={selectedPlan?.id ?? null} planDays={selectedPlan?.days} />
         </div>
       )}
 

@@ -44,6 +44,7 @@ import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLink
 import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { DayConformityPanel } from '../DayConformityPanel';
+import { PrescriptionPanel } from './PrescriptionPanel';
 import { DAY_TYPES, FOCUS_OPTIONS } from '../dayCellShared';
 
 const inputCls =
@@ -283,7 +284,7 @@ export function DayEditor({
                       (targets.target_power_low + targets.target_power_high) / 2,
                     ),
                     planned_tss: Math.round((targets.target_tss_low + targets.target_tss_high) / 2),
-                    planned_zone: targets.zone_name,
+                    planned_zone: targets.zone_id,
                   })
                 }
                 className="text-[10px] text-accent hover:text-accent/80"
@@ -326,6 +327,11 @@ export function DayEditor({
               </button>
             )}
           </div>
+
+          <PrescriptionPanel
+            day={day}
+            onAssignRoute={(routeId) => patch({ planned_route_id: routeId })}
+          />
 
           {/* Wahoo */}
           <div className="space-y-1">
