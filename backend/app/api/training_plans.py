@@ -20,7 +20,9 @@ from app.schemas.training_plan import (
     RescheduleDayRequest,
     StrengthPlanSuggestionsResponse,
     SubstituteDayRequest,
+    SwapDayRequest,
     TrainingPlanCreate,
+    TrainingPlanDayCreate,
     TrainingPlanDayRead,
     TrainingPlanDayUpdate,
     TrainingPlanRead,
@@ -360,6 +362,78 @@ async def get_unplanned_actuals(
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return UnplannedActualsResponse.model_validate(result)
+
+
+# ── Editor primitives (add / delete / swap a day) ────────────────────────
+#
+# The targeted counterparts to the full-array ``PATCH /{plan_id}`` (which
+# upserts by date and deletes dates missing from the payload). These let the
+# editor change one day atomically without rewriting the plan's day set.
+
+
+@router.post(
+    "/{plan_id}/days",
+    response_model=TrainingPlanDayRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_plan_day(
+    plan_id: uuid.UUID,
+    data: TrainingPlanDayCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add one day to a plan. 409 when the date already holds a day."""
+    try:
+        day = await plan_service.add_plan_day(db, current_user.id, plan_id, data)
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return TrainingPlanDayRead.model_validate(day)
+
+
+@router.delete("/{plan_id}/days/{day_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_plan_day(
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Delete one plan day. Completed days are refused (400)."""
+    try:
+        await plan_service.delete_plan_day(db, current_user.id, plan_id, day_id)
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+
+
+@router.post(
+    "/{plan_id}/days/{day_id}/swap",
+    response_model=list[TrainingPlanDayRead],
+)
+async def swap_plan_days(
+    plan_id: uuid.UUID,
+    day_id: uuid.UUID,
+    data: SwapDayRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Atomically exchange two days' dates. Returns both days."""
+    try:
+        day, target = await plan_service.swap_plan_days(
+            db, current_user.id, plan_id, day_id, data.target_day_id
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return [
+        TrainingPlanDayRead.model_validate(day),
+        TrainingPlanDayRead.model_validate(target),
+    ]
 
 
 # ── Conformity endpoints (Phase 5C) ───────────────────────────────────────

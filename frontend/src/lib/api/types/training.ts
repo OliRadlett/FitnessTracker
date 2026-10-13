@@ -584,3 +584,55 @@ export interface RouteMatchResponse {
   matches: RouteMatchItem[];
   workout_target?: WorkoutPlanResponse;
 }
+
+// ─── Editor primitives (Phase 0) — targeted single-day operations ───────────
+
+/** Body for POST /training-plans/{id}/days/{dayId}/reschedule. */
+export interface RescheduleDayPayload {
+  target_date: string;
+}
+
+/** Body for POST /training-plans/{id}/days/{dayId}/substitute. */
+export interface SubstituteDayPayload {
+  sport: PlanSport;
+  planned_type: PlanDayType;
+  planned_duration_min?: number | null;
+  planned_tss?: number | null;
+  planned_power_watts?: number | null;
+  planned_volume_kg?: number | null;
+  planned_rpe?: number | null;
+}
+
+/** Body for POST /training-plans/{id}/days/{dayId}/swap. */
+export interface SwapDayPayload {
+  target_day_id: string;
+}
+
+/** Compact actual for an activity linked to no plan day. */
+export interface UnplannedActivity {
+  id: string;
+  name: string;
+  sport_type: string;
+  start_date: string;
+  duration_seconds?: number | null;
+  distance_meters?: number | null;
+  tss?: number | null;
+  average_power?: number | null;
+}
+
+/** Compact actual for a lifting session linked to no plan day. */
+export interface UnplannedLiftingSession {
+  id: string;
+  session_date: string;
+  focus?: string | null;
+  total_volume_kg?: number | null;
+  duration_seconds?: number | null;
+}
+
+/** GET /training-plans/{id}/unplanned?days=N */
+export interface UnplannedActualsResponse {
+  plan_id: string;
+  days: number;
+  activities: UnplannedActivity[];
+  lifting_sessions: UnplannedLiftingSession[];
+}
