@@ -67,6 +67,14 @@ import { PatternsView } from '@/components/activities/PatternsView';
 const SPORT_TYPES = ['', 'cycling', 'running', 'swimming', 'walking', 'hiking', 'weighttraining', 'workout'];
 const SOURCES = ['', 'strava', 'wahoo', 'komoot', 'manual'];
 
+/**
+ * Activities listing view modes — also the `?view=` deep-link values. The
+ * advanced listing is reachable from the Journal via `/activities?view=list`;
+ * presence of `view` opts the page out of the bare-redirect to `/journal`.
+ */
+const ACTIVITY_VIEWS = ['list', 'week', 'timeline', 'patterns', 'stats'] as const;
+type ActivityViewMode = (typeof ACTIVITY_VIEWS)[number];
+
 const SORT_OPTIONS: { label: string; sort_by: string; sort_order: string }[] = [
   { label: 'Date (newest)', sort_by: 'start_date', sort_order: 'desc' },
   { label: 'Date (oldest)', sort_by: 'start_date', sort_order: 'asc' },
@@ -513,10 +521,11 @@ export default function ActivitiesPage() {
   const { getParam, setParam } = useDeepLink();
 
   /* V2: redirect bare /activities (listing) to /journal. Activity detail via
-     ?activity=<id> and replay via ?replay=<id> still work. */
+     ?activity=<id>, replay via ?replay=<id>, and the advanced listing via
+     ?view=<mode> (linked from the Journal) still work. */
   React.useEffect(() => {
     const search = new URLSearchParams(window.location.search);
-    if (!search.get('activity') && !search.get('replay')) {
+    if (!search.get('activity') && !search.get('replay') && !search.get('view')) {
       router.replace('/journal');
     }
   }, [router]);
@@ -527,7 +536,24 @@ export default function ActivitiesPage() {
   const pullPhase = usePullToSync(syncPage);
   const [filters, setFilters] = useState<ActivityFilters>({});
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'list' | 'week' | 'timeline' | 'patterns' | 'stats'>('list');
+  const [viewMode, setViewMode] = useState<ActivityViewMode>('list');
+
+  /* Deep-link the listing view: `?view=stats` (etc.) selects it on load, and
+     the toggle writes it back so advanced views are shareable. */
+  useEffect(() => {
+    const v = getParam('view');
+    if (v && (ACTIVITY_VIEWS as readonly string[]).includes(v)) {
+      setViewMode(v as ActivityViewMode);
+    }
+  }, [getParam]);
+
+  const handleViewModeChange = useCallback(
+    (mode: ActivityViewMode) => {
+      setViewMode(mode);
+      setParam('view', mode);
+    },
+    [setParam],
+  );
   /**
    * Views that render the paginated `displayActivities` list. Timeline,
    * Patterns and Stats aggregate their own 6-month window instead, so the
@@ -976,7 +1002,7 @@ export default function ActivitiesPage() {
             <SegmentedControl
               ariaLabel="Activity view mode"
               value={viewMode}
-              onChange={setViewMode}
+              onChange={handleViewModeChange}
               options={[
                 { value: 'list', label: 'List' },
                 { value: 'week', label: 'Week' },
@@ -1211,7 +1237,7 @@ export default function ActivitiesPage() {
             setAdvMaxDur('');
             setAdvMinTss('');
             setAdvMaxTss('');
-            setViewMode('list');
+            handleViewModeChange('list');
           }}
         />
       ) : viewMode === 'stats' ? (

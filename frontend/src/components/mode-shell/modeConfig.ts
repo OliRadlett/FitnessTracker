@@ -17,7 +17,7 @@ import type { TrainingWeekDay } from '@/lib/api';
  *
  * Membership (Walkthrough §2 + task scope):
  *   TODAY  /today + the Train action (/lifting/live)
- *   REVIEW /dashboard (overview home) + /cycling /health /activities
+ *   REVIEW /dashboard (overview home) + /cycling /health /journal
  *          /lifting (history) /lifting/videos /segments /analytics
  *   PLAN   /training /goals /calendar
  *   SYSTEM /routes (+/duplicates tab) /notifications /wiki /settings
@@ -68,7 +68,7 @@ export const MODES: ModeConfig[] = [
     href: '/dashboard',
     routes: [
       '/dashboard',
-      '/activities',
+      '/journal',
       '/cycling',
       '/health',
       '/lifting',
@@ -78,7 +78,7 @@ export const MODES: ModeConfig[] = [
     ],
     links: [
       { href: '/dashboard', label: 'Overview' },
-      { href: '/activities', label: 'Activities' },
+      { href: '/journal', label: 'Journal' },
       { href: '/cycling', label: 'Cycling' },
       { href: '/health', label: 'Health' },
       { href: '/lifting', label: 'Lifting' },
