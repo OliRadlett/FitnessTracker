@@ -4,7 +4,7 @@
 > **Supersedes**: [`v3-planning-2026-10-12.md`](v3-planning-2026-10-12.md) (widget-level pass on an unchanged page).
 > **Goal**: Turn `/training` into a **plan-first workspace**: the plan is the persistent spine; one editor edits any day of it instantly; evidence and peaks are their own surfaces; and the two-editor split that made editing confusing is **removed**.
 > **Backend is in scope** for this plan (user, 2026-10-12). The editor primitives it needs are small and additive; the training *loops* are sequenced later (§11) but no longer deferred because of a frontend-only constraint.
-> **Read next**: [`docs/review-vs-act.md`](../docs/review-vs-act.md) · [`training-aid-review.md`](training-aid-review.md) (the audit this closes the frontend half of) · [`lifting-redesign-plan.md`](lifting-redesign-plan.md) (sibling page, same pattern) · [`training-strength-programming.md`](training-strength-programming.md) (**companion** — the Plan-mode programming capability: per-week targets + weight suggestions).
+> **Read next**: [`docs/review-vs-act.md`](../docs/review-vs-act.md) · [`training-aid-review.md`](training-aid-review.md) (the audit this closes the frontend half of) · [`lifting-redesign-plan.md`](lifting-redesign-plan.md) (sibling page, same pattern) · [`training-strength-programming.md`](training-strength-programming.md) (**companion** — the Plan-mode programming capability: per-week targets + weight suggestions) · [`training-plan-mode-spec.md`](training-plan-mode-spec.md) (**Phase 1** implementation spec — the one-editor Plan mode).
 
 ---
 
@@ -337,6 +337,7 @@ No DB migration required for the three endpoints (columns already exist).
 - **Acceptance**: `/training?plan=&day=` lands in Plan mode with the day open; add/delete/swap/move each work from one call; the UI never sends a full `days` array.
 
 ### Phase 1 — Plan mode (the unified editor)
+> Spec: [`training-plan-mode-spec.md`](training-plan-mode-spec.md). **Prep first**: land the `/training` Playwright guard, and keep the editor + day grid **session-scoped** (a date → list of sessions) so [`multi-sport days`](training-multi-sport-days.md) stays purely additive.
 - [ ] `plan/DayEditor` (from `PlanBuilder.DayEditor` + `WeeklyView.ExpandedPanel`), instant commits + debounce; actuals + `DayConformityPanel`.
 - [ ] `plan/PrescriptionPanel` absorbing `WorkoutPlanner`; delete `WorkoutPlanner.tsx`.
 - [ ] `WeekMasterBar`/`DayCell` as the editable cards; drag→swap/move resolver; ⇄ picker; move/swap/duplicate/delete/copy-session actions **with `ConfirmDialog`s on the destructive ones**.
@@ -427,6 +428,7 @@ The single place listing what is **not yet built** across the training workstrea
 ### In-scope build (these are the order)
 - **This plan** Phases 0–4 (§10) — shell + editor primitives, Plan mode (unified editor), Review, Peaks, mobile.
 - **Companion** `training-strength-programming.md` Phases S1–S4 — progression engine (**+ the one migration**), Program matrix, block tools, coaching aids.
+- **Phase 1 backend addition** (from `training-plan-mode-spec.md` §8/§14): `activity_id` / `lifting_session_id` on `TrainingPlanDayUpdate`, so the unplanned strip can attach an actual to a chosen day (`link-activities` is automatic/date-based and can't target a day).
 
 ### Follow-on phases (backend permitted — §11)
 | # | Item |
@@ -441,7 +443,14 @@ The single place listing what is **not yet built** across the training workstrea
 ### Deferred / excluded (companion §12)
 - Wahoo bulk push (week) — cheap follow-up.
 - Plan PDF export — pattern exists (`export/event-report`).
-- **Multi-sport day** (a ride *and* a lift on one date) — highest-value deferred item, but a **model change** (one day = one sport today); needs its own plan.
+- **Cycle block progression** — week-by-week authoring for rides is accepted for now (`duplicate week → range` covers the bulk case); noted, not scheduled.
+
+### Additional phases / workstreams (2026-10-13 decisions)
+- **Multi-sport days** — a date may hold more than one session. Own phase **after Phase 1**; design in [`training-multi-sport-days.md`](training-multi-sport-days.md). Phase 1 must stay **session-scoped** so this is purely additive.
+- **`/training` E2E guard** — a Playwright spec (mode switching, `?mode=` reload, `?plan=&day=`, Plans surface) lands **before** Phase 1.
+- **Zones reference → `/cycling`** — the `WorkoutPlanner` zone table moves to the cycling page rather than being dropped.
+- **Create consolidation** — Plan mode's "no plan" state links to the Plans surface; the create forms live only there.
+- **Reconcile `.dsh/` into `main`** — dedicated chore PR (the bundle is `prod`-only today, so the branches are permanently non-identical; tooling-only, harmless).
 
 ### Known defects to fix during the build (this plan §12 + companion §4.3)
 1. `StrengthSuggestionsCard.handleApplyAll` overwrites the day's exercise list with a single entry (last wins) → Phase 2.
