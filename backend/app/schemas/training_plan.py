@@ -265,6 +265,10 @@ class TrainingPlanUpdate(BaseModel):
     plan_type: str | None = None
     status: str | None = None
     event_id: uuid.UUID | None = None
+    # DEPRECATED for editing: supplying ``days`` replaces the plan's whole day
+    # set — ``save_plan_days`` upserts by ``day_date`` and DELETES dates missing
+    # from the payload. Prefer the targeted day endpoints (``PATCH /days/{id}``,
+    # ``POST /days``, ``DELETE /days/{id}``, ``POST /days/{id}/swap``).
     days: list[TrainingPlanDayCreate] | None = None
 
 
@@ -502,6 +506,17 @@ class SubstituteDayRequest(BaseModel):
     planned_power_watts: float | None = None
     planned_volume_kg: float | None = None
     planned_rpe: float | None = None
+
+
+class SwapDayRequest(BaseModel):
+    """Swap two plan days' dates (atomic).
+
+    Both days must belong to the same plan and be uncompleted. The service
+    exchanges ``day_date`` between them; nothing else moves, so linked
+    actuals stay with their own row.
+    """
+
+    target_day_id: uuid.UUID
 
 
 class UnplannedActivity(BaseModel):

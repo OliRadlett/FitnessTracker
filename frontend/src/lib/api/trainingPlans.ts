@@ -8,6 +8,9 @@ import type {
   RefreshTargetsResponse,
   WahooPushRequest,
   WahooPushResponse,
+  CreateTrainingPlanDayPayload,
+  SubstituteDayPayload,
+  UnplannedActualsResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -156,5 +159,84 @@ export async function previewWorkout(
   return authFetch<WorkoutPreviewResponse>(
     `/api/v1/training-plans/preview-workout?${params}`,
     { method: 'POST' }
+  );
+}
+
+// ── Editor primitives — targeted single-day operations ──────────────────────
+//
+// The non-destructive counterparts to the full-array `PATCH /{id}` (which
+// upserts by date and DELETES dates missing from the payload). The editor uses
+// these instead, so one day can change without rewriting the plan's day set.
+
+/** Add one day to a plan. Rejects (409) when the date already holds a day. */
+export async function addDay(
+  authFetch: AuthFetch,
+  planId: string,
+  payload: CreateTrainingPlanDayPayload
+): Promise<TrainingPlanDay> {
+  return authFetch<TrainingPlanDay>(`/api/v1/training-plans/${planId}/days`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Delete one day. Completed days are refused (400). */
+export async function deleteDay(
+  authFetch: AuthFetch,
+  planId: string,
+  dayId: string
+): Promise<void> {
+  return authFetch<void>(`/api/v1/training-plans/${planId}/days/${dayId}`, {
+    method: 'DELETE',
+  });
+}
+
+/** Atomically exchange two days' dates. Returns both days. */
+export async function swapDays(
+  authFetch: AuthFetch,
+  planId: string,
+  dayId: string,
+  targetDayId: string
+): Promise<TrainingPlanDay[]> {
+  return authFetch<TrainingPlanDay[]>(
+    `/api/v1/training-plans/${planId}/days/${dayId}/swap`,
+    { method: 'POST', body: JSON.stringify({ target_day_id: targetDayId }) }
+  );
+}
+
+/** Move an uncompleted day to another date (409 when the target is occupied). */
+export async function rescheduleDay(
+  authFetch: AuthFetch,
+  planId: string,
+  dayId: string,
+  targetDate: string
+): Promise<TrainingPlanDay> {
+  return authFetch<TrainingPlanDay>(
+    `/api/v1/training-plans/${planId}/days/${dayId}/reschedule`,
+    { method: 'POST', body: JSON.stringify({ target_date: targetDate }) }
+  );
+}
+
+/** Convert a missed day into an alternate session on the same date. */
+export async function substituteDay(
+  authFetch: AuthFetch,
+  planId: string,
+  dayId: string,
+  payload: SubstituteDayPayload
+): Promise<TrainingPlanDay> {
+  return authFetch<TrainingPlanDay>(
+    `/api/v1/training-plans/${planId}/days/${dayId}/substitute`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+}
+
+/** Activities + lifting sessions in the last N days linked to no plan day. */
+export async function getUnplannedActuals(
+  authFetch: AuthFetch,
+  planId: string,
+  days = 14
+): Promise<UnplannedActualsResponse> {
+  return authFetch<UnplannedActualsResponse>(
+    `/api/v1/training-plans/${planId}/unplanned?days=${days}`
   );
 }
