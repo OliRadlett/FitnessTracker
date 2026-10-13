@@ -20,10 +20,8 @@ import {
 import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   TrainingPlan,
-  TrainingPlanDay,
   Event,
   CreateEventPayload,
-  CreateTrainingPlanDayPayload,
   GeneratePlanPayload,
   CreateTrainingPlanPayload,
   UpdateTrainingPlanPayload,
@@ -38,7 +36,7 @@ import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Chart } from '@/components/charts/Chart';
-import { PlanBuilder } from '@/components/training/PlanBuilder';
+import { CreatePlanPanel } from '@/components/training/plan/CreatePlanPanel';
 import { WeeklyView } from '@/components/training/WeeklyView';
 import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
@@ -71,36 +69,6 @@ const BLOCK_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }
   custom: Settings,
   strength: Dumbbell,
 };
-
-/**
- * Map a local day to the PATCH payload. IMPORTANT: only include fields the
- * builder manages — the backend upserts by day_date and DELETES dates missing
- * from the array (so we always send ALL days), while untouched columns
- * (activity_id, lifting_session_id, planned_route_id) are preserved because
- * they are omitted here.
- */
-function toDayPayload(d: TrainingPlanDay): CreateTrainingPlanDayPayload {
-  return {
-    day_date: d.day_date,
-    sport: d.sport,
-    planned_type: d.planned_type,
-    planned_tss: d.planned_tss,
-    planned_duration_min: d.planned_duration_min,
-    workout_description: d.workout_description,
-    planned_focus: d.planned_focus ?? null,
-    planned_exercises: d.planned_exercises ?? null,
-    planned_volume_kg: d.planned_volume_kg,
-    planned_rpe: d.planned_rpe,
-    planned_power_watts: d.planned_power_watts,
-    planned_zone: d.planned_zone,
-    warmup_template_id: d.warmup_template_id ?? null,
-    notes: d.notes,
-    completed: d.completed,
-    // Include link fields so drag-to-reassign preserves them on moved days.
-    ...(d.lifting_session_id ? { lifting_session_id: d.lifting_session_id } : {}),
-    ...(d.planned_route_id ? { planned_route_id: d.planned_route_id } : {}),
-  };
-}
 
 export default function TrainingPage() {
   usePageTitle('Training');
@@ -173,19 +141,6 @@ export default function TrainingPage() {
       setMode('plan');
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to create plan'),
-  });
-
-  const saveDaysMutation = useMutation({
-    mutationFn: ({ planId, days }: { planId: string; days: TrainingPlanDay[] }) =>
-      authFetch<TrainingPlan>(`/api/v1/training-plans/${planId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ days: days.map(toDayPayload) }),
-      }),
-    onSuccess: (_, { planId }) => {
-      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
-    },
-    onError: (err: Error) => setActionError(err.message || 'Failed to save days'),
   });
 
   const updatePlanMutation = useMutation({
@@ -262,24 +217,6 @@ export default function TrainingPage() {
     setMode('plan');
   };
 
-  const planEditorProps = {
-    events,
-    onCreatePlan: (payload: CreateTrainingPlanPayload) => createPlanMutation.mutate(payload),
-    onGeneratePlan: (payload: GeneratePlanPayload) => generateMutation.mutate(payload),
-    onUpdatePlan: (planId: string, payload: UpdateTrainingPlanPayload) =>
-      updatePlanMutation.mutate({ planId, payload }),
-    onSaveDays: (planId: string, days: TrainingPlanDay[]) =>
-      saveDaysMutation.mutate({ planId, days }),
-    onDeletePlan: (planId: string) => deletePlanMutation.mutate(planId),
-    onRefreshPlan: (planId: string) => {
-      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
-      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-    },
-    isSaving: saveDaysMutation.isPending,
-    isCreating: createPlanMutation.isPending,
-    isGenerating: generateMutation.isPending,
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -343,11 +280,12 @@ export default function TrainingPage() {
               highlightDate={highlightDate}
             />
           ) : (
-            <PlanBuilder
-              key="empty"
-              plan={undefined}
-              {...planEditorProps}
-              onRefreshPlan={() => refetchPlans()}
+            <CreatePlanPanel
+              events={events ?? []}
+              onCreatePlan={(payload) => createPlanMutation.mutate(payload)}
+              onGeneratePlan={(payload) => generateMutation.mutate(payload)}
+              isCreating={createPlanMutation.isPending}
+              isGenerating={generateMutation.isPending}
             />
           )}
 
@@ -540,12 +478,13 @@ export default function TrainingPage() {
       {/* ── Plans surface — create / switch / archive / delete ────────── */}
       {mode === 'plans' && (
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Create a plan</CardTitle>
-            </CardHeader>
-            <PlanBuilder key="plans-create" plan={undefined} {...planEditorProps} />
-          </Card>
+          <CreatePlanPanel
+            events={events ?? []}
+            onCreatePlan={(payload) => createPlanMutation.mutate(payload)}
+            onGeneratePlan={(payload) => generateMutation.mutate(payload)}
+            isCreating={createPlanMutation.isPending}
+            isGenerating={generateMutation.isPending}
+          />
 
           <Card>
             <CardHeader>
