@@ -82,6 +82,7 @@ test.describe('Training Page — deep links & Plans surface', () => {
     );
     await page.goto('/fittrack/training');
     await page.waitForLoadState('networkidle');
-    await expect(page.getByText(/create a plan/i).first()).toBeVisible();
+    await expect(page.getByText(/no plan selected/i).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /go to plans/i })).toBeVisible();
   });
 });

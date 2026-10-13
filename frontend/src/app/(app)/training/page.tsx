@@ -280,13 +280,18 @@ export default function TrainingPage() {
               highlightDate={highlightDate}
             />
           ) : (
-            <CreatePlanPanel
-              events={events ?? []}
-              onCreatePlan={(payload) => createPlanMutation.mutate(payload)}
-              onGeneratePlan={(payload) => generateMutation.mutate(payload)}
-              isCreating={createPlanMutation.isPending}
-              isGenerating={generateMutation.isPending}
-            />
+            <div className="bg-surface rounded-xl border border-surface-light/50 p-8 text-center">
+              <h3 className="text-lg font-semibold text-foreground mb-2">No plan selected</h3>
+              <p className="text-muted mb-6">
+                Create a plan — from scratch or a template — on the Plans surface.
+              </p>
+              <button
+                onClick={() => setMode('plans')}
+                className="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors"
+              >
+                Go to Plans
+              </button>
+            </div>
           )}
 
           {/* RM1: the standalone Workout Planner (absorbed into the day editor
