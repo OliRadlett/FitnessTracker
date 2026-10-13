@@ -386,6 +386,7 @@ Mode routing + `?plan=`/`?day=`/`?mode=` round-trip · query-key freeze · `useI
 5. **Inline event form is lossy** (`page.tsx:116-121,443`): can't send `target_tss`/`notes`. `EventForm` fixes it (Phase 3).
 6. **`DayEditor` preview-target effect** (`PlanBuilder.tsx:1150-1159`) patches the parent from an effect keyed on `previewTargets` with `onPatch` omitted from deps — re-express as an explicit "apply targets" action.
 7. **`WeeklyView` white-screens on a malformed conformity payload** — `sportChips` reads `conformity.weeks.length` and `ConformitySummaryCard` reads `patterns.length`, both unguarded. The new `/training` E2E guard surfaced this: with an unmocked `/{id}/conformity` (the fixture's general handler returned a *plan object*) the page hit its error boundary with `Cannot read properties of undefined (reading 'length')`. The real API always returns the right shape and Phase 1 deletes this code, so it is **noted, not fixed** — but a one-character optional chain would prevent a whole-page failure.
+8. **The `?day=` deep link could fail to expand the day** — `WeeklyView` latched `highlightDone.current` *before* checking whether the week payload contained the day, so if the effect first ran before the week query resolved it marked itself done and never retried: the day card appeared but never expanded (goal-card deep links landing "on the week" instead of "on the day"). **Fixed** by latching only after the day is found. Caught by the E2E guard's editor assertion — a weaker "the cell exists" check passed straight through it.
 
 ---
 

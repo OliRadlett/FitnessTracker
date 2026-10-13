@@ -317,9 +317,11 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       setCurrentWeek(targetWeek);
       return;
     }
-    highlightDone.current = highlightDate;
+    // Only latch once the day is actually present — otherwise the effect marks
+    // itself done before the week payload resolves and never expands the day.
     const day = weekData?.days.find((d) => d.day_date.slice(0, 10) === highlightDate);
     if (!day) return;
+    highlightDone.current = highlightDate;
     setExpandedDayId(day.id);
     requestAnimationFrame(() => {
       document.getElementById(`plan-day-${highlightDate}`)?.scrollIntoView({ block: 'center' });
