@@ -39,6 +39,7 @@ import { useAuthFetch } from '@/lib/api/fetch';
 import { ExerciseAutocomplete } from '@/components/ui/ExerciseAutocomplete';
 import { getActiveLocale } from '@/lib/utils';
 import { getTotalWeeks } from '@/lib/training/week';
+import { computedVolumeKg } from '@/lib/training/planDayHelpers';
 import { RoutePickerModal } from './RoutePickerModal';
 import { Dumbbell, Bike, Bed, Flag, Calendar, Zap, MapPin, Check, X, ClipboardList, Pencil, Trash2, Save } from 'lucide-react';
 
@@ -113,16 +114,6 @@ function getDayOfWeek(dateStr: string): string {
   return new Date(dateStr + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
     weekday: 'short',
   });
-}
-
-/** Σ weight × reps × sets across exercises with a target weight. */
-export function computedVolumeKg(exercises?: PlannedExercise[] | null): number | null {
-  if (!exercises || exercises.length === 0) return null;
-  const total = exercises.reduce(
-    (sum, ex) => sum + (ex.weight_kg ?? 0) * (ex.reps || 0) * (ex.sets || 0),
-    0,
-  );
-  return total > 0 ? Math.round(total) : null;
 }
 
 /** Blank day used when the user edits a date that has no persisted record yet. */

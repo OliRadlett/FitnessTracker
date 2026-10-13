@@ -37,6 +37,7 @@ import {
   getTotalWeeks,
   getCurrentWeek,
 } from '@/lib/training/week';
+import { planningFields, REST_FIELDS } from '@/lib/training/planDayHelpers';
 import { goalProgressPct } from '@/components/ui/GoalCard';
 import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLinks';
 import { WeekMasterBar } from './WeekMasterBar';
@@ -86,41 +87,6 @@ function fmtDayLabel(dateStr: string): string {
     month: 'short',
   });
 }
-
-/** Extract the PATCH-able planning fields from a day (used for day→day moves). */
-function planningFields(day: TrainingWeekDay): UpdateTrainingPlanDayPayload {
-  return {
-    sport: day.sport,
-    planned_type: day.planned_type,
-    planned_tss: day.planned_tss,
-    planned_duration_min: day.planned_duration_min,
-    workout_description: day.workout_description,
-    planned_focus: day.planned_focus ?? null,
-    planned_exercises: day.planned_exercises ?? null,
-    planned_rpe: day.planned_rpe ?? null,
-    planned_power_watts: day.planned_power_watts,
-    planned_zone: day.planned_zone ?? null,
-    planned_route_id: day.planned_route_id ?? null,
-    warmup_template_id: day.warmup_template_id ?? null,
-    notes: day.notes ?? null,
-  };
-}
-
-/** A rest day's planning fields — clears any planned workout. */
-const REST_FIELDS: UpdateTrainingPlanDayPayload = {
-  sport: 'rest',
-  planned_type: 'rest',
-  planned_tss: null,
-  planned_duration_min: null,
-  workout_description: null,
-  planned_focus: null,
-  planned_exercises: null,
-  planned_rpe: null,
-  planned_power_watts: null,
-  planned_zone: null,
-  planned_route_id: null,
-  warmup_template_id: null,
-};
 
 // ─── Component ────────────────────────────────────────────────────────────
 
