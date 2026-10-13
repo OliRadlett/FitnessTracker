@@ -809,6 +809,80 @@ export const mockTrainingPlan = {
   }),
 };
 
+// One Monday-based week of the plan — GET /training-plans/{id}/week/{n}.
+// Drives the weekly master bar + the `?day=` deep-link landing.
+export const mockTrainingWeek = {
+  plan_id: 'plan-1',
+  week_number: 1,
+  week_start: '2026-08-03',
+  week_end: '2026-08-09',
+  readiness: { tsb: 5.2, ctl: 48.4, atl: 43.1, recommended_max_zone: 'z3' },
+  days: (
+    [
+      ['2026-08-03', 'cycle', 'easy', 'pending'],
+      ['2026-08-04', 'strength', 'moderate', 'completed'],
+      ['2026-08-05', 'cycle', 'hard', 'pending'],
+      ['2026-08-06', 'strength', 'moderate', 'pending'],
+      ['2026-08-07', 'rest', 'rest', 'rest'],
+      ['2026-08-08', 'cycle', 'moderate', 'pending'],
+      ['2026-08-09', 'cycle', 'easy', 'pending'],
+    ] as const
+  ).map(([day_date, sport, planned_type, day_status], i) => ({
+    id: `plan-1-w1-${i}`,
+    plan_id: 'plan-1',
+    day_date,
+    sport,
+    planned_type,
+    completed: day_status === 'completed',
+    day_status,
+    planned_tss: planned_type === 'rest' ? 0 : 60,
+    planned_duration_min: planned_type === 'rest' ? 0 : 60,
+    targets_stale: false,
+  })),
+};
+
+// Conformity — the weekly summary strip + the per-day panel. Without these the
+// general training-plans handler returns a plan object for /{id}/conformity and
+// WeeklyView crashes on `conformity.weeks.length`.
+export const mockPlanConformity = {
+  plan_id: 'plan-1',
+  overall_pct: 72,
+  trend: 'stable' as const,
+  weeks: [
+    {
+      week_number: 1,
+      week_start: '2026-08-03',
+      week_end: '2026-08-09',
+      days_scored: 3,
+      days_total: 7,
+      pct: 72,
+      by_sport: { cycle: 70, strength: 75 },
+    },
+  ],
+  patterns: [],
+};
+
+export const mockDayConformity = {
+  plan_id: 'plan-1',
+  day_id: 'plan-1-w1-0',
+  day_date: '2026-08-03',
+  sport: 'cycle',
+  planned_type: 'easy',
+  conformity_pct: 80,
+  classification: 'Good',
+  components: [],
+  status: 'done' as const,
+  deviations: [],
+};
+
+// TSB projection — WeeklyView renders a strip when present.
+export const mockTsbProjection = {
+  plan_id: 'plan-1',
+  event_date: null,
+  race_day_tsb: 5.2,
+  freshness_assessment: 'Neutral',
+};
+
 // ─── Calendar ────────────────────────────────────────────────────────────────
 
 export const mockCalendarData = {
