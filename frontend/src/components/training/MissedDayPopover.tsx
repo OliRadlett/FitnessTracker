@@ -1,17 +1,18 @@
 'use client';
 
 /**
- * MissedDayPopover — V3 quick actions for a missed plan day.
+ * MissedDayPopover — quick actions for a missed plan day.
  *
  * Opens as a bottom sheet on mobile / centred dialog on desktop (the shared
- * Modal handles both). Offers three actions:
- *   - Move to the next day (swaps the two days' planned content)
+ * Modal handles both). Offers four actions:
+ *   - Move to another date (a real reschedule; 409 when the slot is taken)
+ *   - Substitute a lighter session on the same date
  *   - Mark the day as rest
  *   - Dismiss (leave it as-is)
  */
 
 import React from 'react';
-import { CalendarClock, ArrowRight, Bed, X } from 'lucide-react';
+import { CalendarClock, ArrowRight, ArrowDownRight, Bed, X } from 'lucide-react';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 
 export interface MissedDayPopoverProps {
@@ -22,6 +23,7 @@ export interface MissedDayPopoverProps {
   /** Human label of the next day, used in the reschedule action. */
   nextDayLabel: string | null;
   onReschedule: () => void;
+  onSubstitute: () => void;
   onMarkRest: () => void;
   busy: boolean;
 }
@@ -32,6 +34,7 @@ export function MissedDayPopover({
   dayLabel,
   nextDayLabel,
   onReschedule,
+  onSubstitute,
   onMarkRest,
   busy,
 }: MissedDayPopoverProps) {
@@ -46,8 +49,8 @@ export function MissedDayPopover({
       />
 
       <p className="text-sm text-muted mb-4">
-        This planned day has passed without a logged session. Move the workout
-        forward, set it as rest, or leave it as-is.
+        This planned day has passed without a logged session. Move it, swap in a
+        lighter session, set it as rest, or leave it as-is.
       </p>
 
       <div className="space-y-2">
@@ -62,6 +65,15 @@ export function MissedDayPopover({
             Move to next day
             {nextDayLabel && <span className="text-muted"> · {nextDayLabel}</span>}
           </span>
+        </button>
+
+        <button
+          onClick={onSubstitute}
+          disabled={busy}
+          className="w-full flex items-center gap-2 px-3 py-2.5 min-h-[44px] rounded-lg bg-surface-light/40 border border-surface-light/50 text-sm text-foreground hover:bg-surface-light/60 disabled:opacity-40 transition-colors"
+        >
+          <ArrowDownRight className="w-4 h-4 text-muted shrink-0" />
+          <span className="flex-1 text-left">Substitute a lighter session</span>
         </button>
 
         <button

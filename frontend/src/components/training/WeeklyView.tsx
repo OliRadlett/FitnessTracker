@@ -19,7 +19,7 @@ import { AlertTriangle, Check, Flag, X } from 'lucide-react';
 import type {
   TrainingPlan,
   TrainingWeekDay,
-  UpdateTrainingPlanDayPayload,
+  PlanDayType,
   RefreshTargetsResponse,
   Event,
 } from '@/lib/api';
@@ -35,7 +35,8 @@ import {
   getTotalWeeks,
   getCurrentWeek,
 } from '@/lib/training/week';
-import { planningFields, REST_FIELDS } from '@/lib/training/planDayHelpers';
+import { usePlanDayOps } from '@/lib/training/usePlanDayOps';
+import { useToast } from '@/components/ui/Toast';
 import { WeekMasterBar } from './WeekMasterBar';
 import { ConformitySummaryCard } from './ConformitySummaryCard';
 import { PlanGoalsStrip } from './PlanGoalsStrip';
@@ -81,6 +82,20 @@ function fmtDayLabel(dateStr: string): string {
     day: 'numeric',
     month: 'short',
   });
+}
+
+/** One step easier — the default substitute for a missed session. */
+function downgradeType(t: PlanDayType): PlanDayType {
+  switch (t) {
+    case 'race':
+      return 'hard';
+    case 'hard':
+      return 'moderate';
+    case 'moderate':
+      return 'easy';
+    default:
+      return 'easy';
+  }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────
@@ -235,38 +250,40 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     },
   });
 
-  const quickEdit = useMutation({
-    mutationFn: ({
-      dayId,
-      payload,
-    }: {
-      dayId: string;
-      payload: UpdateTrainingPlanDayPayload;
-    }) => updatePlanDay(authFetch, plan.id, dayId, payload),
-    onSuccess: invalidateWeeks,
-    onError: (err: Error) => {
-      console.error('[WeeklyView] Quick edit failed:', err);
-    },
-  });
+  const { error: toastError } = useToast();
+  const ops = usePlanDayOps(plan.id);
+  const opBusy = ops.moveDay.isPending || ops.substituteDay.isPending;
 
-  // V3 missed-day quick actions. A true date-move is not PATCH-able, so
-  // "move to next day" swaps the two days' planned content.
+  // Missed-day quick actions — real operations. The PATCH API cannot change a
+  // day's date, so "move" uses the dedicated /reschedule endpoint (409 when the
+  // target slot is taken); "substitute"/"mark rest" use /substitute.
   const handleMissedReschedule = () => {
+    if (!missedDay || !missedNextDay) return;
+    ops.moveDay.mutate(
+      { dayId: missedDay.id, targetDate: missedNextDay.day_date.slice(0, 10) },
+      { onError: (err: Error) => toastError(err.message || 'Could not move that day') },
+    );
+    setMissedDayId(null);
+  };
+
+  const handleMissedSubstitute = () => {
     if (!missedDay) return;
-    if (missedNextDay) {
-      const srcFields = planningFields(missedDay);
-      const nextFields = planningFields(missedNextDay);
-      quickEdit.mutate({ dayId: missedNextDay.id, payload: srcFields });
-      quickEdit.mutate({ dayId: missedDay.id, payload: nextFields });
-    } else {
-      quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
-    }
+    ops.substituteDay.mutate(
+      {
+        dayId: missedDay.id,
+        payload: { sport: missedDay.sport, planned_type: downgradeType(missedDay.planned_type) },
+      },
+      { onError: (err: Error) => toastError(err.message || 'Could not substitute that day') },
+    );
     setMissedDayId(null);
   };
 
   const handleMissedMarkRest = () => {
     if (!missedDay) return;
-    quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
+    ops.substituteDay.mutate(
+      { dayId: missedDay.id, payload: { sport: 'rest', planned_type: 'rest' } },
+      { onError: (err: Error) => toastError(err.message || 'Could not mark that day as rest') },
+    );
     setMissedDayId(null);
   };
 
@@ -570,7 +587,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             toggleCompleted.isPending ||
             assignRoute.isPending ||
             unassignRoute.isPending ||
-            quickEdit.isPending
+            opBusy
           }
         />
       )}
@@ -637,8 +654,9 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         dayLabel={missedDay ? fmtDayLabel(missedDay.day_date.slice(0, 10)) : ''}
         nextDayLabel={missedNextDay ? fmtDayLabel(missedNextDay.day_date.slice(0, 10)) : null}
         onReschedule={handleMissedReschedule}
+        onSubstitute={handleMissedSubstitute}
         onMarkRest={handleMissedMarkRest}
-        busy={quickEdit.isPending}
+        busy={opBusy}
       />
 
       {/* Events context (read-only hint when this week contains an event) */}

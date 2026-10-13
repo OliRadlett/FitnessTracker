@@ -380,7 +380,7 @@ Mode routing + `?plan=`/`?day=`/`?mode=` round-trip · query-key freeze · `useI
 ## 12. Observations found while planning (not yet fixed)
 
 1. **`StrengthSuggestionsCard.handleApplyAll` is destructive** (`StrengthSuggestionsCard.tsx:44-70`): it PATCHes `planned_exercises: [singleExercise]` once per exercise, so each call **overwrites the day's whole list** — last exercise wins. Merging into the existing list is the fix (Phase 2).
-2. **V3 "Move to next day" doesn't move** (`WeeklyView.tsx:291-310`): swaps planned content between two dates because "PATCH can't change day_date" — but `/reschedule` exists. Phase 1 fixes it.
+2. **V3 "Move to next day" doesn't move** (`WeeklyView.tsx`): swapped planned content between two dates because "PATCH can't change day_date" — but `/reschedule` exists. **Fixed** (Phase 1): the missed-day popover now calls the real `/reschedule` (409 surfaced as a toast) and gains a **Substitute** action backed by `/substitute`.
 3. **`CODEMAP.md:20` is wrong**: the array PATCH is **destructive by omission**, not "non-destructive upsert" (confirmed `training_plan.py:789-829`). Fix in Phase 0.
 4. **Residual emoji** in `WeatherForecast.tsx` (`🌦️`/`💨`/`💧`) — fixed when the strip folds into Plan mode.
 5. **Inline event form is lossy** (`page.tsx:116-121,443`): can't send `target_tss`/`notes`. `EventForm` fixes it (Phase 3).
