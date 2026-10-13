@@ -33,9 +33,9 @@ test.describe('Training Page — shell', () => {
     }
   });
 
-  test('Plan mode shows the plan builder', async ({ authenticatedPage: page }) => {
-    // The temporary Build | Week toggle until Phase 1 unifies the editor.
-    await expect(page.getByRole('button', { name: 'Plan Builder' })).toBeVisible();
+  test('Plan mode shows the week view', async ({ authenticatedPage: page }) => {
+    // The unified week view (one editor) with its Week | All weeks toggle.
+    await expect(page.getByRole('button', { name: 'All weeks' })).toBeVisible();
   });
 
   test('Review mode shows the periodization chart', async ({ authenticatedPage: page }) => {

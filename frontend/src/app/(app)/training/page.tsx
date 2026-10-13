@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import {
@@ -121,13 +121,6 @@ export default function TrainingPage() {
     planLoading,
     highlightDate,
   } = useTrainingShell();
-
-  // Plan mode holds the temporary Build | Week toggle until Phase 1 unifies the
-  // editor. A `?day=` deep link lands in the week view.
-  const [planView, setPlanView] = useState<'builder' | 'week'>('builder');
-  useEffect(() => {
-    if (highlightDate) setPlanView('week');
-  }, [highlightDate]);
 
   const [showEventForm, setShowEventForm] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -343,36 +336,12 @@ export default function TrainingPage() {
               <SkeletonRow className="h-40" />
             </div>
           ) : selectedPlan ? (
-            <>
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30 w-fit">
-                {(
-                  [
-                    { key: 'builder', label: 'Plan Builder' },
-                    { key: 'week', label: 'This Week' },
-                  ] as const
-                ).map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setPlanView(key)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                      planView === key ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {planView === 'week' ? (
-                <WeeklyView
-                  key={selectedPlanId}
-                  plan={selectedPlan}
-                  events={events}
-                  highlightDate={highlightDate}
-                />
-              ) : (
-                <PlanBuilder key={selectedPlanId} plan={selectedPlan} {...planEditorProps} />
-              )}
-            </>
+            <WeeklyView
+              key={selectedPlanId}
+              plan={selectedPlan}
+              events={events}
+              highlightDate={highlightDate}
+            />
           ) : (
             <PlanBuilder
               key="empty"

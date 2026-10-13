@@ -132,6 +132,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       : getCurrentWeek(plan.start_date, plan.end_date),
   );
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
+  const [view, setView] = useState<'week' | 'all'>('week');
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [showWahooPush, setShowWahooPush] = useState(false);
   const [missedDayId, setMissedDayId] = useState<string | null>(null);
@@ -300,6 +301,25 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     return map;
   }, [weekData]);
 
+  // All-weeks overview: per-week planned load + sport mix, from the plan's days.
+  const weekSummaries = useMemo(
+    () =>
+      Array.from({ length: totalWeeks }, (_, wi) => {
+        const dates = Array.from({ length: 7 }, (_, i) =>
+          addDays(getWeek1Start(plan.start_date), wi * 7 + i),
+        );
+        const days = dates.map((d) => plan.days.find((pd) => pd.day_date.slice(0, 10) === d));
+        return {
+          weekIndex: wi,
+          totalTss: Math.round(days.reduce((s, d) => s + (d?.planned_tss || 0), 0)),
+          rides: days.filter((d) => d?.sport === 'cycle').length,
+          strength: days.filter((d) => d?.sport === 'strength').length,
+          rest: days.filter((d) => !d || d.sport === 'rest').length,
+        };
+      }),
+    [totalWeeks, plan.start_date, plan.days],
+  );
+
   const readiness = weekData?.readiness ?? null;
 
   // Expanded day lookup — the day object for the currently expanded card, used
@@ -376,7 +396,21 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             {weekStart} → {addDays(weekStart, 6)}
           </span>
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-surface-light/30">
+            {(['week', 'all'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                aria-pressed={view === v}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  view === v ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                {v === 'week' ? 'Week' : 'All weeks'}
+              </button>
+            ))}
+          </div>
           {/* FL1 — week-level target refresh, emphasised while days are stale */}
           <button
             onClick={() => refreshTargetsMutation.mutate()}
@@ -571,8 +605,34 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         </div>
       )}
 
+      {/* All-weeks overview — per-week planned load + sport mix. */}
+      {view === 'all' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {weekSummaries.map((ws) => (
+            <button
+              key={ws.weekIndex}
+              onClick={() => {
+                setCurrentWeek(ws.weekIndex + 1);
+                setView('week');
+              }}
+              className="bg-surface rounded-lg border border-surface-light/50 p-3 text-left hover:border-accent/40 transition-colors"
+            >
+              <p className="text-xs text-muted mb-1 font-semibold uppercase tracking-wider">
+                Week {ws.weekIndex + 1}
+              </p>
+              <p className="text-lg font-bold text-foreground">
+                {ws.totalTss} <span className="text-xs font-normal text-muted">TSS</span>
+              </p>
+              <p className="text-xs text-muted mt-1">
+                {ws.rides} ride{ws.rides === 1 ? '' : 's'} · {ws.strength} strength · {ws.rest} rest
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 7 day cards — responsive master bar (scroll on mobile, grid on xl) */}
-      {!weekQuery.isLoading && (
+      {view === 'week' && !weekQuery.isLoading && (
         <WeekMasterBar
           weekDates={weekDates}
           daysByDate={daysByDate}
@@ -593,7 +653,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       )}
 
       {/* Full-width expanded day detail panel — renders UNDERNEATH the 7-column grid */}
-      {expandedDay && (
+      {view === 'week' && expandedDay && (
         <div className="rounded-xl border border-accent/40 bg-surface-light/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-foreground">
