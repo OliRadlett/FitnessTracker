@@ -614,6 +614,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             goals={activeGoals}
             onOpenRoutePicker={() => setShowRoutePicker(true)}
             onOpenWahooPush={() => setShowWahooPush(true)}
+            onDeleted={() => setExpandedDayId(null)}
           />
         </div>
       )}

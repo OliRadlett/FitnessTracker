@@ -16,7 +16,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { MapPin, Target, Upload, ClipboardList } from 'lucide-react';
+import { Calendar, Copy, MapPin, Target, Upload, ClipboardList, Trash2 } from 'lucide-react';
 
 import type {
   Goal,
@@ -35,6 +35,9 @@ import {
 } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
 import { useInstantDayEdit } from '@/lib/training/useInstantDayEdit';
+import { usePlanDayOps } from '@/lib/training/usePlanDayOps';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
 import { computedVolumeKg } from '@/lib/training/planDayHelpers';
 import { goalProgressPct } from '@/components/ui/GoalCard';
 import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLinks';
@@ -56,6 +59,8 @@ export interface DayEditorProps {
   goals: Goal[];
   onOpenRoutePicker: () => void;
   onOpenWahooPush: () => void;
+  /** Called after the day is deleted (so the host can close the editor). */
+  onDeleted?: () => void;
 }
 
 export function DayEditor({
@@ -65,9 +70,12 @@ export function DayEditor({
   goals,
   onOpenRoutePicker,
   onOpenWahooPush,
+  onDeleted,
 }: DayEditorProps) {
   const { authFetch, token } = useAuthFetch();
   const edit = useInstantDayEdit(planId, week);
+  const ops = usePlanDayOps(planId);
+  const { error: toastError } = useToast();
   const autoMap = useAutoregulationMap();
 
   const isRest = day.sport === 'rest';
@@ -117,6 +125,11 @@ export function DayEditor({
   const [selectedSessionId, setSelectedSessionId] = useState('');
   const [suggestIdx, setSuggestIdx] = useState<number | null>(null);
   const [suggestMsg, setSuggestMsg] = useState<string | null>(null);
+  const [showMove, setShowMove] = useState(false);
+  const [moveDate, setMoveDate] = useState('');
+  const [showDuplicate, setShowDuplicate] = useState(false);
+  const [dupDate, setDupDate] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const dayGoals = useMemo(() => goalsForPlanDay(goals, day), [goals, day]);
 
@@ -621,6 +634,120 @@ export function DayEditor({
 
       {/* Phase 5C — plan-vs-actual conformity scoring for this day. */}
       <DayConformityPanel planId={planId} day={day} />
+
+      {/* Day operations — move / duplicate / delete (atomic; confirm-gated). */}
+      <div className="pt-2 border-t border-surface-light/50 space-y-2">
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => {
+              setShowMove((v) => !v);
+              setShowDuplicate(false);
+            }}
+            className="text-[11px] text-accent hover:text-accent/80 inline-flex items-center gap-1"
+          >
+            <Calendar className="w-3 h-3" /> Move to date
+          </button>
+          <button
+            onClick={() => {
+              setShowDuplicate((v) => !v);
+              setShowMove(false);
+            }}
+            className="text-[11px] text-accent hover:text-accent/80 inline-flex items-center gap-1"
+          >
+            <Copy className="w-3 h-3" /> Duplicate to date
+          </button>
+          <button
+            onClick={() => setConfirmDelete(true)}
+            disabled={day.completed}
+            title={day.completed ? 'Completed days cannot be deleted' : undefined}
+            className="text-[11px] text-warning hover:text-warning/80 inline-flex items-center gap-1 ml-auto disabled:opacity-40"
+          >
+            <Trash2 className="w-3 h-3" /> Delete
+          </button>
+        </div>
+
+        {showMove && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={moveDate}
+              onChange={(e) => setMoveDate(e.target.value)}
+              aria-label="Move to date"
+              className={`${inputCls} flex-1`}
+            />
+            <button
+              onClick={() =>
+                ops.moveDay.mutate(
+                  { dayId: day.id, targetDate: moveDate },
+                  {
+                    onSuccess: () => onDeleted?.(),
+                    onError: (err: Error) => toastError(err.message || 'Could not move that day'),
+                  },
+                )
+              }
+              disabled={!moveDate || ops.moveDay.isPending}
+              className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/80 disabled:opacity-50"
+            >
+              {ops.moveDay.isPending ? 'Moving…' : 'Move'}
+            </button>
+          </div>
+        )}
+
+        {showDuplicate && (
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dupDate}
+              onChange={(e) => setDupDate(e.target.value)}
+              aria-label="Duplicate to date"
+              className={`${inputCls} flex-1`}
+            />
+            <button
+              onClick={() =>
+                ops.duplicateDay.mutate(
+                  { dayId: day.id, targetDate: dupDate },
+                  {
+                    onSuccess: () => {
+                      setShowDuplicate(false);
+                      setDupDate('');
+                    },
+                    onError: (err: Error) =>
+                      toastError(err.message || 'Could not duplicate that day'),
+                  },
+                )
+              }
+              disabled={!dupDate || ops.duplicateDay.isPending}
+              className="px-3 py-1.5 bg-accent text-white rounded-lg text-xs font-medium hover:bg-accent/80 disabled:opacity-50"
+            >
+              {ops.duplicateDay.isPending ? 'Duplicating…' : 'Duplicate'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this session?"
+        description={`Delete the planned session on ${day.day_date.slice(0, 10)}? This cannot be undone.`}
+        confirmLabel="Delete"
+        danger
+        pending={ops.deleteDay.isPending}
+        onConfirm={() =>
+          ops.deleteDay.mutate(day.id, {
+            onSuccess: () => {
+              setConfirmDelete(false);
+              onDeleted?.();
+            },
+            onError: (err: Error) => {
+              setConfirmDelete(false);
+              toastError(err.message || 'Could not delete that day');
+            },
+          })
+        }
+        onCancel={() => {
+          if (!ops.deleteDay.isPending) setConfirmDelete(false);
+        }}
+      />
     </div>
   );
 }
