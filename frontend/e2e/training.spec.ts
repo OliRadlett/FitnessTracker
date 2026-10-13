@@ -69,6 +69,8 @@ test.describe('Training Page — deep links & Plans surface', () => {
     await page.goto('/fittrack/training?plan=plan-1&day=2026-08-05');
     await page.waitForLoadState('networkidle');
     await expect(page.locator('#plan-day-2026-08-05')).toBeVisible();
+    // The deep link auto-expands the day → the unified DayEditor renders.
+    await expect(page.getByRole('button', { name: 'Save' }).first()).toBeVisible();
   });
 
   test('empty plans list shows the create-first-plan state', async ({
