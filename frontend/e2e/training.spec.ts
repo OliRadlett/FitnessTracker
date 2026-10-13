@@ -70,7 +70,7 @@ test.describe('Training Page — deep links & Plans surface', () => {
     await page.waitForLoadState('networkidle');
     await expect(page.locator('#plan-day-2026-08-05')).toBeVisible();
     // The deep link auto-expands the day → the unified DayEditor renders.
-    await expect(page.getByRole('button', { name: 'Save' }).first()).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: 'Completed', exact: true })).toBeVisible();
   });
 
   test('empty plans list shows the create-first-plan state', async ({

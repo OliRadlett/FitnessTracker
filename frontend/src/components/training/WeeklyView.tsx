@@ -612,8 +612,6 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             week={currentWeek}
             day={expandedDay}
             goals={activeGoals}
-            routeBusy={assignRoute.isPending || unassignRoute.isPending}
-            onUnassignRoute={() => unassignRoute.mutate(expandedDay.id)}
             onOpenRoutePicker={() => setShowRoutePicker(true)}
             onOpenWahooPush={() => setShowWahooPush(true)}
           />
