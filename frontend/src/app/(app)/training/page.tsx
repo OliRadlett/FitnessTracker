@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
+import { useAuthFetch, listGoals } from '@/lib/api';
 import {
   Flag,
   Bike,
@@ -21,6 +21,7 @@ import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   TrainingPlan,
   Event,
+  Goal,
   CreateEventPayload,
   GeneratePlanPayload,
   CreateTrainingPlanPayload,
@@ -39,6 +40,11 @@ import { Chart } from '@/components/charts/Chart';
 import { CreatePlanPanel } from '@/components/training/plan/CreatePlanPanel';
 import { WeeklyView } from '@/components/training/WeeklyView';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
+import { ConformityTrendCard } from '@/components/training/review/ConformityTrendCard';
+import { AdaptiveSuggestionsCard } from '@/components/training/AdaptiveSuggestionsCard';
+import { StrengthSuggestionsCard } from '@/components/training/StrengthSuggestionsCard';
+import { PlanGoalsStrip } from '@/components/training/PlanGoalsStrip';
+import { EventForm } from '@/components/training/peaks/EventForm';
 import { EventResultPanel } from '@/components/training/EventResultPanel';
 import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
 import { PlanSpine } from '@/components/training/PlanSpine';
@@ -93,12 +99,6 @@ export default function TrainingPage() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [exportingEventId, setExportingEventId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [eventForm, setEventForm] = useState<CreateEventPayload>({
-    name: '',
-    event_date: '',
-    event_type: 'race',
-    taper_days: 14,
-  });
 
   // ── Queries ─────────────────────────────────────────────────────────
   const { data: events } = useQuery<Event[]>({
@@ -110,6 +110,28 @@ export default function TrainingPage() {
   const { data: periodizationChart } = useQuery<ChartData>({
     queryKey: ['chart-periodization', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
+    enabled: !!token,
+  });
+
+  // ── Review mode (read-only evidence) ────────────────────────────────
+  const { data: volumeIntensityChart } = useQuery<ChartData>({
+    queryKey: ['chart-volume-intensity', 16],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/volume_intensity_periodization?weeks=16'),
+    enabled: !!token,
+  });
+  const { data: combinedLoadChart } = useQuery<ChartData>({
+    queryKey: ['chart-combined-load', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/combined_training_load?days=90'),
+    enabled: !!token,
+  });
+  const { data: weeklyVolumeChart } = useQuery<ChartData>({
+    queryKey: ['chart-weekly-volume', 16],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_volume?weeks=16'),
+    enabled: !!token,
+  });
+  const { data: activeGoals } = useQuery<Goal[]>({
+    queryKey: ['goals', 'active'],
+    queryFn: () => listGoals(authFetch, 'active'),
     enabled: !!token,
   });
 
@@ -174,7 +196,6 @@ export default function TrainingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       setShowEventForm(false);
-      setEventForm({ name: '', event_date: '', event_type: 'race', taper_days: 14 });
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to create event'),
   });
@@ -254,6 +275,7 @@ export default function TrainingPage() {
         plan={selectedPlan ?? null}
         plans={plans}
         plansLoading={plansLoading}
+        events={events ?? []}
         onSelectPlan={openPlan}
         onOpenPlans={() => setMode('plans')}
       />
@@ -295,27 +317,57 @@ export default function TrainingPage() {
         </div>
       )}
 
-      {/* ── Review mode — the evidence. Moves past action surfaces. ──── */}
+      {/* ── Review mode — the evidence. Read-only; action surfaces stay
+             in Plan/Peaks. ──────────────────────────────────────────── */}
       {mode === 'review' && (
         <div className="space-y-4">
-          {periodizationChart ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {selectedPlanId && <ConformityTrendCard planId={selectedPlanId} weeks={8} />}
+            {selectedPlanId && <AdaptiveSuggestionsCard planId={selectedPlanId} />}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {periodizationChart && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Periodization — Planned vs Actual</CardTitle>
+                </CardHeader>
+                <Chart data={periodizationChart} />
+              </Card>
+            )}
+            {volumeIntensityChart && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Volume × Intensity</CardTitle>
+                </CardHeader>
+                <Chart data={volumeIntensityChart} />
+              </Card>
+            )}
+          </div>
+
+          {combinedLoadChart && (
             <Card>
               <CardHeader>
-                <CardTitle>Periodization — Planned vs Actual</CardTitle>
+                <CardTitle>Combined training load (cycling + lifting)</CardTitle>
               </CardHeader>
-              <Chart data={periodizationChart} />
-            </Card>
-          ) : (
-            <Card>
-              <div className="space-y-2" aria-busy="true">
-                <SkeletonRow className="h-8" />
-                <SkeletonRow className="h-40" />
-              </div>
+              <Chart data={combinedLoadChart} />
             </Card>
           )}
-          <p className="text-xs text-muted">
-            Conformity trend, adaptive advice and load analytics land here in Phase 2.
-          </p>
+
+          {weeklyVolumeChart && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Weekly lifting volume</CardTitle>
+              </CardHeader>
+              <Chart data={weeklyVolumeChart} />
+            </Card>
+          )}
+
+          {selectedPlan?.plan_type === 'strength' && selectedPlanId && (
+            <StrengthSuggestionsCard planId={selectedPlanId} />
+          )}
+
+          <PlanGoalsStrip goals={activeGoals ?? []} />
         </div>
       )}
 
@@ -335,58 +387,12 @@ export default function TrainingPage() {
           </CardHeader>
 
           {showEventForm && (
-            <div className="mb-4 p-3 bg-surface-light/30 rounded-lg border border-surface-light/50 space-y-2">
-              <input
-                type="text"
-                placeholder="Event name"
-                value={eventForm.name}
-                onChange={(e) => setEventForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
+            <div className="mb-4">
+              <EventForm
+                onSubmit={(payload) => createEventMutation.mutate(payload)}
+                onCancel={() => setShowEventForm(false)}
+                pending={createEventMutation.isPending}
               />
-              <input
-                type="date"
-                value={eventForm.event_date}
-                onChange={(e) => setEventForm((f) => ({ ...f, event_date: e.target.value }))}
-                className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <select
-                  value={eventForm.event_type}
-                  onChange={(e) => setEventForm((f) => ({ ...f, event_type: e.target.value }))}
-                  className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
-                >
-                  <option value="race">Race</option>
-                  <option value="ride">Ride</option>
-                  <option value="lift">Lift</option>
-                  <option value="other">Other</option>
-                </select>
-                <input
-                  type="number"
-                  placeholder="Taper days"
-                  value={eventForm.taper_days}
-                  onChange={(e) =>
-                    setEventForm((f) => ({ ...f, taper_days: parseInt(e.target.value) || 14 }))
-                  }
-                  className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() =>
-                    eventForm.name && eventForm.event_date && createEventMutation.mutate(eventForm)
-                  }
-                  disabled={!eventForm.name || !eventForm.event_date}
-                  className="px-3 py-1.5 min-h-[44px] bg-accent text-white rounded text-xs font-medium hover:bg-accent/80 disabled:opacity-50"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setShowEventForm(false)}
-                  className="px-3 py-1.5 min-h-[44px] text-muted text-xs hover:text-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
             </div>
           )}
 

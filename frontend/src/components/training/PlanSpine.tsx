@@ -3,8 +3,9 @@
 import React, { useMemo } from 'react';
 import { Calendar, Plus } from 'lucide-react';
 
-import type { TrainingPlan, TrainingPlanSummary } from '@/lib/api';
+import type { Event, TrainingPlan, TrainingPlanSummary } from '@/lib/api';
 import { PlanSwitcher } from './PlanSwitcher';
+import { LoadStrip } from './LoadStrip';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-light/20 text-muted border-muted/30',
@@ -17,6 +18,7 @@ export interface PlanSpineProps {
   plan: TrainingPlan | null;
   plans: TrainingPlanSummary[];
   plansLoading?: boolean;
+  events: Event[];
   onSelectPlan: (planId: string) => void;
   /** Opens the Plans surface (`?mode=plans`) — switcher "Manage plans" + New. */
   onOpenPlans: () => void;
@@ -34,6 +36,7 @@ export function PlanSpine({
   plan,
   plans,
   plansLoading,
+  events,
   onSelectPlan,
   onOpenPlans,
 }: PlanSpineProps) {
@@ -107,6 +110,8 @@ export function PlanSpine({
           </p>
         </div>
       )}
+
+      {plan && <LoadStrip plan={plan} events={events} />}
     </div>
   );
 }
