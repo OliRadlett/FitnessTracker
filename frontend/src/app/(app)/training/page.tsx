@@ -99,6 +99,7 @@ export default function TrainingPage() {
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [exportingEventId, setExportingEventId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [linkPlanId, setLinkPlanId] = useState<Record<string, string>>({});
 
   // ── Queries ─────────────────────────────────────────────────────────
   const { data: events } = useQuery<Event[]>({
@@ -460,6 +461,66 @@ export default function TrainingPage() {
                     Taper starts in {evt.days_until_taper} days
                   </p>
                 )}
+                {/* Link this event to a plan (PATCH the plan's event_id). */}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {(() => {
+                    const linkedPlan = plans.find((p) => p.event_id === evt.id);
+                    if (linkedPlan) {
+                      return (
+                        <>
+                          <span className="text-[11px] text-muted">
+                            Linked plan: <span className="text-foreground">{linkedPlan.name}</span>
+                          </span>
+                          <button
+                            onClick={() =>
+                              updatePlanMutation.mutate({
+                                planId: linkedPlan.id,
+                                payload: { event_id: null },
+                              })
+                            }
+                            className="text-[11px] text-warning hover:text-warning/80"
+                          >
+                            Unlink
+                          </button>
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <select
+                          value={linkPlanId[evt.id] ?? ''}
+                          onChange={(e) => setLinkPlanId((m) => ({ ...m, [evt.id]: e.target.value }))}
+                          aria-label={`Link ${evt.name} to a plan`}
+                          className="px-2 py-1 bg-background border border-surface-light rounded text-foreground text-[11px]"
+                        >
+                          <option value="">Link to plan…</option>
+                          {plans
+                            .filter((p) => p.status === 'active' || p.status === 'draft')
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          onClick={() => {
+                            const pid = linkPlanId[evt.id];
+                            if (pid)
+                              updatePlanMutation.mutate({
+                                planId: pid,
+                                payload: { event_id: evt.id },
+                              });
+                          }}
+                          disabled={!linkPlanId[evt.id] || updatePlanMutation.isPending}
+                          className="px-2 py-1 bg-accent/20 text-accent rounded text-[11px] font-medium hover:bg-accent/30 disabled:opacity-40"
+                        >
+                          Link
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+
                 <EventResultPanel event={evt} />
                 {evt.days_until !== undefined && evt.days_until <= 7 && (
                   <div className="mt-2">
