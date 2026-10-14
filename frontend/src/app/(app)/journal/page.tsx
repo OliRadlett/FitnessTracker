@@ -1,221 +1,138 @@
 'use client';
 
 /**
- * Activity Journal — V2 replacement for /activities.
+ * Activity Journal — the chronological training diary.
  *
- * Chronological diary: activities grouped by day with inline sparklines.
- * Top bar with date range + sport filter, paginated "Load more" at the bottom.
- * Desktop 2-column, mobile single-column.
+ * Replaces the bare `/activities` listing. Activities are grouped by
+ * Monday-based week → day, each entry carries the full activity signal
+ * (weather, route, power/HR, TSS provenance, ride context, linked lift) and
+ * expands in place, and the period is summarised with server-accurate totals.
+ *
+ * Filters (period / sport / search / sort) are URL-backed so a view is
+ * shareable, matching the deep-link conventions used across the app.
  */
 
-import React, { useMemo, useState, useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import { apiFetchWithHeaders } from '@/lib/api/fetch';
 import type { FetchResult } from '@/lib/api/fetch';
+import type { Activity, ActivitySummary } from '@/lib/api';
+import { useDeepLink } from '@/lib/useDeepLink';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Card } from '@/components/ui/Card';
-import { Badge, getSportBadgeVariant } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Button } from '@/components/ui/Button';
-import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
-  import { toDateStr } from '@/lib/training/week';
-  import { BookOpen } from 'lucide-react';
-  import type { Activity } from '@/lib/api';
+import { Sparkline } from '@/components/ui/Sparkline';
+import { SummaryStatsBar } from '@/components/activities/SummaryStatsBar';
+import { JournalEntry } from '@/components/activities/JournalEntry';
+import { formatDistance, formatDuration } from '@/lib/utils';
+import {
+  DEFAULT_JOURNAL_FILTERS,
+  JOURNAL_PERIODS,
+  JOURNAL_SORTS,
+  buildListParams,
+  buildSummaryParams,
+  groupByWeek,
+} from '@/lib/journal';
+import type { JournalFilters, JournalSort } from '@/lib/journal';
+import { BookOpen, Search } from 'lucide-react';
 
 const PAGE_SIZE = 50;
 
-const DATE_PERIODS = [
-  { label: 'Today', days: 1 },
-  { label: '7 days', days: 7 },
-  { label: '30 days', days: 30 },
-  { label: 'All', days: 0 },
-] as const;
-
-const SPORT_FILTERS = [
-  { label: 'All', value: '' },
+const SPORT_OPTIONS = [
+  { label: 'All sports', value: '' },
   { label: 'Cycling', value: 'cycling' },
   { label: 'Running', value: 'running' },
-  { label: 'Strength', value: 'strength' },
   { label: 'Swimming', value: 'swimming' },
+  { label: 'Strength', value: 'weighttraining' },
+  { label: 'Workout', value: 'workout' },
+  { label: 'Hiking', value: 'hiking' },
+  { label: 'Walking', value: 'walking' },
 ];
 
-interface JournalCardProps {
-  activity: Activity;
-  maxTss: number;
+function parsePeriod(value: string | null): number {
+  const match = JOURNAL_PERIODS.find((p) => String(p.days) === value);
+  return match ? match.days : DEFAULT_JOURNAL_FILTERS.days;
 }
 
-function JournalCard({ activity, maxTss }: JournalCardProps) {
-  const tss = activity.tss ?? 0;
-  const tssPct = maxTss > 0 ? Math.min(100, (tss / maxTss) * 100) : 0;
-  const isStrength =
-    activity.sport_type.includes('strength') ||
-    activity.sport_type.includes('workout') ||
-    activity.sport_type.includes('weight');
-  const primaryValue = isStrength
-    ? activity.duration_seconds
-      ? formatDuration(activity.duration_seconds)
-      : null
-    : activity.distance_meters
-      ? formatDistance(activity.distance_meters)
-      : activity.duration_seconds
-      ? formatDuration(activity.duration_seconds)
-      : null;
-
-  return (
-    <Link href={`/activities?activity=${activity.id}`} className="block group">
-      <Card className="p-3 hover:border-surface-light/50 transition-colors">
-        <div className="space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant={getSportBadgeVariant(activity.sport_type)}>
-              {activity.sport_type}
-            </Badge>
-            <p className="font-medium text-foreground truncate group-hover:text-accent transition-colors">
-              {activity.name}
-            </p>
-            {activity.sources && activity.sources.length > 0 && (
-              <span
-                className="text-xs text-muted"
-                title={`via ${activity.sources[0]?.provider}`}
-              >
-                {activity.sources[0]?.provider}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-muted">
-                {new Date(activity.start_date).toLocaleDateString(getActiveLocale(), {
-                  weekday: 'short',
-                  month: 'short',
-                  day: 'numeric',
-                })}
-              </p>
-              {primaryValue && <p className="text-xs text-muted">{primaryValue}</p>}
-            </div>
-
-            {tss > 0 && (
-              <div className="flex items-end gap-2 shrink-0">
-                <span className="text-xs text-muted tabular-nums">TSS {tss.toFixed(0)}</span>
-                <div className="w-12 h-8">
-                  <div
-                    className="h-full rounded bg-accent/30"
-                    style={{ height: `${Math.max(8, tssPct)}%` }}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      </Card>
-    </Link>
-  );
-}
-
-interface DayGroup {
-  label: string;
-  date: string;
-  activities: Activity[];
-}
-
-function groupByDay(activities: Activity[]): DayGroup[] {
-  const today = toDateStr(new Date());
-  const yesterday = toDateStr(new Date(new Date().setDate(new Date().getDate() - 1)));
-
-  const groups = new Map<string, Activity[]>();
-  activities.forEach((a) => {
-    const date = a.start_date.split('T')[0];
-    if (!groups.has(date)) groups.set(date, []);
-    groups.get(date)!.push(a);
-  });
-
-  return Array.from(groups.entries())
-    .sort(([a], [b]) => (a < b ? 1 : -1))
-    .map(([date, acts]) => {
-      let label: string;
-      if (date === today) label = 'Today';
-      else if (date === yesterday) label = 'Yesterday';
-      else {
-        const d = new Date(date + 'T00:00:00');
-        label = d.toLocaleDateString(getActiveLocale(), {
-          weekday: 'short',
-          month: 'short',
-          day: 'numeric',
-          year: date.startsWith(today.slice(0, 4)) ? undefined : 'numeric',
-        });
-      }
-      return { label, date, activities: acts };
-    });
+function parseSort(value: string | null): JournalSort {
+  const match = JOURNAL_SORTS.find((s) => s.value === value);
+  return match ? match.value : DEFAULT_JOURNAL_FILTERS.sort;
 }
 
 export default function JournalPage() {
   usePageTitle('Activity Journal');
-  const { token } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
+  const { setParam } = useDeepLink();
 
-  const [period, setPeriod] = useState<{ label: string; days: number }>(DATE_PERIODS[2]);
-  const [sportFilter, setSportFilter] = useState('');
-  const [allActivities, setAllActivities] = useState<Activity[]>([]);
+  const [filters, setFilters] = useState<JournalFilters>(DEFAULT_JOURNAL_FILTERS);
+  const [qInput, setQInput] = useState('');
+  const [extraPages, setExtraPages] = useState<Activity[]>([]);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  const daysAgo = period.days > 0 ? period.days : 3650;
+  // Read the shareable filters once from the URL (window, not useDeepLink, so
+  // the read doesn't race the hook's own mount effect).
+  useEffect(() => {
+    const search = new URLSearchParams(window.location.search);
+    const q = search.get('q') ?? '';
+    setFilters({
+      days: parsePeriod(search.get('period')),
+      sport: search.get('sport') ?? '',
+      q,
+      sort: parseSort(search.get('sort')),
+    });
+    setQInput(q);
+  }, []);
 
-  const { data: firstPage, isLoading, isError } = useQuery<Activity[]>({
-    queryKey: ['journal-activities', daysAgo, sportFilter],
+  // setParam identity changes as the URL changes; keep it in a ref so the
+  // debounce effect never re-fires on its own write.
+  const setParamRef = useRef(setParam);
+  setParamRef.current = setParam;
+
+  // ── Filter writers (URL-backed) ────────────────────────────────────────────
+  const setPeriod = useCallback((days: number) => {
+    setFilters((f) => ({ ...f, days }));
+    setParamRef.current('period', days === DEFAULT_JOURNAL_FILTERS.days ? null : String(days));
+  }, []);
+
+  const setSport = useCallback((sport: string) => {
+    setFilters((f) => ({ ...f, sport }));
+    setParamRef.current('sport', sport || null);
+  }, []);
+
+  const setSort = useCallback((sort: JournalSort) => {
+    setFilters((f) => ({ ...f, sort }));
+    setParamRef.current('sort', sort === DEFAULT_JOURNAL_FILTERS.sort ? null : sort);
+  }, []);
+
+  // Debounced search → filters + URL.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const q = qInput.trim();
+      setFilters((f) => (f.q === q ? f : { ...f, q }));
+      setParamRef.current('q', q || null);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [qInput]);
+
+  // Reset pagination (and the stale total) whenever the query inputs change.
+  useEffect(() => {
+    setExtraPages([]);
+    setTotalCount(null);
+  }, [filters.days, filters.sport, filters.q, filters.sort]);
+
+  // ── Data ───────────────────────────────────────────────────────────────────
+  const listKey = ['journal-activities', filters.days, filters.sport, filters.q, filters.sort] as const;
+
+  const { data: firstPage, isLoading, isError, refetch } = useQuery<Activity[]>({
+    queryKey: listKey,
     queryFn: async () => {
-      const params = new URLSearchParams({
-        start_date_after: toDateStr(new Date(new Date().setDate(new Date().getDate() - daysAgo))),
-        limit: String(PAGE_SIZE),
-        sort_by: 'start_date',
-        sort_order: 'desc',
-      });
-      if (sportFilter) params.set('sport_type', sportFilter);
-      const result: FetchResult<Activity[]> = await apiFetchWithHeaders<Activity[]>(`/api/v1/activities?${params.toString()}`, {}, token);
-      const count = result.headers.get('X-Total-Count');
-      if (count) setTotalCount(parseInt(count, 10));
-      return result.data;
-    },
-    enabled: !!token,
-  });
-
-  /* Sync first page into allActivities whenever the query key changes */
-  useEffect(() => {
-    if (firstPage) {
-      setAllActivities(firstPage);
-    }
-  }, [firstPage]);
-
-  /* Reset pagination when period or sport changes */
-  useEffect(() => {
-    setAllActivities([]);
-  }, [daysAgo, sportFilter]);
-
-  const maxTss = useMemo(
-    () => Math.max(...(allActivities.map((a) => a.tss ?? 0)), 1),
-    [allActivities],
-  );
-
-  const dayGroups = useMemo(() => groupByDay(allActivities), [allActivities]);
-
-  const canLoadMore = totalCount != null && allActivities.length < totalCount;
-  const hasMore = allActivities.length > 0 && (!totalCount || allActivities.length < (totalCount ?? Infinity));
-
-  const handleLoadMore = useCallback(async () => {
-    if (!token || !canLoadMore) return;
-    setLoadingMore(true);
-    try {
-      const params = new URLSearchParams({
-        start_date_after: toDateStr(new Date(new Date().setDate(new Date().getDate() - daysAgo))),
-        limit: String(PAGE_SIZE),
-        offset: String(allActivities.length),
-        sort_by: 'start_date',
-        sort_order: 'desc',
-      });
-      if (sportFilter) params.set('sport_type', sportFilter);
+      const params = buildListParams(filters, PAGE_SIZE, 0);
+      params.set('include_context', 'true');
       const result: FetchResult<Activity[]> = await apiFetchWithHeaders<Activity[]>(
         `/api/v1/activities?${params.toString()}`,
         {},
@@ -223,114 +140,211 @@ export default function JournalPage() {
       );
       const count = result.headers.get('X-Total-Count');
       if (count) setTotalCount(parseInt(count, 10));
-      setAllActivities((prev) => [...prev, ...result.data]);
+      return result.data;
+    },
+    enabled: !!token,
+  });
+
+  const { data: summary } = useQuery<ActivitySummary>({
+    queryKey: ['journal-summary', filters.days, filters.sport, filters.q],
+    queryFn: () =>
+      authFetch<ActivitySummary>(`/api/v1/activities/summary?${buildSummaryParams(filters).toString()}`),
+    enabled: !!token,
+  });
+
+  const activities = useMemo(
+    () => [...(firstPage ?? []), ...extraPages],
+    [firstPage, extraPages],
+  );
+  const weeks = useMemo(() => groupByWeek(activities), [activities]);
+
+  const canLoadMore = totalCount != null && activities.length < totalCount;
+
+  const handleLoadMore = useCallback(async () => {
+    if (!token || !canLoadMore) return;
+    setLoadingMore(true);
+    try {
+      const params = buildListParams(filters, PAGE_SIZE, activities.length);
+      params.set('include_context', 'true');
+      const result: FetchResult<Activity[]> = await apiFetchWithHeaders<Activity[]>(
+        `/api/v1/activities?${params.toString()}`,
+        {},
+        token,
+      );
+      const count = result.headers.get('X-Total-Count');
+      if (count) setTotalCount(parseInt(count, 10));
+      setExtraPages((prev) => [...prev, ...result.data]);
     } finally {
       setLoadingMore(false);
     }
-  }, [token, daysAgo, sportFilter, allActivities.length, canLoadMore]);
+  }, [token, canLoadMore, filters, activities.length]);
 
-  const handlePeriodChange = useCallback((p: { label: string; days: number }) => {
-    setPeriod(p);
-  }, []);
+  const hasActiveFilter = Boolean(filters.q || filters.sport);
 
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <PageHeader title="Activity Journal" subtitle="Loading your activities…" />
-        <div className="space-y-6">
+  return (
+    <div className="space-y-5">
+      <PageHeader
+        title="Activity Journal"
+        subtitle="Every session, grouped by week."
+        actions={
+          <Link
+            href="/activities?view=list"
+            className="inline-flex min-h-[44px] items-center rounded-lg border border-surface-light px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground whitespace-nowrap"
+          >
+            Advanced views →
+          </Link>
+        }
+      />
+
+      {/* ── Filter bar ───────────────────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 rounded-xl border border-surface-light/40 bg-surface p-1">
+          {JOURNAL_PERIODS.map((p) => (
+            <button
+              key={p.label}
+              onClick={() => setPeriod(p.days)}
+              aria-pressed={filters.days === p.days}
+              className={`min-h-[44px] rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
+                filters.days === p.days
+                  ? 'bg-accent text-white'
+                  : 'text-muted hover:bg-surface-light/50 hover:text-foreground'
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="relative min-w-[180px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden />
+          <input
+            type="search"
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+            placeholder="Search by name…"
+            aria-label="Search activities by name"
+            className="min-h-[44px] w-full rounded-lg border border-surface-light/40 bg-surface pl-9 pr-3 text-sm text-foreground placeholder:text-muted focus:border-accent/50 focus:outline-none"
+          />
+        </div>
+
+        <select
+          value={filters.sport}
+          onChange={(e) => setSport(e.target.value)}
+          aria-label="Filter by sport"
+          className="min-h-[44px] rounded-lg border border-surface-light/40 bg-surface px-2 text-sm text-foreground"
+        >
+          {SPORT_OPTIONS.map((s) => (
+            <option key={s.value || 'all'} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+
+        <select
+          value={filters.sort}
+          onChange={(e) => setSort(e.target.value as JournalSort)}
+          aria-label="Sort activities"
+          className="min-h-[44px] rounded-lg border border-surface-light/40 bg-surface px-2 text-sm text-foreground"
+        >
+          {JOURNAL_SORTS.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <ErrorState variant="inline" show={isError} message="Failed to load activities." onRetry={() => refetch()} />
+
+      {/* ── Period summary ───────────────────────────────────────────────── */}
+      {!isError && summary && summary.count > 0 && (
+        <SummaryStatsBar summary={summary} activities={activities} />
+      )}
+
+      {/* ── Diary ────────────────────────────────────────────────────────── */}
+      {isLoading ? (
+        <div className="space-y-5" aria-label="Loading activities">
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i}>
-              <div className="h-5 w-32 mb-2 bg-surface-light/50 rounded animate-pulse" />
-              {Array.from({ length: 3 }).map((_, j) => (
-                <div key={j} className="h-20 bg-surface-light/50 rounded-lg mb-2 animate-pulse" />
+              <div className="mb-2 h-5 w-40 animate-pulse rounded bg-surface-light/50" />
+              {Array.from({ length: 3 }).map((__, j) => (
+                <div key={j} className="mb-2 h-14 animate-pulse rounded-lg bg-surface-light/40" />
               ))}
             </div>
           ))}
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-6">
-      <PageHeader
-        title="Activity Journal"
-        subtitle={`${allActivities.length} activities${totalCount != null ? ` / ${totalCount} total` : ''}`}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface/20 overflow-x-auto">
-              {DATE_PERIODS.map((p) => (
-                <button
-                  key={p.label}
-                  onClick={() => handlePeriodChange(p)}
-                  className={`min-h-[44px] px-3 py-2 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
-                    period.days === p.days
-                      ? 'bg-accent text-white'
-                      : 'text-muted hover:text-foreground hover:bg-surface-light/50'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <select
-              value={sportFilter}
-              onChange={(e) => setSportFilter(e.target.value)}
-              className="min-h-[44px] text-sm rounded-lg bg-surface border border-surface/20 text-foreground px-2 tabular-nums"
-              aria-label="Filter by sport"
-            >
-              {SPORT_FILTERS.map((s) => (
-                <option key={s.value || 'all'} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-            <Link
-              href="/activities?view=list"
-              className="min-h-[44px] inline-flex items-center rounded-lg border border-surface-light px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground whitespace-nowrap"
-            >
-              Advanced views →
-            </Link>
-          </div>
-        }
-      />
-
-      <ErrorState variant="inline" show={isError} message="Failed to load activities." />
-
-      {!isError && dayGroups.length === 0 ? (
-        <EmptyState
-          title="No activities yet"
-          description="Your activity journal will appear here once you start tracking."
-          icon={<BookOpen className="w-8 h-8 text-muted" />}
-        />
+      ) : !isError && weeks.length === 0 ? (
+        hasActiveFilter ? (
+          <EmptyState
+            title="No activities match"
+            description="Try a wider period or clear the search and sport filters."
+            icon={<Search className="h-8 w-8 text-muted" />}
+            action={{
+              label: 'Clear filters',
+              onClick: () => {
+                setQInput('');
+                setSport('');
+                setPeriod(DEFAULT_JOURNAL_FILTERS.days);
+              },
+            }}
+          />
+        ) : (
+          <EmptyState
+            title="No activities yet"
+            description="Your training diary appears here once you start tracking."
+            icon={<BookOpen className="h-8 w-8 text-muted" />}
+          />
+        )
       ) : (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {dayGroups.map((group) => (
-              <div key={group.date}>
-                <h3 className="text-sm font-medium text-muted mb-2">{group.label}</h3>
-                <div className="space-y-2">
-                  {group.activities.map((activity) => (
-                    <JournalCard key={activity.id} activity={activity} maxTss={maxTss} />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+        !isError && (
+          <>
+            <div className="space-y-6">
+              {weeks.map((week) => (
+                <section key={week.weekStart}>
+                  {/* Week header — rhythm + rollup */}
+                  <div className="mb-2 flex items-center justify-between gap-3 border-b border-surface-light/40 pb-2">
+                    <div className="flex items-baseline gap-3">
+                      <h3 className="text-sm font-semibold text-foreground">Week of {week.label}</h3>
+                      <span className="text-xs text-muted tabular-nums">
+                        {week.count} {week.count === 1 ? 'session' : 'sessions'}
+                        {week.distanceMeters > 0 ? ` · ${formatDistance(week.distanceMeters, 1)}` : ''}
+                        {week.durationSeconds > 0 ? ` · ${formatDuration(week.durationSeconds)}` : ''}
+                        {week.tss > 0 ? ` · ${Math.round(week.tss)} TSS` : ''}
+                      </span>
+                    </div>
+                    <div className="hidden w-28 shrink-0 sm:block" title="Daily TSS, Mon–Sun">
+                      <Sparkline data={week.rhythm} height={22} area />
+                    </div>
+                  </div>
 
-          {hasMore && (
-            <div className="flex justify-center">
-              <Button
-                onClick={handleLoadMore}
-                disabled={loadingMore || !canLoadMore}
-                variant="secondary"
-                size="sm"
-              >
-                {loadingMore ? 'Loading…' : 'Load more'}
-              </Button>
+                  {week.days.map((day) => (
+                    <div key={day.date} className="mb-3">
+                      <div className="flex items-baseline justify-between gap-3 px-1">
+                        <h4 className="text-xs font-medium uppercase tracking-wider text-muted">{day.label}</h4>
+                        <span className="text-xs text-muted tabular-nums">
+                          {day.tss > 0 ? `${Math.round(day.tss)} TSS` : ''}
+                        </span>
+                      </div>
+                      <div>
+                        {day.activities.map((activity) => (
+                          <JournalEntry key={activity.id} activity={activity} />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </section>
+              ))}
             </div>
-          )}
-        </>
+
+            {canLoadMore && (
+              <div className="flex justify-center pt-1">
+                <Button onClick={handleLoadMore} disabled={loadingMore} variant="secondary" size="sm">
+                  {loadingMore ? 'Loading…' : `Load more (${activities.length} of ${totalCount})`}
+                </Button>
+              </div>
+            )}
+          </>
+        )
       )}
     </div>
   );
