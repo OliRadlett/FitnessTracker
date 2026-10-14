@@ -32,6 +32,8 @@ export interface WeekMasterBarProps {
   /** Opens the missed-day quick actions for the given day id. */
   onOpenMissed: (dayId: string) => void;
   busy: boolean;
+  /** Desktop drag-and-drop: called with (sourceDate, targetDate) on drop. */
+  onDropDate?: (sourceDate: string, targetDate: string) => void;
 }
 
 export function WeekMasterBar({
@@ -45,7 +47,10 @@ export function WeekMasterBar({
   onToggleCompleted,
   onOpenMissed,
   busy,
+  onDropDate,
 }: WeekMasterBarProps) {
+  const [dragSource, setDragSource] = React.useState<string | null>(null);
+
   return (
     <div
       className="flex gap-3 overflow-x-auto pb-1 snap-x snap-mandatory xl:grid xl:grid-cols-7 xl:overflow-visible xl:pb-0"
@@ -88,6 +93,17 @@ export function WeekMasterBar({
               }
               onOpenMissed={day ? () => onOpenMissed(day.id) : undefined}
               busy={busy}
+              draggable={!!day && !day.completed}
+              onDragStart={() => setDragSource(date)}
+              onDragOver={(e) => {
+                if (dragSource && dragSource !== date) e.preventDefault();
+              }}
+              onDrop={() => {
+                if (dragSource && dragSource !== date) onDropDate?.(dragSource, date);
+                setDragSource(null);
+              }}
+              onDragEnd={() => setDragSource(null)}
+              isDropTarget={!!dragSource && dragSource !== date}
             />
           </div>
         );

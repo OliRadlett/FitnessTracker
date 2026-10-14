@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import {
   addDay,
+  copyPlanDayToDate,
   deleteDay,
   rescheduleDay,
   substituteDay,
@@ -80,6 +81,15 @@ export function usePlanDayOps(planId: string | null) {
       mutationFn: ({ dayId, payload }: { dayId: string; payload: SubstituteDayPayload }) => {
         if (!planId) throw new Error('No plan selected');
         return substituteDay(authFetch, planId, dayId, payload);
+      },
+      onSettled: invalidate,
+    }),
+
+    /** Copy a day's planned content onto another date in the same plan. */
+    duplicateDay: useMutation({
+      mutationFn: ({ dayId, targetDate }: { dayId: string; targetDate: string }) => {
+        if (!planId) throw new Error('No plan selected');
+        return copyPlanDayToDate(authFetch, planId, dayId, targetDate);
       },
       onSettled: invalidate,
     }),

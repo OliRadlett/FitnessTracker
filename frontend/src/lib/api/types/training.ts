@@ -420,6 +420,9 @@ export interface UpdateTrainingPlanDayPayload {
   planned_zone?: string | null;
   planned_route_id?: string | null;
   warmup_template_id?: string | null;
+  /** Manual linking of an actual to this day (the unplanned strip). */
+  activity_id?: string | null;
+  lifting_session_id?: string | null;
   notes?: string | null;
   completed?: boolean;
 }

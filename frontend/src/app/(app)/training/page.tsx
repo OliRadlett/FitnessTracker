@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import {
@@ -20,10 +20,8 @@ import {
 import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   TrainingPlan,
-  TrainingPlanDay,
   Event,
   CreateEventPayload,
-  CreateTrainingPlanDayPayload,
   GeneratePlanPayload,
   CreateTrainingPlanPayload,
   UpdateTrainingPlanPayload,
@@ -38,9 +36,8 @@ import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Chart } from '@/components/charts/Chart';
-import { PlanBuilder } from '@/components/training/PlanBuilder';
+import { CreatePlanPanel } from '@/components/training/plan/CreatePlanPanel';
 import { WeeklyView } from '@/components/training/WeeklyView';
-import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
 import { EventResultPanel } from '@/components/training/EventResultPanel';
 import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
@@ -72,36 +69,6 @@ const BLOCK_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }
   strength: Dumbbell,
 };
 
-/**
- * Map a local day to the PATCH payload. IMPORTANT: only include fields the
- * builder manages — the backend upserts by day_date and DELETES dates missing
- * from the array (so we always send ALL days), while untouched columns
- * (activity_id, lifting_session_id, planned_route_id) are preserved because
- * they are omitted here.
- */
-function toDayPayload(d: TrainingPlanDay): CreateTrainingPlanDayPayload {
-  return {
-    day_date: d.day_date,
-    sport: d.sport,
-    planned_type: d.planned_type,
-    planned_tss: d.planned_tss,
-    planned_duration_min: d.planned_duration_min,
-    workout_description: d.workout_description,
-    planned_focus: d.planned_focus ?? null,
-    planned_exercises: d.planned_exercises ?? null,
-    planned_volume_kg: d.planned_volume_kg,
-    planned_rpe: d.planned_rpe,
-    planned_power_watts: d.planned_power_watts,
-    planned_zone: d.planned_zone,
-    warmup_template_id: d.warmup_template_id ?? null,
-    notes: d.notes,
-    completed: d.completed,
-    // Include link fields so drag-to-reassign preserves them on moved days.
-    ...(d.lifting_session_id ? { lifting_session_id: d.lifting_session_id } : {}),
-    ...(d.planned_route_id ? { planned_route_id: d.planned_route_id } : {}),
-  };
-}
-
 export default function TrainingPage() {
   usePageTitle('Training');
   const { authFetch, token } = useAuthFetch();
@@ -121,13 +88,6 @@ export default function TrainingPage() {
     planLoading,
     highlightDate,
   } = useTrainingShell();
-
-  // Plan mode holds the temporary Build | Week toggle until Phase 1 unifies the
-  // editor. A `?day=` deep link lands in the week view.
-  const [planView, setPlanView] = useState<'builder' | 'week'>('builder');
-  useEffect(() => {
-    if (highlightDate) setPlanView('week');
-  }, [highlightDate]);
 
   const [showEventForm, setShowEventForm] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
@@ -180,19 +140,6 @@ export default function TrainingPage() {
       setMode('plan');
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to create plan'),
-  });
-
-  const saveDaysMutation = useMutation({
-    mutationFn: ({ planId, days }: { planId: string; days: TrainingPlanDay[] }) =>
-      authFetch<TrainingPlan>(`/api/v1/training-plans/${planId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ days: days.map(toDayPayload) }),
-      }),
-    onSuccess: (_, { planId }) => {
-      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
-    },
-    onError: (err: Error) => setActionError(err.message || 'Failed to save days'),
   });
 
   const updatePlanMutation = useMutation({
@@ -269,24 +216,6 @@ export default function TrainingPage() {
     setMode('plan');
   };
 
-  const planEditorProps = {
-    events,
-    onCreatePlan: (payload: CreateTrainingPlanPayload) => createPlanMutation.mutate(payload),
-    onGeneratePlan: (payload: GeneratePlanPayload) => generateMutation.mutate(payload),
-    onUpdatePlan: (planId: string, payload: UpdateTrainingPlanPayload) =>
-      updatePlanMutation.mutate({ planId, payload }),
-    onSaveDays: (planId: string, days: TrainingPlanDay[]) =>
-      saveDaysMutation.mutate({ planId, days }),
-    onDeletePlan: (planId: string) => deletePlanMutation.mutate(planId),
-    onRefreshPlan: (planId: string) => {
-      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
-      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-    },
-    isSaving: saveDaysMutation.isPending,
-    isCreating: createPlanMutation.isPending,
-    isGenerating: generateMutation.isPending,
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -343,48 +272,26 @@ export default function TrainingPage() {
               <SkeletonRow className="h-40" />
             </div>
           ) : selectedPlan ? (
-            <>
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30 w-fit">
-                {(
-                  [
-                    { key: 'builder', label: 'Plan Builder' },
-                    { key: 'week', label: 'This Week' },
-                  ] as const
-                ).map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setPlanView(key)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                      planView === key ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {planView === 'week' ? (
-                <WeeklyView
-                  key={selectedPlanId}
-                  plan={selectedPlan}
-                  events={events}
-                  highlightDate={highlightDate}
-                />
-              ) : (
-                <PlanBuilder key={selectedPlanId} plan={selectedPlan} {...planEditorProps} />
-              )}
-            </>
-          ) : (
-            <PlanBuilder
-              key="empty"
-              plan={undefined}
-              {...planEditorProps}
-              onRefreshPlan={() => refetchPlans()}
+            <WeeklyView
+              key={selectedPlanId}
+              plan={selectedPlan}
+              events={events}
+              highlightDate={highlightDate}
             />
+          ) : (
+            <div className="bg-surface rounded-xl border border-surface-light/50 p-8 text-center">
+              <h3 className="text-lg font-semibold text-foreground mb-2">No plan selected</h3>
+              <p className="text-muted mb-6">
+                Create a plan — from scratch or a template — on the Plans surface.
+              </p>
+              <button
+                onClick={() => setMode('plans')}
+                className="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors"
+              >
+                Go to Plans
+              </button>
+            </div>
           )}
-
-          {/* RM1: the standalone Workout Planner (absorbed into the day editor
-              in Phase 1). Kept here for parity until then. */}
-          <WorkoutPlanner planId={selectedPlan?.id ?? null} planDays={selectedPlan?.days} />
         </div>
       )}
 
@@ -571,12 +478,13 @@ export default function TrainingPage() {
       {/* ── Plans surface — create / switch / archive / delete ────────── */}
       {mode === 'plans' && (
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Create a plan</CardTitle>
-            </CardHeader>
-            <PlanBuilder key="plans-create" plan={undefined} {...planEditorProps} />
-          </Card>
+          <CreatePlanPanel
+            events={events ?? []}
+            onCreatePlan={(payload) => createPlanMutation.mutate(payload)}
+            onGeneratePlan={(payload) => generateMutation.mutate(payload)}
+            isCreating={createPlanMutation.isPending}
+            isGenerating={generateMutation.isPending}
+          />
 
           <Card>
             <CardHeader>

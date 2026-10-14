@@ -257,7 +257,7 @@ export default function JournalPage() {
         title="Activity Journal"
         subtitle={`${allActivities.length} activities${totalCount != null ? ` / ${totalCount} total` : ''}`}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex gap-1 bg-surface rounded-xl p-1 border border-surface/20 overflow-x-auto">
               {DATE_PERIODS.map((p) => (
                 <button
@@ -285,6 +285,12 @@ export default function JournalPage() {
                 </option>
               ))}
             </select>
+            <Link
+              href="/activities?view=list"
+              className="min-h-[44px] inline-flex items-center rounded-lg border border-surface-light px-3 py-2 text-xs font-medium text-muted transition-colors hover:border-accent/40 hover:text-foreground whitespace-nowrap"
+            >
+              Advanced views →
+            </Link>
           </div>
         }
       />

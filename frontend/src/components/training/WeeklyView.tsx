@@ -14,14 +14,12 @@
  */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, MapPin, Target, Check, Flag, X, Upload } from 'lucide-react';
+import { AlertTriangle, Check, Flag, X } from 'lucide-react';
 import type {
-  Goal,
   TrainingPlan,
   TrainingWeekDay,
-  UpdateTrainingPlanDayPayload,
+  PlanDayType,
   RefreshTargetsResponse,
   Event,
 } from '@/lib/api';
@@ -37,15 +35,15 @@ import {
   getTotalWeeks,
   getCurrentWeek,
 } from '@/lib/training/week';
-import { goalProgressPct } from '@/components/ui/GoalCard';
-import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLinks';
+import { usePlanDayOps } from '@/lib/training/usePlanDayOps';
+import { useToast } from '@/components/ui/Toast';
 import { WeekMasterBar } from './WeekMasterBar';
 import { ConformitySummaryCard } from './ConformitySummaryCard';
 import { PlanGoalsStrip } from './PlanGoalsStrip';
 import { MissedDayPopover } from './MissedDayPopover';
 import { SPORT_ICON } from './dayCellShared';
-import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
-import { DayConformityPanel } from './DayConformityPanel';
+import { DayEditor } from './plan/DayEditor';
+import { UnplannedStrip } from './plan/UnplannedStrip';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
 import { WahooPushModal } from './WahooPushModal';
@@ -87,40 +85,19 @@ function fmtDayLabel(dateStr: string): string {
   });
 }
 
-/** Extract the PATCH-able planning fields from a day (used for day→day moves). */
-function planningFields(day: TrainingWeekDay): UpdateTrainingPlanDayPayload {
-  return {
-    sport: day.sport,
-    planned_type: day.planned_type,
-    planned_tss: day.planned_tss,
-    planned_duration_min: day.planned_duration_min,
-    workout_description: day.workout_description,
-    planned_focus: day.planned_focus ?? null,
-    planned_exercises: day.planned_exercises ?? null,
-    planned_rpe: day.planned_rpe ?? null,
-    planned_power_watts: day.planned_power_watts,
-    planned_zone: day.planned_zone ?? null,
-    planned_route_id: day.planned_route_id ?? null,
-    warmup_template_id: day.warmup_template_id ?? null,
-    notes: day.notes ?? null,
-  };
+/** One step easier — the default substitute for a missed session. */
+function downgradeType(t: PlanDayType): PlanDayType {
+  switch (t) {
+    case 'race':
+      return 'hard';
+    case 'hard':
+      return 'moderate';
+    case 'moderate':
+      return 'easy';
+    default:
+      return 'easy';
+  }
 }
-
-/** A rest day's planning fields — clears any planned workout. */
-const REST_FIELDS: UpdateTrainingPlanDayPayload = {
-  sport: 'rest',
-  planned_type: 'rest',
-  planned_tss: null,
-  planned_duration_min: null,
-  workout_description: null,
-  planned_focus: null,
-  planned_exercises: null,
-  planned_rpe: null,
-  planned_power_watts: null,
-  planned_zone: null,
-  planned_route_id: null,
-  warmup_template_id: null,
-};
 
 // ─── Component ────────────────────────────────────────────────────────────
 
@@ -156,6 +133,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       : getCurrentWeek(plan.start_date, plan.end_date),
   );
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
+  const [view, setView] = useState<'week' | 'all'>('week');
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [showWahooPush, setShowWahooPush] = useState(false);
   const [missedDayId, setMissedDayId] = useState<string | null>(null);
@@ -274,39 +252,67 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     },
   });
 
-  const quickEdit = useMutation({
-    mutationFn: ({
-      dayId,
-      payload,
-    }: {
-      dayId: string;
-      payload: UpdateTrainingPlanDayPayload;
-    }) => updatePlanDay(authFetch, plan.id, dayId, payload),
-    onSuccess: invalidateWeeks,
-    onError: (err: Error) => {
-      console.error('[WeeklyView] Quick edit failed:', err);
-    },
-  });
+  const { error: toastError } = useToast();
+  const ops = usePlanDayOps(plan.id);
+  const opBusy = ops.moveDay.isPending || ops.substituteDay.isPending;
 
-  // V3 missed-day quick actions. A true date-move is not PATCH-able, so
-  // "move to next day" swaps the two days' planned content.
+  // Missed-day quick actions — real operations. The PATCH API cannot change a
+  // day's date, so "move" uses the dedicated /reschedule endpoint (409 when the
+  // target slot is taken); "substitute"/"mark rest" use /substitute.
   const handleMissedReschedule = () => {
+    if (!missedDay || !missedNextDay) return;
+    ops.moveDay.mutate(
+      { dayId: missedDay.id, targetDate: missedNextDay.day_date.slice(0, 10) },
+      { onError: (err: Error) => toastError(err.message || 'Could not move that day') },
+    );
+    setMissedDayId(null);
+  };
+
+  const handleMissedSubstitute = () => {
     if (!missedDay) return;
-    if (missedNextDay) {
-      const srcFields = planningFields(missedDay);
-      const nextFields = planningFields(missedNextDay);
-      quickEdit.mutate({ dayId: missedNextDay.id, payload: srcFields });
-      quickEdit.mutate({ dayId: missedDay.id, payload: nextFields });
-    } else {
-      quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
-    }
+    ops.substituteDay.mutate(
+      {
+        dayId: missedDay.id,
+        payload: { sport: missedDay.sport, planned_type: downgradeType(missedDay.planned_type) },
+      },
+      { onError: (err: Error) => toastError(err.message || 'Could not substitute that day') },
+    );
     setMissedDayId(null);
   };
 
   const handleMissedMarkRest = () => {
     if (!missedDay) return;
-    quickEdit.mutate({ dayId: missedDay.id, payload: REST_FIELDS });
+    ops.substituteDay.mutate(
+      { dayId: missedDay.id, payload: { sport: 'rest', planned_type: 'rest' } },
+      { onError: (err: Error) => toastError(err.message || 'Could not mark that day as rest') },
+    );
     setMissedDayId(null);
+  };
+
+  // Drag-and-drop on the week grid: drop onto an occupied (uncompleted) day to
+  // swap, or onto an empty slot to move. Completed days are refused.
+  const handleDropDate = (sourceDate: string, targetDate: string) => {
+    const source = daysByDate.get(sourceDate);
+    if (!source || source.completed) {
+      toastError("Completed days can't be moved");
+      return;
+    }
+    const target = daysByDate.get(targetDate);
+    if (target) {
+      if (target.completed) {
+        toastError("Completed days can't be swapped");
+        return;
+      }
+      ops.swapDays.mutate(
+        { dayId: source.id, targetDayId: target.id },
+        { onError: (err: Error) => toastError(err.message || 'Could not swap those days') },
+      );
+    } else {
+      ops.moveDay.mutate(
+        { dayId: source.id, targetDate },
+        { onError: (err: Error) => toastError(err.message || 'Could not move that day') },
+      );
+    }
   };
 
   // ── Derived data ────────────────────────────────────────────────────────
@@ -321,6 +327,25 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     weekData?.days.forEach((d) => map.set(d.day_date.slice(0, 10), d));
     return map;
   }, [weekData]);
+
+  // All-weeks overview: per-week planned load + sport mix, from the plan's days.
+  const weekSummaries = useMemo(
+    () =>
+      Array.from({ length: totalWeeks }, (_, wi) => {
+        const dates = Array.from({ length: 7 }, (_, i) =>
+          addDays(getWeek1Start(plan.start_date), wi * 7 + i),
+        );
+        const days = dates.map((d) => plan.days.find((pd) => pd.day_date.slice(0, 10) === d));
+        return {
+          weekIndex: wi,
+          totalTss: Math.round(days.reduce((s, d) => s + (d?.planned_tss || 0), 0)),
+          rides: days.filter((d) => d?.sport === 'cycle').length,
+          strength: days.filter((d) => d?.sport === 'strength').length,
+          rest: days.filter((d) => !d || d.sport === 'rest').length,
+        };
+      }),
+    [totalWeeks, plan.start_date, plan.days],
+  );
 
   const readiness = weekData?.readiness ?? null;
 
@@ -356,9 +381,11 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       setCurrentWeek(targetWeek);
       return;
     }
-    highlightDone.current = highlightDate;
+    // Only latch once the day is actually present — otherwise the effect marks
+    // itself done before the week payload resolves and never expands the day.
     const day = weekData?.days.find((d) => d.day_date.slice(0, 10) === highlightDate);
     if (!day) return;
+    highlightDone.current = highlightDate;
     setExpandedDayId(day.id);
     requestAnimationFrame(() => {
       document.getElementById(`plan-day-${highlightDate}`)?.scrollIntoView({ block: 'center' });
@@ -396,7 +423,21 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             {weekStart} → {addDays(weekStart, 6)}
           </span>
         </h3>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 p-0.5 rounded-lg bg-surface-light/30">
+            {(['week', 'all'] as const).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                aria-pressed={view === v}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
+                  view === v ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
+                }`}
+              >
+                {v === 'week' ? 'Week' : 'All weeks'}
+              </button>
+            ))}
+          </div>
           {/* FL1 — week-level target refresh, emphasised while days are stale */}
           <button
             onClick={() => refreshTargetsMutation.mutate()}
@@ -591,8 +632,34 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         </div>
       )}
 
+      {/* All-weeks overview — per-week planned load + sport mix. */}
+      {view === 'all' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          {weekSummaries.map((ws) => (
+            <button
+              key={ws.weekIndex}
+              onClick={() => {
+                setCurrentWeek(ws.weekIndex + 1);
+                setView('week');
+              }}
+              className="bg-surface rounded-lg border border-surface-light/50 p-3 text-left hover:border-accent/40 transition-colors"
+            >
+              <p className="text-xs text-muted mb-1 font-semibold uppercase tracking-wider">
+                Week {ws.weekIndex + 1}
+              </p>
+              <p className="text-lg font-bold text-foreground">
+                {ws.totalTss} <span className="text-xs font-normal text-muted">TSS</span>
+              </p>
+              <p className="text-xs text-muted mt-1">
+                {ws.rides} ride{ws.rides === 1 ? '' : 's'} · {ws.strength} strength · {ws.rest} rest
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 7 day cards — responsive master bar (scroll on mobile, grid on xl) */}
-      {!weekQuery.isLoading && (
+      {view === 'week' && !weekQuery.isLoading && (
         <WeekMasterBar
           weekDates={weekDates}
           daysByDate={daysByDate}
@@ -603,17 +670,22 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
           onToggleExpand={setExpandedDayId}
           onToggleCompleted={(dayId, completed) => toggleCompleted.mutate({ dayId, completed })}
           onOpenMissed={setMissedDayId}
+          onDropDate={handleDropDate}
           busy={
             toggleCompleted.isPending ||
             assignRoute.isPending ||
             unassignRoute.isPending ||
-            quickEdit.isPending
+            opBusy
           }
         />
       )}
 
+      {view === 'week' && (
+        <UnplannedStrip planId={plan.id} week={currentWeek} days={weekData?.days ?? []} />
+      )}
+
       {/* Full-width expanded day detail panel — renders UNDERNEATH the 7-column grid */}
-      {expandedDay && (
+      {view === 'week' && expandedDay && (
         <div className="rounded-xl border border-accent/40 bg-surface-light/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-foreground">
@@ -627,22 +699,14 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
               <X className="w-3 h-3 mr-1" /> Close
             </button>
           </div>
-          <ExpandedPanel
-            day={expandedDay}
+          <DayEditor
             planId={plan.id}
+            week={currentWeek}
+            day={expandedDay}
             goals={activeGoals}
-            busy={
-              toggleCompleted.isPending ||
-              assignRoute.isPending ||
-              unassignRoute.isPending ||
-              quickEdit.isPending
-             }
-            onUnassignRoute={() => unassignRoute.mutate(expandedDay.id)}
-            onQuickEdit={(payload) =>
-              quickEdit.mutate({ dayId: expandedDay.id, payload })
-            }
             onOpenRoutePicker={() => setShowRoutePicker(true)}
             onOpenWahooPush={() => setShowWahooPush(true)}
+            onDeleted={() => setExpandedDayId(null)}
           />
         </div>
       )}
@@ -681,8 +745,9 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         dayLabel={missedDay ? fmtDayLabel(missedDay.day_date.slice(0, 10)) : ''}
         nextDayLabel={missedNextDay ? fmtDayLabel(missedNextDay.day_date.slice(0, 10)) : null}
         onReschedule={handleMissedReschedule}
+        onSubstitute={handleMissedSubstitute}
         onMarkRest={handleMissedMarkRest}
-        busy={quickEdit.isPending}
+        busy={opBusy}
       />
 
       {/* Events context (read-only hint when this week contains an event) */}
@@ -701,250 +766,4 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
   );
 }
 
-// ─── Expanded panel ───────────────────────────────────────────────────────
-
-function ExpandedPanel({
-  day,
-  planId,
-  goals,
-  busy,
-  onUnassignRoute,
-  onQuickEdit,
-  onOpenRoutePicker,
-  onOpenWahooPush,
-}: {
-  day: TrainingWeekDay;
-  planId: string;
-  /** Active goals (Phase 2 plan → goal cross-links). */
-  goals: Goal[];
-  busy: boolean;
-  onUnassignRoute: () => void;
-  onQuickEdit: (payload: UpdateTrainingPlanDayPayload) => void;
-  onOpenRoutePicker: () => void;
-  onOpenWahooPush: () => void;
-}) {
-  const [duration, setDuration] = useState(day.planned_duration_min?.toString() ?? '');
-  const [tss, setTss] = useState(day.planned_tss?.toString() ?? '');
-  const [notes, setNotes] = useState(day.notes ?? '');
-  // B-17: autoregulated suggestions for planned strength exercises.
-  const autoMap = useAutoregulationMap();
-  // Phase 2: active goals this day's training supports (display-only match).
-  const dayGoals = useMemo(() => goalsForPlanDay(goals, day), [goals, day]);
-
-  const handleSave = () => {
-    const payload: UpdateTrainingPlanDayPayload = {};
-    if (duration !== '') payload.planned_duration_min = parseInt(duration, 10) || null;
-    if (tss !== '') payload.planned_tss = parseFloat(tss) || null;
-    payload.notes = notes;
-    onQuickEdit(payload);
-  };
-
-  return (
-    <div
-      className="pt-2 mt-1 border-t border-surface-light/50 space-y-1.5"
-      onClick={(e) => e.stopPropagation()}
-    >
-      {day.workout_description && (
-        <p className="text-[11px] text-foreground/80 whitespace-pre-wrap">{day.workout_description}</p>
-      )}
-
-      {/* Strength exercise table */}
-      {day.sport === 'strength' && day.planned_exercises && day.planned_exercises.length > 0 && (
-        <div className="overflow-x-auto -mx-1">
-        <table className="w-full text-[9px] text-muted">
-          <thead>
-            <tr className="text-left">
-              <th className="font-medium">Exercise</th>
-              <th className="font-medium">Sets×Reps</th>
-              <th className="font-medium">kg</th>
-              <th className="font-medium">RPE</th>
-            </tr>
-          </thead>
-          <tbody>
-            {day.planned_exercises.map((ex, i) => (
-              <tr key={`${ex.exercise}-${i}`} className="border-t border-surface-light/30">
-                <td className="py-0.5 text-foreground/90 truncate max-w-[80px]" title={ex.exercise}>
-                  {ex.exercise}
-                </td>
-                <td className="py-0.5">
-                  {ex.sets}×{ex.reps}
-                </td>
-                <td className="py-0.5">
-                  {ex.weight_kg != null ? ex.weight_kg : '—'}
-                  {(() => {
-                    const hint = autoMap.get((ex.exercise ?? '').toLowerCase());
-                    if (!hint || hint.suggestedWeightKg == null || hint.deltaKg === 0) return null;
-                    return (
-                      <span className="text-accent" title={hint.reason}>
-                        {' '}→{hint.suggestedWeightKg}
-                      </span>
-                    );
-                  })()}
-                </td>
-                <td className="py-0.5">{ex.rpe != null ? ex.rpe : '—'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-      )}
-
-      {/* Cycle power targets */}
-      {day.sport === 'cycle' && (day.planned_power_watts != null || day.planned_zone) && (
-        <p className="text-[10px] text-muted">
-          Targets:{' '}
-          {[
-            day.planned_power_watts != null && `${Math.round(day.planned_power_watts)}W`,
-            day.planned_zone && day.planned_zone.toUpperCase(),
-          ]
-            .filter(Boolean)
-            .join(' · ') || '—'}
-        </p>
-      )}
-
-      {/* Route assignment (cycle days only) */}
-      {day.sport === 'cycle' && (
-        <div className="space-y-1">
-          <p className="text-[10px] font-medium text-muted uppercase tracking-wide">
-            Route
-          </p>
-          {day.actual_activity?.route_id ? (
-            <div className="flex items-center gap-2">
-              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
-                {day.actual_activity.route_name || 'Linked route'}
-              </span>
-            </div>
-          ) : day.planned_route_id ? (
-            <div className="flex items-center gap-2">
-              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
-                {day.route_matches?.find(m => m.route_id === day.planned_route_id)?.name || 'Route assigned'}
-              </span>
-              <button
-                onClick={onOpenRoutePicker}
-                className="text-[10px] text-accent hover:text-accent/80 shrink-0"
-              >
-                Change
-              </button>
-              <button
-                onClick={onUnassignRoute}
-                disabled={busy}
-                className="text-[10px] text-warning hover:text-warning/80 disabled:opacity-50 shrink-0"
-              >
-                Remove
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={onOpenRoutePicker}
-              className="text-[10px] text-accent hover:text-accent/80"
-            >
-              <MapPin className="w-3 h-3 mr-1" /> Pick a route...
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Wahoo push (cycle days only) */}
-      {day.sport === 'cycle' && (
-        <div className="space-y-1">
-          <p className="text-[10px] font-medium text-muted uppercase tracking-wide">
-            Wahoo
-          </p>
-          {day.wahoo_pushed_at ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
-                Pushed {new Date(day.wahoo_pushed_at).toLocaleDateString(getActiveLocale())}
-                {day.wahoo_push_workout ? ' · workout' : ''}
-                {day.wahoo_route_id ? ' · route' : ''}
-              </span>
-              <button
-                onClick={onOpenWahooPush}
-                className="text-[10px] text-accent hover:text-accent/80 shrink-0"
-              >
-                Manage
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={onOpenWahooPush}
-              className="text-[10px] text-accent hover:text-accent/80"
-            >
-              <Upload className="w-3 h-3 inline mr-1" /> Push to Wahoo
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Phase 2 plan → goal cross-links: active goals this day supports. */}
-      {dayGoals.length > 0 && (
-        <div className="space-y-1">
-          <p className="text-xs font-medium text-muted uppercase tracking-wide">
-            Supports goals
-          </p>
-          {dayGoals.map((g) => {
-            const progress = goalProgressPct(g);
-            return (
-              <Link
-                key={g.id}
-                href="/goals"
-                title={`View ${goalShortLabel(g)} in goals`}
-                className="flex min-h-[44px] items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-surface-light/40 transition-colors"
-              >
-                <Target className="w-3 h-3 text-accent" aria-hidden="true" />
-                <span className="text-xs text-foreground truncate">{goalShortLabel(g)}</span>
-                <span className="text-xs text-muted tabular-nums shrink-0">{progress.toFixed(0)}%</span>
-                <span className="ml-auto text-accent text-xs shrink-0" aria-hidden="true">→</span>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Notes */}
-      {day.notes && !notes && <p className="text-[11px] text-muted italic">{day.notes}</p>}
-
-       {/* Quick edit (cycle days only — strength/week view is read-only for metrics) */}
-      {day.sport === 'cycle' && (
-        <div className="flex gap-1">
-          <label className="block flex-1">
-            <span className="block text-[9px] text-muted mb-0.5">Min</span>
-            <input
-              type="number"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
-            />
-          </label>
-          <label className="block flex-1">
-            <span className="block text-[9px] text-muted mb-0.5">TSS</span>
-            <input
-              type="number"
-              value={tss}
-              onChange={(e) => setTss(e.target.value)}
-              className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
-            />
-          </label>
-        </div>
-      )}
-       {/* Notes (all sport types) */}
-       <input
-        type="text"
-        placeholder="Notes"
-        value={notes}
-        onChange={(e) => setNotes(e.target.value)}
-        className="w-full px-1 py-0.5 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
-      />
-      <button
-        onClick={handleSave}
-        disabled={busy}
-        className="w-full px-2 py-1 bg-accent/20 text-accent rounded text-[10px] font-medium hover:bg-accent/30 disabled:opacity-50"
-      >
-        Save
-      </button>
-
-      {/* Phase 5C — plan-vs-actual conformity scoring for this day.
-          Mounted only while expanded → lazy query runs on open. */}
-      <DayConformityPanel planId={planId} day={day} />
-    </div>
-  );
-}
+// ─── (the expanded day panel moved to plan/DayEditor) ─────────────────────

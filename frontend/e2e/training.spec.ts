@@ -33,9 +33,9 @@ test.describe('Training Page — shell', () => {
     }
   });
 
-  test('Plan mode shows the plan builder', async ({ authenticatedPage: page }) => {
-    // The temporary Build | Week toggle until Phase 1 unifies the editor.
-    await expect(page.getByRole('button', { name: 'Plan Builder' })).toBeVisible();
+  test('Plan mode shows the week view', async ({ authenticatedPage: page }) => {
+    // The unified week view (one editor) with its Week | All weeks toggle.
+    await expect(page.getByRole('button', { name: 'All weeks' })).toBeVisible();
   });
 
   test('Review mode shows the periodization chart', async ({ authenticatedPage: page }) => {
@@ -69,6 +69,8 @@ test.describe('Training Page — deep links & Plans surface', () => {
     await page.goto('/fittrack/training?plan=plan-1&day=2026-08-05');
     await page.waitForLoadState('networkidle');
     await expect(page.locator('#plan-day-2026-08-05')).toBeVisible();
+    // The deep link auto-expands the day → the unified DayEditor renders.
+    await expect(page.getByRole('checkbox', { name: 'Completed', exact: true })).toBeVisible();
   });
 
   test('empty plans list shows the create-first-plan state', async ({
@@ -81,5 +83,6 @@ test.describe('Training Page — deep links & Plans surface', () => {
     await page.goto('/fittrack/training');
     await page.waitForLoadState('networkidle');
     await expect(page.getByText(/no plan selected/i).first()).toBeVisible();
+    await expect(page.getByRole('button', { name: /go to plans/i })).toBeVisible();
   });
 });
