@@ -43,6 +43,8 @@ import { PlanGoalsStrip } from './PlanGoalsStrip';
 import { MissedDayPopover } from './MissedDayPopover';
 import { SPORT_ICON } from './dayCellShared';
 import { DayEditor } from './plan/DayEditor';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
+import { useIsMobile } from '@/lib/useIsMobile';
 import { UnplannedStrip } from './plan/UnplannedStrip';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
@@ -134,6 +136,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
   );
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
   const [view, setView] = useState<'week' | 'all'>('week');
+  const isMobile = useIsMobile();
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [showWahooPush, setShowWahooPush] = useState(false);
   const [missedDayId, setMissedDayId] = useState<string | null>(null);
@@ -684,8 +687,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         <UnplannedStrip planId={plan.id} week={currentWeek} days={weekData?.days ?? []} />
       )}
 
-      {/* Full-width expanded day detail panel — renders UNDERNEATH the 7-column grid */}
-      {view === 'week' && expandedDay && (
+      {/* Day detail — inline on desktop, a bottom sheet on phones. */}
+      {view === 'week' && expandedDay && !isMobile && (
         <div className="rounded-xl border border-accent/40 bg-surface-light/30 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-foreground">
@@ -709,6 +712,28 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             onDeleted={() => setExpandedDayId(null)}
           />
         </div>
+      )}
+
+      {view === 'week' && expandedDay && isMobile && (
+        <Modal open onClose={() => setExpandedDayId(null)} size="lg" aria-label="Day editor">
+          <ModalHeader
+            title={`${expandedDay.day_date.slice(0, 10)} details`}
+            onClose={() => setExpandedDayId(null)}
+            icon={(() => {
+              const Icon = SPORT_ICON[expandedDay.sport];
+              return Icon ? <Icon className="w-5 h-5" /> : undefined;
+            })()}
+          />
+          <DayEditor
+            planId={plan.id}
+            week={currentWeek}
+            day={expandedDay}
+            goals={activeGoals}
+            onOpenRoutePicker={() => setShowRoutePicker(true)}
+            onOpenWahooPush={() => setShowWahooPush(true)}
+            onDeleted={() => setExpandedDayId(null)}
+          />
+        </Modal>
       )}
 
       {/* Wahoo push modal — opened from the expanded panel */}

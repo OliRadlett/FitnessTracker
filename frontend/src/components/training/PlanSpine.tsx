@@ -69,7 +69,7 @@ export function PlanSpine({
                 <span className="text-xs px-2 py-0.5 rounded-full border bg-accent/10 border-accent/30 text-accent capitalize">
                   {plan.plan_type}
                 </span>
-                <span className="text-xs text-muted inline-flex items-center gap-1">
+                <span className="text-xs text-muted hidden sm:inline-flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
                   {plan.start_date} → {plan.end_date}
                 </span>
@@ -111,7 +111,11 @@ export function PlanSpine({
         </div>
       )}
 
-      {plan && <LoadStrip plan={plan} events={events} />}
+      {plan && (
+        <div className="hidden sm:block">
+          <LoadStrip plan={plan} events={events} />
+        </div>
+      )}
     </div>
   );
 }
