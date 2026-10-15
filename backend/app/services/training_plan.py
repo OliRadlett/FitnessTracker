@@ -1301,6 +1301,42 @@ def targets_stale_for_day(
     )
 
 
+# C5 — strength staleness epsilon (kg): a %1RM-based weight that moved more than
+# half a plate step counts as stale.
+WEIGHT_STALE_EPS_KG = 1.0
+
+
+def strength_targets_stale_for_day(
+    day: TrainingPlanDay,
+    basis_by_exercise: dict[str, float | None],
+) -> bool:
+    """True when a %1RM-based strength weight drifted from the current e1RM (C5).
+
+    Pure: ``basis_by_exercise`` maps an entry's raw exercise name to its current
+    e1RM (or None). Entries without a ``pct_1rm`` basis — hand-set weights — are
+    never stale; that is the manual-override rule (S1).
+    """
+    if day.sport != "strength" or not day.planned_exercises:
+        return False
+    for ex in day.planned_exercises:
+        if not isinstance(ex, dict):
+            continue
+        pct = ex.get("pct_1rm")
+        weight = ex.get("weight_kg")
+        if pct is None or weight is None:
+            continue
+        basis = basis_by_exercise.get(str(ex.get("exercise") or ""))
+        if basis is None:
+            continue
+        try:
+            fresh = round(basis * float(pct), 1)
+            if abs(fresh - float(weight)) > WEIGHT_STALE_EPS_KG:
+                return True
+        except (TypeError, ValueError):
+            continue
+    return False
+
+
 async def refresh_cycle_targets(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -2292,6 +2328,26 @@ async def get_plan_week(
     # ── Assemble enriched day entries ───────────────────────────────────────
     window_lo = today - timedelta(days=_WEATHER_WINDOW_DAYS)
     window_hi = today + timedelta(days=_WEATHER_WINDOW_DAYS)
+
+    # C5 — strength staleness needs the current e1RM per exercise. Resolve each
+    # strength exercise in the week ONCE (not per day), so the flag stays cheap.
+    from app.services.lifting import resolve_exercise_e1rm
+
+    strength_names: set[str] = set()
+    for d in week_days:
+        if d.sport == "strength":
+            for ex in d.planned_exercises or []:
+                if (
+                    isinstance(ex, dict)
+                    and ex.get("pct_1rm") is not None
+                    and ex.get("exercise")
+                ):
+                    strength_names.add(str(ex["exercise"]))
+    basis_by_exercise: dict[str, float | None] = {}
+    for name in strength_names:
+        basis, _src = await resolve_exercise_e1rm(db, user_id, name)
+        basis_by_exercise[name] = basis
+
     entries: list[TrainingWeekDay] = []
     for day in week_days:
         base = TrainingPlanDayRead.model_validate(day).model_dump()
@@ -2368,10 +2424,13 @@ async def get_plan_week(
         targets_stale = (
             day.day_date >= today
             and not day.completed
-            and targets_stale_for_day(
-                day,
-                profile.ftp_watts if profile else None,
-                profile.lactate_threshold_hr if profile else None,
+            and (
+                targets_stale_for_day(
+                    day,
+                    profile.ftp_watts if profile else None,
+                    profile.lactate_threshold_hr if profile else None,
+                )
+                or strength_targets_stale_for_day(day, basis_by_exercise)
             )
         )
 
