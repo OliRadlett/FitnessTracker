@@ -519,6 +519,10 @@ SUGGEST_WEIGHT_THRESHOLD = 85.0
 _STEP_WELL_EASY = 5.0  # RPE 0.5+ below target: +5kg
 _STEP_WELL_MATCH = 2.5  # RPE within ±0.5 of target: +2.5kg
 
+# C4 — autoregulation: at or below this recovery score, hold the load rather
+# than progress it, however easy the last session felt.
+RECOVERY_HOLD_THRESHOLD = 60.0
+
 
 def _classify_big3_exercise(exercise_name: str) -> str | None:
     """Classify an exercise name as squat/bench/deadlift or return None."""
@@ -669,6 +673,21 @@ async def suggest_strength_updates(
             "the completed session.",
         }
 
+    # C4 — autoregulation gate: a low recovery score suppresses progression.
+    from app.models.daily_metric import DailyMetric
+
+    rec_result = await db.execute(
+        select(DailyMetric.recovery_score)
+        .where(
+            DailyMetric.user_id == user_id,
+            DailyMetric.recovery_score.isnot(None),
+        )
+        .order_by(DailyMetric.metric_date.desc())
+        .limit(1)
+    )
+    recovery = rec_result.scalar_one_or_none()
+    low_recovery = recovery is not None and recovery < RECOVERY_HOLD_THRESHOLD
+
     # Find upcoming strength days and suggest weight updates for big 3
     upcoming_days = [
         d for d in strength_days if d.day_date >= today and d.planned_exercises
@@ -705,7 +724,10 @@ async def suggest_strength_updates(
             # RPE-based weight suggestion
             rpe_gap = actual_rpe - planned_rpe  # positive = struggled
 
-            if rpe_gap > 0.5:
+            if low_recovery:
+                # Recovery is down — hold the load rather than progress it.
+                suggested_weight = round(completed_weight, 1)
+            elif rpe_gap > 0.5:
                 # User struggled — suggest maintaining weight
                 suggested_weight = round(completed_weight, 1)
             elif rpe_gap < -0.5:
@@ -741,6 +763,10 @@ async def suggest_strength_updates(
             )
 
     summary_parts.append(f"Based on session from {latest_day.day_date}.")
+    if low_recovery:
+        summary_parts.append(
+            f"Recovery is low ({recovery:.0f}%) — holding weights this week."
+        )
 
     return {
         "plan_id": plan.id,
