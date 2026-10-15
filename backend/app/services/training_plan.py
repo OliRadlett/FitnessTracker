@@ -71,8 +71,17 @@ FOCUS_ROTATION = ["squat", "bench", "deadlift"]
 
 # Valid planned_focus values (merged from old focus + session_type).
 VALID_FOCUS_VALUES = {
-    "squat", "bench", "deadlift", "overhead_press", "accessories", "full_body",
-    "push", "pull", "legs", "upper", "lower",
+    "squat",
+    "bench",
+    "deadlift",
+    "overhead_press",
+    "accessories",
+    "full_body",
+    "push",
+    "pull",
+    "legs",
+    "upper",
+    "lower",
 }
 
 # Map common free-text focus strings (from LiftingSession.focus) to valid values.
@@ -112,6 +121,7 @@ def _normalise_focus(raw: str | None) -> str | None:
         return None
     key = raw.strip().lower()
     return _FOCUS_ALIASES.get(key, raw.strip())
+
 
 # Cycle-day TSS multipliers relative to daily_tss (weekly TSS / 4.5 ride days).
 _RIDE_MULTIPLIERS = {
@@ -458,9 +468,7 @@ def _strength_plan_days(
             elif dow in (0, 2, 4):  # Mon, Wed, Fri = main strength days
                 day_focus = focuses[(week + dow // 2) % len(focuses)]
                 weight = current_weights.get(day_focus)
-                days.append(
-                    _strength_day(day_date, day_focus, "main", duration_min=75)
-                )
+                days.append(_strength_day(day_date, day_focus, "main", duration_min=75))
                 # Override RPE/sets/reps on the last exercise of main
                 if days[-1].planned_exercises:
                     for ex in days[-1].planned_exercises:
@@ -478,9 +486,7 @@ def _strength_plan_days(
                     days[-1].workout_description = template_week
             elif dow == 1 or dow == 3:  # Tue, Thu = accessories
                 days.append(
-                    _strength_day(
-                        day_date, focus, "accessories", duration_min=45
-                    )
+                    _strength_day(day_date, focus, "accessories", duration_min=45)
                 )
                 if days[-1].planned_exercises:
                     for ex in days[-1].planned_exercises:
@@ -491,11 +497,7 @@ def _strength_plan_days(
                         if current_reps is not None:
                             ex["reps"] = current_reps + 2
             else:  # Sat = optional second session or rest
-                days.append(
-                    _strength_day(
-                        day_date, focus, "main", duration_min=60
-                    )
-                )
+                days.append(_strength_day(day_date, focus, "main", duration_min=60))
                 if days[-1].planned_exercises:
                     for ex in days[-1].planned_exercises:
                         if current_rpe is not None:
@@ -514,8 +516,8 @@ def _strength_plan_days(
 SUGGEST_WEIGHT_THRESHOLD = 85.0
 
 # Weight increments based on RPE proximity
-_STEP_WELL_EASY = 5.0    # RPE 0.5+ below target: +5kg
-_STEP_WELL_MATCH = 2.5   # RPE within ±0.5 of target: +2.5kg
+_STEP_WELL_EASY = 5.0  # RPE 0.5+ below target: +5kg
+_STEP_WELL_MATCH = 2.5  # RPE within ±0.5 of target: +2.5kg
 
 
 def _classify_big3_exercise(exercise_name: str) -> str | None:
@@ -565,9 +567,7 @@ async def suggest_strength_updates(
     for day in reversed(strength_days):  # most recent first
         if day.day_date < today and day.lifting_session_id:
             try:
-                conformity = await get_day_conformity(
-                    db, user_id, plan_id, day.id
-                )
+                conformity = await get_day_conformity(db, user_id, plan_id, day.id)
                 completed_days.append((day, conformity))
             except (ValueError, LookupError):
                 continue
@@ -632,7 +632,8 @@ async def suggest_strength_updates(
 
         # Find matching sets in the session
         matching_sets = [
-            s for s in session.sets
+            s
+            for s in session.sets
             if _classify_big3_exercise(s.exercise_name) == big3_name
         ]
 
@@ -670,8 +671,7 @@ async def suggest_strength_updates(
 
     # Find upcoming strength days and suggest weight updates for big 3
     upcoming_days = [
-        d for d in strength_days
-        if d.day_date >= today and d.planned_exercises
+        d for d in strength_days if d.day_date >= today and d.planned_exercises
     ]
 
     suggestions: list[dict] = []
@@ -685,7 +685,7 @@ async def suggest_strength_updates(
     for up_day in upcoming_days[:3]:  # next 3 strength days
         ex_suggestions: list[dict] = []
 
-        for planned_ex in (up_day.planned_exercises or []):
+        for planned_ex in up_day.planned_exercises or []:
             ex_name = planned_ex.get("exercise", "")
             big3_name = _classify_big3_exercise(ex_name)
             if big3_name is None:
@@ -715,23 +715,27 @@ async def suggest_strength_updates(
                 # RPE matched well — suggest +2.5kg
                 suggested_weight = round(completed_weight + _STEP_WELL_MATCH, 1)
 
-            ex_suggestions.append({
-                "exercise_name": planned_ex.get("exercise", ""),
-                "old_weight_kg": upcoming_weight,
-                "suggested_weight_kg": suggested_weight,
-                "rpe": actual_rpe,
-                "sets": planned_ex.get("sets", 0),
-                "reps": planned_ex.get("reps", 0),
-            })
+            ex_suggestions.append(
+                {
+                    "exercise_name": planned_ex.get("exercise", ""),
+                    "old_weight_kg": upcoming_weight,
+                    "suggested_weight_kg": suggested_weight,
+                    "rpe": actual_rpe,
+                    "sets": planned_ex.get("sets", 0),
+                    "reps": planned_ex.get("reps", 0),
+                }
+            )
 
         if ex_suggestions:
-            suggestions.append({
-                "day_id": str(up_day.id),
-                "day_date": up_day.day_date.isoformat(),
-                "sport": "strength",
-                "planned_focus": up_day.planned_focus,
-                "exercises": ex_suggestions,
-            })
+            suggestions.append(
+                {
+                    "day_id": str(up_day.id),
+                    "day_date": up_day.day_date.isoformat(),
+                    "sport": "strength",
+                    "planned_focus": up_day.planned_focus,
+                    "exercises": ex_suggestions,
+                }
+            )
             summary_parts.append(
                 f"  {up_day.day_date}: {len(ex_suggestions)} exercises"
             )
@@ -848,7 +852,9 @@ async def save_plan_days(
                 difficulty = _TYPE_TO_DIFFICULTY.get(row.planned_type)
                 if difficulty and row.planned_duration_min:
                     # Only auto-fill if user didn't explicitly set these values
-                    needs_fill = (row.planned_tss is None) or (row.planned_power_watts is None)
+                    needs_fill = (row.planned_tss is None) or (
+                        row.planned_power_watts is None
+                    )
                     if needs_fill:
                         targets = plan_workout(
                             ftp=ftp,
@@ -958,6 +964,7 @@ async def create_plan(
         end_date=data.end_date,
         plan_type=data.plan_type,
         status=data.status,
+        strength_progression=data.strength_progression,  # S1 rules (nullable)
     )
     db.add(plan)
     await db.flush()
@@ -1038,8 +1045,7 @@ async def _estimate_strength_volume(
     rather than scoring against a made-up number.
     """
     result = await db.execute(
-        select(func.avg(LiftingSession.total_volume_kg))
-        .where(
+        select(func.avg(LiftingSession.total_volume_kg)).where(
             LiftingSession.user_id == user_id,
             LiftingSession.total_volume_kg.isnot(None),
             LiftingSession.total_volume_kg > 0,
@@ -1116,10 +1122,7 @@ async def generate_plan(
     plan = TrainingPlan(
         user_id=user_id,
         name=data.name,
-        description=(
-            f"Auto-generated {data.template_type} plan "
-            f"({data.weeks} weeks)"
-        ),
+        description=(f"Auto-generated {data.template_type} plan ({data.weeks} weeks)"),
         start_date=data.start_date,
         end_date=end_date,
         plan_type=data.template_type,
@@ -1336,9 +1339,11 @@ async def refresh_strength_targets(
     ``planned_exercises`` entry carrying a ``pct_1rm`` basis is re-solved as
     ``weight_kg = round(e1RM × pct_1rm, 1)`` with the e1RM resolved via
     ``lifting.resolve_exercise_e1rm`` (stored PR first, else best recent set).
-    Entries without a basis, entries with an unresolvable e1RM, past and
-    completed days, and non-strength days are skipped. ``planned_volume_kg``
-    is re-derived from the refreshed list (same rule as ``update_plan_day``).
+    Entries the user set by hand (``weight_source == 'manual'``) are skipped
+    even when they carry a basis (S1 §5 — manual always wins), as are entries
+    without a basis, entries with an unresolvable e1RM, past and completed
+    days, and non-strength days. ``planned_volume_kg`` is re-derived from the
+    refreshed list (same rule as ``update_plan_day``).
 
     Returns ``{"strength_refreshed": [...]}`` matching
     ``RefreshTargetsResponse.strength_refreshed``.
@@ -1364,6 +1369,12 @@ async def refresh_strength_targets(
         changed = False
         for ex in exercises:
             if not isinstance(ex, dict):
+                new_list.append(ex)
+                continue
+            # S1 §5: manual always wins. An entry the user typed by hand is
+            # never re-solved, even though it may still carry a stale pct_1rm
+            # from the suggestion it replaced.
+            if ex.get("weight_source") == "manual":
                 new_list.append(ex)
                 continue
             pct = ex.get("pct_1rm")
@@ -1426,6 +1437,541 @@ async def refresh_strength_targets(
 
     await db.flush()
     return {"strength_refreshed": refreshed}
+
+
+# ── S1: strength progression engine ──────────────────────────────────────
+#
+# Three operations over one idea: a plan is a *program*, so an exercise's load
+# in week N is a function of recent history (the anchor) and the plan's own
+# previous weeks (the progression).
+#
+#   suggest      → proposes weights; writes nothing
+#   apply        → writes the ones the user accepted (weight_source='suggested')
+#   materialise  → fills per-week sets/reps/RPE cells from the stored rules
+#
+# Manual always wins: an entry carrying ``weight_source == 'manual'`` is skipped
+# by suggest, apply and refresh_strength_targets unless ``force=True``. A
+# suggestion is advice, never an overwrite.
+
+# Deload scaling when a rule sets ``deload_every`` but no explicit factor.
+DEFAULT_DELOAD_FACTOR = 0.9
+
+
+def _plan_week1_start(plan: TrainingPlan) -> date:
+    """Monday of the week containing the plan's start date (week 1)."""
+    return plan.start_date - timedelta(days=plan.start_date.weekday())
+
+
+def _plan_total_weeks(plan: TrainingPlan) -> int:
+    return ((plan.end_date - _plan_week1_start(plan)).days // 7) + 1
+
+
+def _week_number_for(plan: TrainingPlan, day_date: date) -> int:
+    """1-indexed Monday-based week number, matching ``GET /week/{week_number}``."""
+    return ((day_date - _plan_week1_start(plan)).days // 7) + 1
+
+
+def _rules_by_exercise(raw: list | None) -> dict[str, dict]:
+    """Index stored progression rules by normalised exercise key.
+
+    Rules are stored as raw JSONB, so every read has to tolerate a malformed
+    row (a hand-edited plan, an older payload) rather than raising — a bad rule
+    means "no rule", which degrades to the stateless suggestion.
+    """
+    from app.services.exercise_db import normalise_exercise_name
+
+    out: dict[str, dict] = {}
+    for rule in raw or []:
+        if not isinstance(rule, dict):
+            continue
+        name = str(rule.get("exercise") or "").strip()
+        if not name:
+            continue
+        out[normalise_exercise_name(name)] = rule
+    return out
+
+
+def _as_float(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_int(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _rule_targets(
+    rule: dict, week: int
+) -> tuple[int | None, int | None, float | None, bool]:
+    """Resolve one rule's ``(sets, reps, rpe, is_deload)`` for a given week.
+
+    ``is_deload`` is ``week % deload_every == 0``. A deload week **suppresses
+    the ramp** — the cell carries the previous week's targets (no increment)
+    scaled back (RPE modes lose 1 RPE; load modes are scaled in the resolver),
+    and the ramp resumes its normal trajectory the following week.
+    """
+    start = rule.get("start") or {}
+    weekly = rule.get("weekly") or {}
+    deload_every = _as_int(rule.get("deload_every"))
+    is_deload = bool(deload_every) and week % deload_every == 0
+
+    ramp_weeks = week - 1
+    if is_deload:
+        ramp_weeks = week - 2  # no increment on the deload week itself
+    ramp_weeks = max(0, ramp_weeks)
+
+    sets = _as_int(start.get("sets"))
+    reps = _as_int(start.get("reps"))
+    rpe = _as_float(start.get("rpe"))
+
+    sets_delta = _as_int(weekly.get("sets_delta"))
+    reps_delta = _as_int(weekly.get("reps_delta"))
+    rpe_delta = _as_float(weekly.get("rpe_delta"))
+
+    if sets is not None and sets_delta:
+        sets = max(1, sets + sets_delta * ramp_weeks)
+    if reps is not None and reps_delta:
+        reps = max(1, reps + reps_delta * ramp_weeks)
+    if rpe is not None and rpe_delta:
+        rpe = min(10.0, max(1.0, rpe + rpe_delta * ramp_weeks))
+    if is_deload and rpe is not None:
+        rpe = max(1.0, rpe - 1.0)
+    return sets, reps, rpe, is_deload
+
+
+def _prescribed_loads_by_week(plan: TrainingPlan) -> dict[tuple[str, int], float]:
+    """``{(normalised exercise, week): prescribed kg}`` across the plan.
+
+    The later day in a week wins: if an exercise appears twice, the second
+    session is the one the next week chains off. Manual and suggested weights
+    are both included — ``load`` mode chains off *what was prescribed*.
+    """
+    from app.services.exercise_db import normalise_exercise_name
+
+    seen: dict[tuple[str, int], tuple[date, float]] = {}
+    for day in plan.days:
+        if day.sport != "strength":
+            continue
+        week = _week_number_for(plan, day.day_date)
+        for ex in day.planned_exercises or []:
+            if not isinstance(ex, dict):
+                continue
+            name = str(ex.get("exercise") or "").strip()
+            kg = _as_float(ex.get("weight_kg"))
+            if not name or kg is None:
+                continue
+            key = (normalise_exercise_name(name), week)
+            current = seen.get(key)
+            if current is None or day.day_date >= current[0]:
+                seen[key] = (day.day_date, kg)
+    return {key: value[1] for key, value in seen.items()}
+
+
+def _recompute_planned_volume(day: TrainingPlanDay) -> None:
+    """Re-derive ``planned_volume_kg`` from the day's exercise list."""
+    entries = day.planned_exercises or []
+    if any(isinstance(e, dict) and e.get("weight_kg") for e in entries):
+        day.planned_volume_kg = round(
+            sum(
+                (e.get("weight_kg") or 0) * (e.get("sets") or 0) * (e.get("reps") or 0)
+                for e in entries
+                if isinstance(e, dict)
+            ),
+            2,
+        )
+    else:
+        day.planned_volume_kg = None
+
+
+async def suggest_strength_progression(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    scope: str = "plan",
+    day_id: uuid.UUID | None = None,
+    week: int | None = None,
+    force: bool = False,
+) -> dict:
+    """Propose a working weight per planned exercise — writes nothing (S1 §4.2).
+
+    The anchor is the current e1RM (recent history only, 84-day window), scaled
+    by the rule's optional ``training_max_pct``; the progression is either the
+    week's RPE (``mode='rpe'``, default) or the previous week's prescribed load
+    chained by ``load_delta_pct``/``load_delta_kg`` (``mode='load'``, seeded
+    from history when there is no previous week). Deload weeks scale the result
+    by ``deload_factor``.
+
+    Every target explains itself: ``basis_1rm_kg``/``basis_source``/
+    ``basis_date`` (what it is anchored on), ``pct_1rm``/``prev_week_kg``/
+    ``delta_kg``/``mode``/``is_deload`` (how it was derived), and
+    ``safety_warning`` when the result is ≥95% of the *true* e1RM. Skipped
+    entries carry ``skipped_reason`` instead of a weight:
+    ``manual`` | ``no_basis`` | ``reps_too_high`` | ``no_target``.
+
+    ``scope`` limits the pass to one day, one week, or the whole plan. Past and
+    completed days are included: this is the program matrix's read, and it must
+    describe every week the user is looking at.
+    """
+    from app.services.exercise_db import normalise_exercise_name
+    from app.services.lifting import (
+        MAX_REPS_FOR_1RM_PR,
+        NEAR_MAXIMAL_LOAD_WARNING,
+        NEAR_MAXIMAL_PCT,
+        resolve_exercise_e1rm_basis,
+        round_to_plate,
+        rpe_to_pct,
+    )
+
+    if scope not in ("day", "week", "plan"):
+        raise ValueError(f"Invalid scope: {scope}")
+    if scope == "day" and day_id is None:
+        raise ValueError("day_id is required when scope='day'")
+    if scope == "week" and week is None:
+        raise ValueError("week is required when scope='week'")
+
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    days = [d for d in plan.days if d.sport == "strength"]
+    if scope == "day":
+        if not any(d.id == day_id for d in days):
+            raise ValueError("Plan day not found")
+        days = [d for d in days if d.id == day_id]
+    elif scope == "week":
+        days = [d for d in days if _week_number_for(plan, d.day_date) == week]
+    days.sort(key=lambda d: d.day_date)
+
+    rules = _rules_by_exercise(plan.strength_progression)
+    prescribed = _prescribed_loads_by_week(plan)
+
+    targets: list[dict] = []
+    for day in days:
+        week_number = _week_number_for(plan, day.day_date)
+        for index, ex in enumerate(day.planned_exercises or []):
+            if not isinstance(ex, dict):
+                continue
+            exercise = str(ex.get("exercise") or "")
+            base = {
+                "day_id": day.id,
+                "day_date": day.day_date,
+                "week": week_number,
+                "exercise_index": index,
+                "exercise": exercise,
+                "sets": _as_int(ex.get("sets")),
+                "reps": _as_int(ex.get("reps")),
+                "rpe": _as_float(ex.get("rpe"))
+                if ex.get("rpe") is not None
+                else _as_float(ex.get("target_rpe")),  # target_rpe: deprecated
+            }
+            rule = rules.get(normalise_exercise_name(exercise), {})
+            mode = rule.get("mode") or "rpe"
+            if mode not in ("rpe", "load"):
+                mode = "rpe"
+            base["mode"] = mode
+
+            if ex.get("weight_source") == "manual" and not force:
+                targets.append({**base, "skipped_reason": "manual"})
+                continue
+
+            reps = base["reps"]
+            rpe = base["rpe"]
+            explicit_pct = _as_float(ex.get("pct_1rm"))
+            if reps is None or reps < 1 or (rpe is None and explicit_pct is None):
+                targets.append({**base, "skipped_reason": "no_target"})
+                continue
+            if reps > MAX_REPS_FOR_1RM_PR:
+                # Brzycki degrades past 12 reps: the estimate is not trustworthy
+                # enough to prescribe from, so it is flagged rather than shown.
+                targets.append({**base, "skipped_reason": "reps_too_high"})
+                continue
+
+            basis = await resolve_exercise_e1rm_basis(db, user_id, exercise)
+            if basis.e1rm_kg is None:
+                targets.append({**base, "skipped_reason": "no_basis"})
+                continue
+
+            training_max_pct = _as_float(rule.get("training_max_pct")) or 1.0
+            prescribe_basis = basis.e1rm_kg * training_max_pct
+            pct = rpe_to_pct(reps, rpe) if rpe is not None else explicit_pct
+
+            _sets, _reps, _rule_rpe, is_deload = _rule_targets(rule, week_number)
+            weekly = rule.get("weekly") or {}
+            prev_week_kg = prescribed.get(
+                (normalise_exercise_name(exercise), week_number - 1)
+            )
+
+            if mode == "load" and prev_week_kg:
+                kg = prev_week_kg
+                load_pct = _as_float(weekly.get("load_delta_pct"))
+                if load_pct:
+                    kg *= 1 + load_pct
+                load_kg = _as_float(weekly.get("load_delta_kg"))
+                if load_kg:
+                    kg += load_kg
+            else:
+                # rpe mode, or load mode with nothing to chain from (seed from
+                # history — a new exercise mid-plan has no previous week).
+                kg = prescribe_basis * pct
+
+            if is_deload:
+                deload_factor = _as_float(rule.get("deload_factor"))
+                kg *= deload_factor if deload_factor else DEFAULT_DELOAD_FACTOR
+
+            kg = round_to_plate(kg)
+            # Report the fraction the *rounded* weight implies, so a later
+            # refresh-targets re-solve reproduces this same number instead of
+            # drifting by the plate rounding.
+            reported_pct = round(kg / basis.e1rm_kg, 4) if basis.e1rm_kg else None
+            safety_warning = (
+                NEAR_MAXIMAL_LOAD_WARNING
+                if kg / basis.e1rm_kg >= NEAR_MAXIMAL_PCT
+                else None
+            )
+
+            targets.append(
+                {
+                    **base,
+                    "rpe": rpe,
+                    "weight_kg": kg,
+                    "pct_1rm": reported_pct,
+                    "basis_1rm_kg": round(basis.e1rm_kg, 1),
+                    "basis_source": basis.source,
+                    "basis_date": basis.basis_date,
+                    "training_max_pct": training_max_pct,
+                    "prev_week_kg": prev_week_kg,
+                    "delta_kg": (
+                        round(kg - prev_week_kg, 2)
+                        if prev_week_kg is not None
+                        else None
+                    ),
+                    "is_deload": is_deload,
+                    "safety_warning": safety_warning,
+                    "skipped_reason": None,
+                }
+            )
+
+    return {"plan_id": plan.id, "targets": targets}
+
+
+async def apply_strength_progression(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    targets: list[dict],
+    force: bool = False,
+) -> dict:
+    """Write accepted suggestions into day entries (S1 §5).
+
+    Each target addresses one entry by ``(day_id, exercise_index)``. A written
+    entry becomes ``weight_source='suggested'`` with the ``pct_1rm`` basis that
+    produced it, so ``refresh-targets`` can re-solve it when the e1RM moves.
+    Entries the user set by hand (``weight_source == 'manual'``) are skipped
+    unless ``force=True`` — manual always wins. One flush for the whole batch,
+    so a partial failure cannot leave half a program applied.
+
+    Returns ``{"applied": [...], "skipped": [...]}``; skipped entries carry
+    ``skipped_reason`` (``manual`` | ``day_not_found`` | ``index_out_of_range``
+    | ``invalid_entry``).
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    days_by_id = {day.id: day for day in plan.days}
+    applied: list[dict] = []
+    skipped: list[dict] = []
+    touched: set[uuid.UUID] = set()
+
+    for target in targets:
+        day_id = target.get("day_id")
+        index = _as_int(target.get("exercise_index"))
+        result = {
+            "day_id": day_id,
+            "exercise_index": index if index is not None else -1,
+            "exercise": "",
+            "weight_kg": _as_float(target.get("weight_kg")),
+            "pct_1rm": _as_float(target.get("pct_1rm")),
+        }
+        day = None
+        if day_id is not None:
+            try:
+                day = days_by_id.get(uuid.UUID(str(day_id)))
+            except (TypeError, ValueError):
+                day = None
+        if day is None:
+            skipped.append(
+                {**result, "applied": False, "skipped_reason": "day_not_found"}
+            )
+            continue
+        exercises = list(day.planned_exercises or [])
+        if index is None or index < 0 or index >= len(exercises):
+            skipped.append(
+                {**result, "applied": False, "skipped_reason": "index_out_of_range"}
+            )
+            continue
+        ex = exercises[index]
+        if not isinstance(ex, dict):
+            skipped.append(
+                {**result, "applied": False, "skipped_reason": "invalid_entry"}
+            )
+            continue
+        result["exercise"] = str(ex.get("exercise") or "")
+        result["previous_weight_kg"] = _as_float(ex.get("weight_kg"))
+        result["previous_weight_source"] = ex.get("weight_source")
+        if ex.get("weight_source") == "manual" and not force:
+            skipped.append({**result, "applied": False, "skipped_reason": "manual"})
+            continue
+
+        weight_kg = result["weight_kg"]
+        if weight_kg is None or weight_kg <= 0:
+            skipped.append(
+                {**result, "applied": False, "skipped_reason": "invalid_entry"}
+            )
+            continue
+
+        updated = dict(ex)
+        updated["weight_kg"] = weight_kg
+        if result["pct_1rm"] is not None:
+            updated["pct_1rm"] = result["pct_1rm"]
+        updated["weight_source"] = "suggested"
+        exercises[index] = updated
+        # Reassign (don't mutate in place) so the JSONB column flags dirty.
+        day.planned_exercises = exercises
+        touched.add(day.id)
+        applied.append({**result, "applied": True, "skipped_reason": None})
+
+    for day in plan.days:
+        if day.id in touched:
+            _recompute_planned_volume(day)
+
+    await db.flush()
+    return {"plan_id": plan.id, "applied": applied, "skipped": skipped}
+
+
+async def materialise_strength_progression(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    rules: list[dict] | None = None,
+    weeks: list[int] | None = None,
+    mode: str = "fill-empty",
+) -> dict:
+    """Fill per-week cells from the plan's rules (S1 §3.2).
+
+    For each rule, each target week and each strength day in that week, the
+    day's entry for that exercise gets the rule's resolved ``sets``/``reps``/
+    ``rpe``. ``mode='fill-empty'`` writes only fields the entry has no value
+    for; ``mode='replace'`` overwrites them. Weights are deliberately **not**
+    written here — they come from ``suggest`` + ``apply``, so a rule never
+    silently overwrites a hand-set load.
+
+    A rule whose exercise does not appear on any strength day in a week is
+    reported under ``skipped`` rather than invented onto that day: materialise
+    edits the program, it does not add exercises to days that don't train them.
+
+    Supplying ``rules`` persists them on the plan (replacing the stored list);
+    omitting them materialises whatever the plan already has.
+    """
+    from app.services.exercise_db import normalise_exercise_name
+
+    if mode not in ("replace", "fill-empty"):
+        raise ValueError(f"Invalid mode: {mode}")
+
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    if rules is not None:
+        plan.strength_progression = [dict(r) for r in rules if isinstance(r, dict)]
+
+    stored = plan.strength_progression or []
+    total_weeks = _plan_total_weeks(plan)
+    if weeks:
+        target_weeks = sorted({w for w in weeks if 1 <= w <= total_weeks})
+    else:
+        target_weeks = list(range(1, total_weeks + 1))
+
+    strength_days = [d for d in plan.days if d.sport == "strength"]
+    days_by_week: dict[int, list[TrainingPlanDay]] = {}
+    for day in strength_days:
+        days_by_week.setdefault(_week_number_for(plan, day.day_date), []).append(day)
+
+    entries_updated: list[dict] = []
+    skipped: list[dict] = []
+    touched: set[uuid.UUID] = set()
+
+    for rule in stored:
+        if not isinstance(rule, dict):
+            continue
+        name = str(rule.get("exercise") or "").strip()
+        if not name:
+            continue
+        key = normalise_exercise_name(name)
+        for week in target_weeks:
+            sets, reps, rpe, is_deload = _rule_targets(rule, week)
+            matched = False
+            for day in days_by_week.get(week, []):
+                exercises = list(day.planned_exercises or [])
+                day_changed = False
+                for index, ex in enumerate(exercises):
+                    if not isinstance(ex, dict):
+                        continue
+                    if normalise_exercise_name(str(ex.get("exercise") or "")) != key:
+                        continue
+                    matched = True
+                    updates: dict = {}
+                    for field, value in (
+                        ("sets", sets),
+                        ("reps", reps),
+                        ("rpe", rpe),
+                    ):
+                        if value is None:
+                            continue
+                        if mode == "fill-empty" and ex.get(field) is not None:
+                            continue
+                        if ex.get(field) == value:
+                            continue
+                        updates[field] = value
+                    if not updates:
+                        continue
+                    new_ex = {**ex, **updates}
+                    exercises[index] = new_ex
+                    day_changed = True
+                    entries_updated.append(
+                        {
+                            "day_id": day.id,
+                            "day_date": day.day_date,
+                            "week": week,
+                            "exercise_index": index,
+                            "exercise": str(ex.get("exercise") or ""),
+                            "sets": new_ex.get("sets"),
+                            "reps": new_ex.get("reps"),
+                            "rpe": new_ex.get("rpe"),
+                            "is_deload": is_deload,
+                        }
+                    )
+                if day_changed:
+                    day.planned_exercises = exercises
+                    touched.add(day.id)
+            if not matched:
+                skipped.append(
+                    {"week": week, "exercise": name, "reason": "no_matching_entry"}
+                )
+
+    await db.flush()
+    return {
+        "plan_id": plan.id,
+        "rules_saved": len(plan.strength_progression or []),
+        "days_updated": len(touched),
+        "entries_updated": entries_updated,
+        "skipped": skipped,
+    }
 
 
 async def update_plan_day(
@@ -1852,10 +2398,13 @@ async def copy_session_to_plan_day(
         )
 
     day.planned_exercises = planned_exercises
-    day.planned_volume_kg = sum(
-        (ex["weight_kg"] or 0) * ex["sets"] * ex["reps"]
-        for ex in planned_exercises
-    ) if any(ex.get("weight_kg") for ex in planned_exercises) else None
+    day.planned_volume_kg = (
+        sum(
+            (ex["weight_kg"] or 0) * ex["sets"] * ex["reps"] for ex in planned_exercises
+        )
+        if any(ex.get("weight_kg") for ex in planned_exercises)
+        else None
+    )
     if not day.planned_focus and session.focus:
         day.planned_focus = _normalise_focus(session.focus)
 

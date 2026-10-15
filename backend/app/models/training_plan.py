@@ -35,6 +35,12 @@ class TrainingPlan(Base):
         ForeignKey("events.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # S1 progression rules — per-exercise ramp (mode, start, weekly deltas,
+    # deload, training max). Nullable and additive: a plan without rules
+    # behaves exactly as before (suggestions are stateless e1RM × %1RM).
+    strength_progression: Mapped[list[dict] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -77,7 +83,7 @@ class TrainingPlanDay(Base):
     planned_focus: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )  # squat, bench, deadlift, overhead_press, accessories, full_body,
-       # push, pull, legs, upper, lower
+    # push, pull, legs, upper, lower
     planned_exercises: Mapped[list[dict] | None] = mapped_column(JSONB, nullable=True)
     planned_volume_kg: Mapped[float | None] = mapped_column(Float, nullable=True)
     planned_rpe: Mapped[float | None] = mapped_column(Float, nullable=True)
