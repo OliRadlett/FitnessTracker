@@ -477,6 +477,12 @@ async def read_wahoo_zones(db: AsyncSession, user_id: uuid.UUID) -> WahooZonesSt
 
     Degrades per-component (an unavailable Wahoo read still returns the local zones
     and the reason) so the card can always render something true.
+
+    ``can_write`` answers "may the athlete press *Push now* right now", which needs a
+    connection, an FTP and no Wahoo-side error — **not** the opt-in toggle. The toggle
+    governs the *automatic* path only; a manual push is its own consent (D1), so
+    requiring the toggle here would disable the very button that repairs drift for
+    someone who declined automation.
     """
     profile = await _load_profile(db, user_id)
     state = local_zone_sets(profile)
@@ -538,7 +544,6 @@ async def read_wahoo_zones(db: AsyncSession, user_id: uuid.UUID) -> WahooZonesSt
     status.drift = _drift_rows(state, status.wahoo_sets)
     status.can_write = bool(
         WRITE_PATH_IMPLEMENTED
-        and opt_in
         and profile is not None
         and profile.ftp_watts
         and not status.error_code

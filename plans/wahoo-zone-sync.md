@@ -339,6 +339,10 @@ so the push changes the *anchor*, not the athlete's zone model.
 - The plan sketched a `{target: "power"｜"all"}` body; dropped, because HR has no
   writable surface at all, so the only meaningful target is power and a body would be
   ceremony around a constant.
+- `can_write` on the status payload means "may the athlete press *Push now* now" —
+  connection + FTP + no Wahoo-side error, and **not** the opt-in toggle. Gating it on
+  the toggle would disable the button that repairs drift for someone who declined
+  automation, contradicting D1.
 - `PATCH /cycling/profile` accepts `push_wahoo_zones`. When FTP changes, or when the
   toggle is switched **on**, the handler commits and then enqueues — see §7 D5 for
   why the order is load-bearing. The card also pushes immediately on toggle-on, so

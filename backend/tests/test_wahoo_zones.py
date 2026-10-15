@@ -308,20 +308,31 @@ class TestReadWahooZonesDegradation:
         assert status.wahoo_sets[0].id == 5
         assert status.drift[0].delta == 50.0
 
-    async def test_can_write_tracks_opt_in_and_connection(self, stub_wahoo):
-        # Opted out: nothing to advertise, even though everything else is ready.
+    async def test_can_write_does_not_require_the_automatic_opt_in(self, stub_wahoo):
+        # D1: the toggle governs the *automatic* path only. A manual push is its own
+        # consent, so gating it on the toggle would disable the button that repairs
+        # drift for someone who declined automation.
         stub_wahoo(profile=_profile(ftp=200.0, opt_in=False), connection=_connection())
         status = await wz.read_wahoo_zones(db=None, user_id="u1")
-        assert status.can_write is False
+        assert status.opt_in is False
+        assert status.can_write is True
 
-        # Opted in with a connection and an FTP: the write path exists, so the API
-        # may advertise it.
         stub_wahoo(profile=_profile(ftp=200.0, opt_in=True), connection=_connection())
         status = await wz.read_wahoo_zones(db=None, user_id="u1")
         assert status.can_write is True
 
     async def test_can_write_false_without_ftp(self, stub_wahoo):
         stub_wahoo(profile=_profile(ftp=None, opt_in=True), connection=_connection())
+        status = await wz.read_wahoo_zones(db=None, user_id="u1")
+        assert status.can_write is False
+
+    async def test_can_write_false_when_wahoo_side_is_broken(self, stub_wahoo):
+        # A read that failed tells the card *something*, but not that writing is safe.
+        stub_wahoo(
+            profile=_profile(ftp=200.0, opt_in=True),
+            connection=_connection(),
+            error=_http_status_error(403),
+        )
         status = await wz.read_wahoo_zones(db=None, user_id="u1")
         assert status.can_write is False
 
