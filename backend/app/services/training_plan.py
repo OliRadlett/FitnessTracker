@@ -1466,6 +1466,29 @@ async def update_plan_day(
         if not result.scalar_one_or_none():
             raise ValueError("Route not found or not owned by you")
 
+    # Optional manual linking of an actual (the unplanned strip) — validate
+    # ownership so a day can't be pointed at another user's data.
+    activity_id = updates.get("activity_id")
+    if activity_id is not None:
+        result = await db.execute(
+            select(Activity).where(
+                Activity.id == activity_id, Activity.user_id == user_id
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise ValueError("Activity not found or not owned by you")
+
+    lifting_session_id = updates.get("lifting_session_id")
+    if lifting_session_id is not None:
+        result = await db.execute(
+            select(LiftingSession).where(
+                LiftingSession.id == lifting_session_id,
+                LiftingSession.user_id == user_id,
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise ValueError("Lifting session not found or not owned by you")
+
     # Recompute planned_volume_kg from planned_exercises so the two stay
     # in sync (exercises with weight_kg=None yield None volume).
     if updates.get("planned_exercises") is not None:

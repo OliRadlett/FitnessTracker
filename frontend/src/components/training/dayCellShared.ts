@@ -10,7 +10,7 @@
 
 import React from 'react';
 import { Dumbbell, Bike, Bed } from 'lucide-react';
-import type { TrainingWeekDay } from '@/lib/api';
+import type { PlanDayType, TrainingWeekDay } from '@/lib/api';
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -41,6 +41,24 @@ export const FOCUS_LABELS: Record<string, string> = {
   upper: 'Upper',
   lower: 'Lower',
 };
+
+/** Day-type options for the editor's type select. */
+export const DAY_TYPES: PlanDayType[] = ['rest', 'easy', 'moderate', 'hard', 'race'];
+
+/** Strength-focus options for the editor's session-type select. */
+export const FOCUS_OPTIONS = [
+  { value: 'squat', label: 'Squat' },
+  { value: 'bench', label: 'Bench' },
+  { value: 'deadlift', label: 'Deadlift' },
+  { value: 'overhead_press', label: 'Overhead Press' },
+  { value: 'accessories', label: 'Accessories' },
+  { value: 'full_body', label: 'Full Body' },
+  { value: 'push', label: 'Push' },
+  { value: 'pull', label: 'Pull' },
+  { value: 'legs', label: 'Legs' },
+  { value: 'upper', label: 'Upper' },
+  { value: 'lower', label: 'Lower' },
+] as const;
 
 // ─── Status ───────────────────────────────────────────────────────────────
 

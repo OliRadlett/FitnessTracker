@@ -4,7 +4,7 @@
 > **Supersedes**: [`v3-planning-2026-10-12.md`](v3-planning-2026-10-12.md) (widget-level pass on an unchanged page).
 > **Goal**: Turn `/training` into a **plan-first workspace**: the plan is the persistent spine; one editor edits any day of it instantly; evidence and peaks are their own surfaces; and the two-editor split that made editing confusing is **removed**.
 > **Backend is in scope** for this plan (user, 2026-10-12). The editor primitives it needs are small and additive; the training *loops* are sequenced later (§11) but no longer deferred because of a frontend-only constraint.
-> **Read next**: [`docs/review-vs-act.md`](../docs/review-vs-act.md) · [`training-aid-review.md`](training-aid-review.md) (the audit this closes the frontend half of) · [`lifting-redesign-plan.md`](lifting-redesign-plan.md) (sibling page, same pattern) · [`training-strength-programming.md`](training-strength-programming.md) (**companion** — the Plan-mode programming capability: per-week targets + weight suggestions).
+> **Read next**: [`docs/review-vs-act.md`](../docs/review-vs-act.md) · [`training-aid-review.md`](training-aid-review.md) (the audit this closes the frontend half of) · [`lifting-redesign-plan.md`](lifting-redesign-plan.md) (sibling page, same pattern) · [`training-strength-programming.md`](training-strength-programming.md) (**companion** — the Plan-mode programming capability: per-week targets + weight suggestions) · [`training-plan-mode-spec.md`](training-plan-mode-spec.md) (**Phase 1** implementation spec — the one-editor Plan mode).
 
 ---
 
@@ -336,7 +336,10 @@ No DB migration required for the three endpoints (columns already exist).
 - [ ] Fix `CODEMAP.md:20` + `training_plan.py:789` docstrings; deprecate `TrainingPlanUpdate.days`.
 - **Acceptance**: `/training?plan=&day=` lands in Plan mode with the day open; add/delete/swap/move each work from one call; the UI never sends a full `days` array.
 
-### Phase 1 — Plan mode (the unified editor)
+### Phase 1 — Plan mode (the unified editor) — ✅ **shipped** (PR #262)
+> Spec: [`training-plan-mode-spec.md`](training-plan-mode-spec.md). **Prep first**: land the `/training` Playwright guard, and keep the editor + day grid **session-scoped** (a date → list of sessions) so [`multi-sport days`](training-multi-sport-days.md) stays purely additive.
+>
+> **Deviations as shipped**: `WeeklyView.tsx` was kept as the week view (extended with All-weeks + drag) rather than renamed to `plan/PlanMode.tsx` — cosmetic; a rename is optional. `WorkoutPlanner`/`PlanBuilder` are deleted; the destructive full-array save is gone from the UI. The zones reference needed no move (`/cycling` already renders `PowerZonesDisplay`). The unplanned strip shipped with a small backend addition (`activity_id`/`lifting_session_id` on the day PATCH, ownership-validated). **Not E2E-guarded**: the drag→swap/move gesture (HTML5 DnD is flaky in Playwright) — needs a manual check.
 - [ ] `plan/DayEditor` (from `PlanBuilder.DayEditor` + `WeeklyView.ExpandedPanel`), instant commits + debounce; actuals + `DayConformityPanel`.
 - [ ] `plan/PrescriptionPanel` absorbing `WorkoutPlanner`; delete `WorkoutPlanner.tsx`.
 - [ ] `WeekMasterBar`/`DayCell` as the editable cards; drag→swap/move resolver; ⇄ picker; move/swap/duplicate/delete/copy-session actions **with `ConfirmDialog`s on the destructive ones**.
@@ -379,11 +382,13 @@ Mode routing + `?plan=`/`?day=`/`?mode=` round-trip · query-key freeze · `useI
 ## 12. Observations found while planning (not yet fixed)
 
 1. **`StrengthSuggestionsCard.handleApplyAll` is destructive** (`StrengthSuggestionsCard.tsx:44-70`): it PATCHes `planned_exercises: [singleExercise]` once per exercise, so each call **overwrites the day's whole list** — last exercise wins. Merging into the existing list is the fix (Phase 2).
-2. **V3 "Move to next day" doesn't move** (`WeeklyView.tsx:291-310`): swaps planned content between two dates because "PATCH can't change day_date" — but `/reschedule` exists. Phase 1 fixes it.
+2. **V3 "Move to next day" doesn't move** (`WeeklyView.tsx`): swapped planned content between two dates because "PATCH can't change day_date" — but `/reschedule` exists. **Fixed** (Phase 1): the missed-day popover now calls the real `/reschedule` (409 surfaced as a toast) and gains a **Substitute** action backed by `/substitute`.
 3. **`CODEMAP.md:20` is wrong**: the array PATCH is **destructive by omission**, not "non-destructive upsert" (confirmed `training_plan.py:789-829`). Fix in Phase 0.
 4. **Residual emoji** in `WeatherForecast.tsx` (`🌦️`/`💨`/`💧`) — fixed when the strip folds into Plan mode.
 5. **Inline event form is lossy** (`page.tsx:116-121,443`): can't send `target_tss`/`notes`. `EventForm` fixes it (Phase 3).
 6. **`DayEditor` preview-target effect** (`PlanBuilder.tsx:1150-1159`) patches the parent from an effect keyed on `previewTargets` with `onPatch` omitted from deps — re-express as an explicit "apply targets" action.
+7. **`WeeklyView` white-screens on a malformed conformity payload** — `sportChips` reads `conformity.weeks.length` and `ConformitySummaryCard` reads `patterns.length`, both unguarded. The new `/training` E2E guard surfaced this: with an unmocked `/{id}/conformity` (the fixture's general handler returned a *plan object*) the page hit its error boundary with `Cannot read properties of undefined (reading 'length')`. The real API always returns the right shape and Phase 1 deletes this code, so it is **noted, not fixed** — but a one-character optional chain would prevent a whole-page failure.
+8. **The `?day=` deep link could fail to expand the day** — `WeeklyView` latched `highlightDone.current` *before* checking whether the week payload contained the day, so if the effect first ran before the week query resolved it marked itself done and never retried: the day card appeared but never expanded (goal-card deep links landing "on the week" instead of "on the day"). **Fixed** by latching only after the day is found. Caught by the E2E guard's editor assertion — a weaker "the cell exists" check passed straight through it.
 
 ---
 
@@ -427,6 +432,7 @@ The single place listing what is **not yet built** across the training workstrea
 ### In-scope build (these are the order)
 - **This plan** Phases 0–4 (§10) — shell + editor primitives, Plan mode (unified editor), Review, Peaks, mobile.
 - **Companion** `training-strength-programming.md` Phases S1–S4 — progression engine (**+ the one migration**), Program matrix, block tools, coaching aids.
+- **Phase 1 backend addition** (from `training-plan-mode-spec.md` §8/§14): `activity_id` / `lifting_session_id` on `TrainingPlanDayUpdate`, so the unplanned strip can attach an actual to a chosen day (`link-activities` is automatic/date-based and can't target a day).
 
 ### Follow-on phases (backend permitted — §11)
 | # | Item |
@@ -441,7 +447,14 @@ The single place listing what is **not yet built** across the training workstrea
 ### Deferred / excluded (companion §12)
 - Wahoo bulk push (week) — cheap follow-up.
 - Plan PDF export — pattern exists (`export/event-report`).
-- **Multi-sport day** (a ride *and* a lift on one date) — highest-value deferred item, but a **model change** (one day = one sport today); needs its own plan.
+- **Cycle block progression** — week-by-week authoring for rides is accepted for now (`duplicate week → range` covers the bulk case); noted, not scheduled.
+
+### Additional phases / workstreams (2026-10-13 decisions)
+- **Multi-sport days** — a date may hold more than one session. Own phase **after Phase 1**; design in [`training-multi-sport-days.md`](training-multi-sport-days.md). Phase 1 must stay **session-scoped** so this is purely additive.
+- **`/training` E2E guard** — a Playwright spec (mode switching, `?mode=` reload, `?plan=&day=`, Plans surface) lands **before** Phase 1.
+- **Zones reference → `/cycling`** — the `WorkoutPlanner` zone table moves to the cycling page rather than being dropped.
+- **Create consolidation** — Plan mode's "no plan" state links to the Plans surface; the create forms live only there.
+- **Reconcile `.dsh/` into `main`** — dedicated chore PR (the bundle is `prod`-only today, so the branches are permanently non-identical; tooling-only, harmless).
 
 ### Known defects to fix during the build (this plan §12 + companion §4.3)
 1. `StrengthSuggestionsCard.handleApplyAll` overwrites the day's exercise list with a single entry (last wins) → Phase 2.

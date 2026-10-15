@@ -3,8 +3,9 @@
 import React, { useMemo } from 'react';
 import { Calendar, Plus } from 'lucide-react';
 
-import type { TrainingPlan, TrainingPlanSummary } from '@/lib/api';
+import type { Event, TrainingPlan, TrainingPlanSummary } from '@/lib/api';
 import { PlanSwitcher } from './PlanSwitcher';
+import { LoadStrip } from './LoadStrip';
 
 const STATUS_COLORS: Record<string, string> = {
   draft: 'bg-surface-light/20 text-muted border-muted/30',
@@ -17,6 +18,7 @@ export interface PlanSpineProps {
   plan: TrainingPlan | null;
   plans: TrainingPlanSummary[];
   plansLoading?: boolean;
+  events: Event[];
   onSelectPlan: (planId: string) => void;
   /** Opens the Plans surface (`?mode=plans`) — switcher "Manage plans" + New. */
   onOpenPlans: () => void;
@@ -34,6 +36,7 @@ export function PlanSpine({
   plan,
   plans,
   plansLoading,
+  events,
   onSelectPlan,
   onOpenPlans,
 }: PlanSpineProps) {
@@ -66,7 +69,7 @@ export function PlanSpine({
                 <span className="text-xs px-2 py-0.5 rounded-full border bg-accent/10 border-accent/30 text-accent capitalize">
                   {plan.plan_type}
                 </span>
-                <span className="text-xs text-muted inline-flex items-center gap-1">
+                <span className="text-xs text-muted hidden sm:inline-flex items-center gap-1">
                   <Calendar className="w-3 h-3" />
                   {plan.start_date} → {plan.end_date}
                 </span>
@@ -105,6 +108,12 @@ export function PlanSpine({
           <p className="text-xs text-muted mt-0.5">
             {summary.completed_days}/{summary.day_count} days · {pct}%
           </p>
+        </div>
+      )}
+
+      {plan && (
+        <div className="hidden sm:block">
+          <LoadStrip plan={plan} events={events} />
         </div>
       )}
     </div>

@@ -111,7 +111,7 @@ export function LoadStrip({
       <Chip
         label="7d TSS"
         value={weekTss != null && Number.isFinite(weekTss) ? String(Math.round(weekTss)) : '—'}
-        href="/activities"
+        href="/journal"
       />
       <Chip
         label="FTP"

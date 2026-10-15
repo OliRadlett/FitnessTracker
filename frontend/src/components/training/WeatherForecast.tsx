@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { CloudSun, Droplets, Wind } from 'lucide-react';
 import { useAuthFetch, getForecast } from '@/lib/api';
 import type { ForecastDay } from '@/lib/api';
 import { weatherEmoji, getActiveLocale } from '@/lib/utils';
@@ -58,14 +59,14 @@ function DayChip({ day, best }: { day: ForecastDay; best: boolean }) {
       <p className="text-sm text-foreground">
         {Math.round(day.temp_max)}° <span className="text-muted">/ {Math.round(day.temp_min)}°</span>
       </p>
-      <p className="text-[10px] text-muted mt-0.5">
-        💨 {Math.round(day.wind_speed_max)} km/h
+      <p className="text-[10px] text-muted mt-0.5 flex items-center justify-center gap-0.5">
+        <Wind className="w-3 h-3" />{Math.round(day.wind_speed_max)} km/h
       </p>
       {precipPct != null && (
-        <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full ${
+        <span className={`inline-flex items-center gap-0.5 mt-1 text-[10px] px-1.5 py-0.5 rounded-full ${
           precipPct >= 50 ? 'bg-blue-500/20 text-blue-300' : 'text-muted'
         }`}>
-          💧 {precipPct}%
+          <Droplets className="w-3 h-3" />{precipPct}%
         </span>
       )}
     </div>
@@ -91,7 +92,9 @@ export function WeatherForecast() {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>🌦️ 7-Day Forecast</CardTitle>
+          <CardTitle>
+            <CloudSun className="w-4 h-4 inline mr-1.5 -mt-0.5" /> 7-Day Forecast
+          </CardTitle>
         </CardHeader>
         <div className="flex gap-3 overflow-x-auto">
           {Array.from({ length: 7 }).map((_, i) => (
@@ -115,7 +118,9 @@ export function WeatherForecast() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>🌦️ 7-Day Forecast</CardTitle>
+        <CardTitle>
+          <CloudSun className="w-4 h-4 inline mr-1.5 -mt-0.5" /> 7-Day Forecast
+        </CardTitle>
       </CardHeader>
       <div className="flex gap-3 overflow-x-auto pb-1">
         {data.days.map((day) => (

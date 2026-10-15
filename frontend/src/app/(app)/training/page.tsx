@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
+import { useAuthFetch, listGoals } from '@/lib/api';
 import {
   Flag,
   Bike,
@@ -20,10 +20,9 @@ import {
 import { usePageTitle } from '@/lib/usePageTitle';
 import type {
   TrainingPlan,
-  TrainingPlanDay,
   Event,
+  Goal,
   CreateEventPayload,
-  CreateTrainingPlanDayPayload,
   GeneratePlanPayload,
   CreateTrainingPlanPayload,
   UpdateTrainingPlanPayload,
@@ -38,10 +37,14 @@ import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Chart } from '@/components/charts/Chart';
-import { PlanBuilder } from '@/components/training/PlanBuilder';
+import { CreatePlanPanel } from '@/components/training/plan/CreatePlanPanel';
 import { WeeklyView } from '@/components/training/WeeklyView';
-import { WorkoutPlanner } from '@/components/training/WorkoutPlanner';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
+import { ConformityTrendCard } from '@/components/training/review/ConformityTrendCard';
+import { AdaptiveSuggestionsCard } from '@/components/training/AdaptiveSuggestionsCard';
+import { StrengthSuggestionsCard } from '@/components/training/StrengthSuggestionsCard';
+import { PlanGoalsStrip } from '@/components/training/PlanGoalsStrip';
+import { EventForm } from '@/components/training/peaks/EventForm';
 import { EventResultPanel } from '@/components/training/EventResultPanel';
 import { EventAiAnalysisCard } from '@/components/training/EventAiAnalysisCard';
 import { PlanSpine } from '@/components/training/PlanSpine';
@@ -72,36 +75,6 @@ const BLOCK_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }
   strength: Dumbbell,
 };
 
-/**
- * Map a local day to the PATCH payload. IMPORTANT: only include fields the
- * builder manages — the backend upserts by day_date and DELETES dates missing
- * from the array (so we always send ALL days), while untouched columns
- * (activity_id, lifting_session_id, planned_route_id) are preserved because
- * they are omitted here.
- */
-function toDayPayload(d: TrainingPlanDay): CreateTrainingPlanDayPayload {
-  return {
-    day_date: d.day_date,
-    sport: d.sport,
-    planned_type: d.planned_type,
-    planned_tss: d.planned_tss,
-    planned_duration_min: d.planned_duration_min,
-    workout_description: d.workout_description,
-    planned_focus: d.planned_focus ?? null,
-    planned_exercises: d.planned_exercises ?? null,
-    planned_volume_kg: d.planned_volume_kg,
-    planned_rpe: d.planned_rpe,
-    planned_power_watts: d.planned_power_watts,
-    planned_zone: d.planned_zone,
-    warmup_template_id: d.warmup_template_id ?? null,
-    notes: d.notes,
-    completed: d.completed,
-    // Include link fields so drag-to-reassign preserves them on moved days.
-    ...(d.lifting_session_id ? { lifting_session_id: d.lifting_session_id } : {}),
-    ...(d.planned_route_id ? { planned_route_id: d.planned_route_id } : {}),
-  };
-}
-
 export default function TrainingPage() {
   usePageTitle('Training');
   const { authFetch, token } = useAuthFetch();
@@ -122,23 +95,11 @@ export default function TrainingPage() {
     highlightDate,
   } = useTrainingShell();
 
-  // Plan mode holds the temporary Build | Week toggle until Phase 1 unifies the
-  // editor. A `?day=` deep link lands in the week view.
-  const [planView, setPlanView] = useState<'builder' | 'week'>('builder');
-  useEffect(() => {
-    if (highlightDate) setPlanView('week');
-  }, [highlightDate]);
-
   const [showEventForm, setShowEventForm] = useState(false);
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
   const [exportingEventId, setExportingEventId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [eventForm, setEventForm] = useState<CreateEventPayload>({
-    name: '',
-    event_date: '',
-    event_type: 'race',
-    taper_days: 14,
-  });
+  const [linkPlanId, setLinkPlanId] = useState<Record<string, string>>({});
 
   // ── Queries ─────────────────────────────────────────────────────────
   const { data: events } = useQuery<Event[]>({
@@ -150,6 +111,28 @@ export default function TrainingPage() {
   const { data: periodizationChart } = useQuery<ChartData>({
     queryKey: ['chart-periodization', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/periodization?weeks=16'),
+    enabled: !!token,
+  });
+
+  // ── Review mode (read-only evidence) ────────────────────────────────
+  const { data: volumeIntensityChart } = useQuery<ChartData>({
+    queryKey: ['chart-volume-intensity', 16],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/volume_intensity_periodization?weeks=16'),
+    enabled: !!token,
+  });
+  const { data: combinedLoadChart } = useQuery<ChartData>({
+    queryKey: ['chart-combined-load', 90],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/combined_training_load?days=90'),
+    enabled: !!token,
+  });
+  const { data: weeklyVolumeChart } = useQuery<ChartData>({
+    queryKey: ['chart-weekly-volume', 16],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_volume?weeks=16'),
+    enabled: !!token,
+  });
+  const { data: activeGoals } = useQuery<Goal[]>({
+    queryKey: ['goals', 'active'],
+    queryFn: () => listGoals(authFetch, 'active'),
     enabled: !!token,
   });
 
@@ -180,19 +163,6 @@ export default function TrainingPage() {
       setMode('plan');
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to create plan'),
-  });
-
-  const saveDaysMutation = useMutation({
-    mutationFn: ({ planId, days }: { planId: string; days: TrainingPlanDay[] }) =>
-      authFetch<TrainingPlan>(`/api/v1/training-plans/${planId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ days: days.map(toDayPayload) }),
-      }),
-    onSuccess: (_, { planId }) => {
-      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
-    },
-    onError: (err: Error) => setActionError(err.message || 'Failed to save days'),
   });
 
   const updatePlanMutation = useMutation({
@@ -227,7 +197,6 @@ export default function TrainingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
       setShowEventForm(false);
-      setEventForm({ name: '', event_date: '', event_type: 'race', taper_days: 14 });
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to create event'),
   });
@@ -269,24 +238,6 @@ export default function TrainingPage() {
     setMode('plan');
   };
 
-  const planEditorProps = {
-    events,
-    onCreatePlan: (payload: CreateTrainingPlanPayload) => createPlanMutation.mutate(payload),
-    onGeneratePlan: (payload: GeneratePlanPayload) => generateMutation.mutate(payload),
-    onUpdatePlan: (planId: string, payload: UpdateTrainingPlanPayload) =>
-      updatePlanMutation.mutate({ planId, payload }),
-    onSaveDays: (planId: string, days: TrainingPlanDay[]) =>
-      saveDaysMutation.mutate({ planId, days }),
-    onDeletePlan: (planId: string) => deletePlanMutation.mutate(planId),
-    onRefreshPlan: (planId: string) => {
-      queryClient.invalidateQueries({ queryKey: ['training-plan', planId] });
-      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
-    },
-    isSaving: saveDaysMutation.isPending,
-    isCreating: createPlanMutation.isPending,
-    isGenerating: generateMutation.isPending,
-  };
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -325,6 +276,7 @@ export default function TrainingPage() {
         plan={selectedPlan ?? null}
         plans={plans}
         plansLoading={plansLoading}
+        events={events ?? []}
         onSelectPlan={openPlan}
         onOpenPlans={() => setMode('plans')}
       />
@@ -343,72 +295,80 @@ export default function TrainingPage() {
               <SkeletonRow className="h-40" />
             </div>
           ) : selectedPlan ? (
-            <>
-              <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-light/30 w-fit">
-                {(
-                  [
-                    { key: 'builder', label: 'Plan Builder' },
-                    { key: 'week', label: 'This Week' },
-                  ] as const
-                ).map(({ key, label }) => (
-                  <button
-                    key={key}
-                    onClick={() => setPlanView(key)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                      planView === key ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
-                    }`}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              {planView === 'week' ? (
-                <WeeklyView
-                  key={selectedPlanId}
-                  plan={selectedPlan}
-                  events={events}
-                  highlightDate={highlightDate}
-                />
-              ) : (
-                <PlanBuilder key={selectedPlanId} plan={selectedPlan} {...planEditorProps} />
-              )}
-            </>
-          ) : (
-            <PlanBuilder
-              key="empty"
-              plan={undefined}
-              {...planEditorProps}
-              onRefreshPlan={() => refetchPlans()}
+            <WeeklyView
+              key={selectedPlanId}
+              plan={selectedPlan}
+              events={events}
+              highlightDate={highlightDate}
             />
+          ) : (
+            <div className="bg-surface rounded-xl border border-surface-light/50 p-8 text-center">
+              <h3 className="text-lg font-semibold text-foreground mb-2">No plan selected</h3>
+              <p className="text-muted mb-6">
+                Create a plan — from scratch or a template — on the Plans surface.
+              </p>
+              <button
+                onClick={() => setMode('plans')}
+                className="px-6 py-3 bg-accent text-white rounded-lg font-medium hover:bg-accent/80 transition-colors"
+              >
+                Go to Plans
+              </button>
+            </div>
           )}
-
-          {/* RM1: the standalone Workout Planner (absorbed into the day editor
-              in Phase 1). Kept here for parity until then. */}
-          <WorkoutPlanner planId={selectedPlan?.id ?? null} planDays={selectedPlan?.days} />
         </div>
       )}
 
-      {/* ── Review mode — the evidence. Moves past action surfaces. ──── */}
+      {/* ── Review mode — the evidence. Read-only; action surfaces stay
+             in Plan/Peaks. ──────────────────────────────────────────── */}
       {mode === 'review' && (
         <div className="space-y-4">
-          {periodizationChart ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {selectedPlanId && <ConformityTrendCard planId={selectedPlanId} weeks={8} />}
+            {selectedPlanId && <AdaptiveSuggestionsCard planId={selectedPlanId} />}
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {periodizationChart && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Periodization — Planned vs Actual</CardTitle>
+                </CardHeader>
+                <Chart data={periodizationChart} />
+              </Card>
+            )}
+            {volumeIntensityChart && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Volume × Intensity</CardTitle>
+                </CardHeader>
+                <Chart data={volumeIntensityChart} />
+              </Card>
+            )}
+          </div>
+
+          {combinedLoadChart && (
             <Card>
               <CardHeader>
-                <CardTitle>Periodization — Planned vs Actual</CardTitle>
+                <CardTitle>Combined training load (cycling + lifting)</CardTitle>
               </CardHeader>
-              <Chart data={periodizationChart} />
-            </Card>
-          ) : (
-            <Card>
-              <div className="space-y-2" aria-busy="true">
-                <SkeletonRow className="h-8" />
-                <SkeletonRow className="h-40" />
-              </div>
+              <Chart data={combinedLoadChart} />
             </Card>
           )}
-          <p className="text-xs text-muted">
-            Conformity trend, adaptive advice and load analytics land here in Phase 2.
-          </p>
+
+          {weeklyVolumeChart && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Weekly lifting volume</CardTitle>
+              </CardHeader>
+              <Chart data={weeklyVolumeChart} />
+            </Card>
+          )}
+
+          {selectedPlan?.plan_type === 'strength' && selectedPlanId && (
+            <StrengthSuggestionsCard planId={selectedPlanId} />
+          )}
+
+          <PlanGoalsStrip goals={activeGoals ?? []} />
         </div>
       )}
 
@@ -428,58 +388,12 @@ export default function TrainingPage() {
           </CardHeader>
 
           {showEventForm && (
-            <div className="mb-4 p-3 bg-surface-light/30 rounded-lg border border-surface-light/50 space-y-2">
-              <input
-                type="text"
-                placeholder="Event name"
-                value={eventForm.name}
-                onChange={(e) => setEventForm((f) => ({ ...f, name: e.target.value }))}
-                className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
+            <div className="mb-4">
+              <EventForm
+                onSubmit={(payload) => createEventMutation.mutate(payload)}
+                onCancel={() => setShowEventForm(false)}
+                pending={createEventMutation.isPending}
               />
-              <input
-                type="date"
-                value={eventForm.event_date}
-                onChange={(e) => setEventForm((f) => ({ ...f, event_date: e.target.value }))}
-                className="w-full px-2 py-1.5 bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <select
-                  value={eventForm.event_type}
-                  onChange={(e) => setEventForm((f) => ({ ...f, event_type: e.target.value }))}
-                  className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
-                >
-                  <option value="race">Race</option>
-                  <option value="ride">Ride</option>
-                  <option value="lift">Lift</option>
-                  <option value="other">Other</option>
-                </select>
-                <input
-                  type="number"
-                  placeholder="Taper days"
-                  value={eventForm.taper_days}
-                  onChange={(e) =>
-                    setEventForm((f) => ({ ...f, taper_days: parseInt(e.target.value) || 14 }))
-                  }
-                  className="px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded text-foreground text-sm focus:outline-none focus:border-accent"
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() =>
-                    eventForm.name && eventForm.event_date && createEventMutation.mutate(eventForm)
-                  }
-                  disabled={!eventForm.name || !eventForm.event_date}
-                  className="px-3 py-1.5 min-h-[44px] bg-accent text-white rounded text-xs font-medium hover:bg-accent/80 disabled:opacity-50"
-                >
-                  Save
-                </button>
-                <button
-                  onClick={() => setShowEventForm(false)}
-                  className="px-3 py-1.5 min-h-[44px] text-muted text-xs hover:text-foreground"
-                >
-                  Cancel
-                </button>
-              </div>
             </div>
           )}
 
@@ -547,6 +461,66 @@ export default function TrainingPage() {
                     Taper starts in {evt.days_until_taper} days
                   </p>
                 )}
+                {/* Link this event to a plan (PATCH the plan's event_id). */}
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  {(() => {
+                    const linkedPlan = plans.find((p) => p.event_id === evt.id);
+                    if (linkedPlan) {
+                      return (
+                        <>
+                          <span className="text-[11px] text-muted">
+                            Linked plan: <span className="text-foreground">{linkedPlan.name}</span>
+                          </span>
+                          <button
+                            onClick={() =>
+                              updatePlanMutation.mutate({
+                                planId: linkedPlan.id,
+                                payload: { event_id: null },
+                              })
+                            }
+                            className="text-[11px] text-warning hover:text-warning/80"
+                          >
+                            Unlink
+                          </button>
+                        </>
+                      );
+                    }
+                    return (
+                      <>
+                        <select
+                          value={linkPlanId[evt.id] ?? ''}
+                          onChange={(e) => setLinkPlanId((m) => ({ ...m, [evt.id]: e.target.value }))}
+                          aria-label={`Link ${evt.name} to a plan`}
+                          className="px-2 py-1 bg-background border border-surface-light rounded text-foreground text-[11px]"
+                        >
+                          <option value="">Link to plan…</option>
+                          {plans
+                            .filter((p) => p.status === 'active' || p.status === 'draft')
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                        </select>
+                        <button
+                          onClick={() => {
+                            const pid = linkPlanId[evt.id];
+                            if (pid)
+                              updatePlanMutation.mutate({
+                                planId: pid,
+                                payload: { event_id: evt.id },
+                              });
+                          }}
+                          disabled={!linkPlanId[evt.id] || updatePlanMutation.isPending}
+                          className="px-2 py-1 bg-accent/20 text-accent rounded text-[11px] font-medium hover:bg-accent/30 disabled:opacity-40"
+                        >
+                          Link
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+
                 <EventResultPanel event={evt} />
                 {evt.days_until !== undefined && evt.days_until <= 7 && (
                   <div className="mt-2">
@@ -571,12 +545,13 @@ export default function TrainingPage() {
       {/* ── Plans surface — create / switch / archive / delete ────────── */}
       {mode === 'plans' && (
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Create a plan</CardTitle>
-            </CardHeader>
-            <PlanBuilder key="plans-create" plan={undefined} {...planEditorProps} />
-          </Card>
+          <CreatePlanPanel
+            events={events ?? []}
+            onCreatePlan={(payload) => createPlanMutation.mutate(payload)}
+            onGeneratePlan={(payload) => generateMutation.mutate(payload)}
+            isCreating={createPlanMutation.isPending}
+            isGenerating={generateMutation.isPending}
+          />
 
           <Card>
             <CardHeader>

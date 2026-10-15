@@ -726,7 +726,7 @@ export default function WikiPage() {
               <div>
                 <h3 className="text-foreground font-semibold mb-2">How to Use</h3>
                 <p>
-                  Generate a fuel plan from any cycling <WikiLink href="/activities">activity's detail page</WikiLink>{' '}
+                  Generate a fuel plan from any cycling <WikiLink href="/journal">activity's detail page</WikiLink>{' '}
                   via the <strong className="text-foreground">FuelPlanCard</strong>. It produces a timed schedule (pre-ride,
                   during, post-ride) with specific products and quantities. Follow the schedule during your ride,
                   then log your actual intake post-ride for tracking and plan refinement.
@@ -951,7 +951,7 @@ export default function WikiPage() {
               <p>
                 Relive any cycling ride as a full-screen 3D film: your bike on a real-terrain
                 reconstruction of your route, directed like a broadcast, with live telemetry.
-                Open a cycling activity in <WikiLink href="/activities">Activities</WikiLink>,
+                Open a cycling activity in the <WikiLink href="/journal">Journal</WikiLink>,
                 switch to the <strong className="text-foreground">Replay</strong> tab and hit{' '}
                 <strong className="text-foreground">Open 3D Replay</strong>. The address bar
                 carries <strong className="text-foreground">?replay=</strong> plus the playhead

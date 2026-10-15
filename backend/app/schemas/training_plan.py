@@ -105,8 +105,9 @@ class TrainingPlanDayRead(TrainingPlanDayBase):
 class TrainingPlanDayUpdate(BaseModel):
     """Partial single-day update (PATCH) — only provided fields are applied.
 
-    Server-managed columns (``activity_id``, ``lifting_session_id``) are not
-    client-settable here.  ``planned_volume_kg`` may be sent, but if
+    ``activity_id`` / ``lifting_session_id`` are client-settable so the
+    unplanned strip can attach an actual to a chosen day (ownership is
+    validated in the service).  ``planned_volume_kg`` may be sent, but if
     ``planned_exercises`` is also provided the server recomputes volume from
     the exercise list to keep them in sync.
     """
@@ -124,6 +125,8 @@ class TrainingPlanDayUpdate(BaseModel):
     planned_zone: str | None = Field(None, max_length=10)
     planned_route_id: uuid.UUID | None = None
     warmup_template_id: uuid.UUID | None = None
+    activity_id: uuid.UUID | None = None
+    lifting_session_id: uuid.UUID | None = None
     notes: str | None = Field(None, max_length=500)
     completed: bool | None = None
 

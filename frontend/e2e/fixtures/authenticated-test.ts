@@ -254,6 +254,51 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     }
   }],
 
+  // Training Plans — conformity (weekly + per-day) MUST come before the
+  // general handler, which would otherwise return a plan object for
+  // /{id}/conformity and crash WeeklyView on `conformity.weeks.length`.
+  ['/conformity', (route) => {
+    const url = route.request().url();
+    if (/\/api\/v1\/training-plans\/[^/]+\/days\/[^/]+\/conformity/.test(url)) {
+      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockDayConformity) });
+      return;
+    }
+    if (/\/api\/v1\/training-plans\/[^/]+\/conformity/.test(url)) {
+      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockPlanConformity) });
+      return;
+    }
+    route.continue();
+  }],
+  // TSB projection strip (WeeklyView, Phase 7).
+  ['api/v1/projections/tsb/', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockTsbProjection) });
+  }],
+  // Unplanned actuals (the week view's strip).
+  ['/unplanned', (route) => {
+    if (/\/api\/v1\/training-plans\/[^/]+\/unplanned/.test(route.request().url())) {
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          plan_id: 'plan-1',
+          days: 14,
+          activities: [],
+          lifting_sessions: [],
+        }),
+      });
+      return;
+    }
+    route.continue();
+  }],
+  // Training Plans — the week payload MUST come before the general handler,
+  // which would otherwise return the plan-summary array for /{id}/week/{n}.
+  ['/week/', (route) => {
+    const url = route.request().url();
+    if (/\/api\/v1\/training-plans\/[^/]+\/week\/\d+/.test(url)) {
+      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockTrainingWeek) });
+      return;
+    }
+    route.continue();
+  }],
   // Training Plans — suggestions MUST come before the detail matcher,
   // otherwise /{id}/suggestions returns a plan object and crashes callers.
   ['api/v1/training-plans/generate', (route) => {

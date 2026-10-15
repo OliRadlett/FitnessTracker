@@ -444,7 +444,7 @@ export function TodayTab({
               <p className="text-3xl mb-2">🏃</p>
               <p className="text-muted text-sm">No activities today</p>
               <p className="text-muted text-xs mt-1">
-                <a href="/activities" className="text-accent hover:text-accent-hover">View Activities</a>
+                <a href="/journal" className="text-accent hover:text-accent-hover">View Journal</a>
               </p>
             </div>
           )}
@@ -461,7 +461,11 @@ export function TodayTab({
           {todaySummary.today_lifting_sessions.length > 0 ? (
             <div className="space-y-2">
               {todaySummary.today_lifting_sessions.map((s) => (
-                <div key={s.id} className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors">
+                <Link
+                  key={s.id}
+                  href={`/lifting?session=${s.id}`}
+                  className="flex items-center justify-between p-3 bg-surface-light/30 rounded-lg hover:bg-surface-light/50 transition-colors"
+                >
                   <div>
                     <p className="text-sm font-medium text-foreground">{s.focus || 'General'}</p>
                     <p className="text-xs text-muted">{s.sets_count} sets</p>
@@ -474,7 +478,7 @@ export function TodayTab({
                       <p className="text-xs text-muted">RPE {s.rpe_session.toFixed(1)}</p>
                     )}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           ) : (
