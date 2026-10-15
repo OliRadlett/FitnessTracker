@@ -90,6 +90,10 @@ export interface PlannedExercise {
   pct_1rm?: number | null;
   /** FL3 — RPE target (1–10) for the exercise. */
   target_rpe?: number | null;
+  /** S1 — provenance: a hand-set weight is never overwritten by a suggestion. */
+  weight_source?: 'manual' | 'suggested' | null;
+  /** S1 — per-exercise cue. */
+  note?: string | null;
 }
 
 export type PlanSport = 'cycle' | 'strength' | 'rest';
@@ -164,6 +168,8 @@ export interface TrainingPlan {
   plan_type: 'custom' | 'build' | 'base' | 'peak' | 'taper' | 'recovery' | 'strength';
   status: 'draft' | 'active' | 'completed' | 'archived';
   event_id?: string | null;
+  /** S1 — per-exercise multi-week progression rules (persisted). */
+  strength_progression?: ExerciseRule[] | null;
   created_at: string;
   updated_at: string;
   days: TrainingPlanDay[];
@@ -638,4 +644,105 @@ export interface UnplannedActualsResponse {
   days: number;
   activities: UnplannedActivity[];
   lifting_sessions: UnplannedLiftingSession[];
+}
+
+// ─── S1: strength progression (suggest · apply · materialise) ───────────────
+
+export interface ProgressionStart {
+  sets?: number | null;
+  reps?: number | null;
+  rpe?: number | null;
+}
+
+export interface ProgressionWeekly {
+  rpe_delta?: number | null;
+  reps_delta?: number | null;
+  sets_delta?: number | null;
+  load_delta_kg?: number | null;
+  load_delta_pct?: number | null;
+}
+
+/** One exercise's multi-week progression rule (persisted on the plan). */
+export interface ExerciseRule {
+  exercise: string;
+  mode?: 'rpe' | 'load';
+  start?: ProgressionStart | null;
+  weekly?: ProgressionWeekly | null;
+  deload_every?: number | null;
+  deload_factor?: number | null;
+  training_max_pct?: number | null;
+}
+
+/** One proposed weight, with everything needed to justify it. */
+export interface ProgressionTarget {
+  day_id: string;
+  day_date: string;
+  week?: number | null;
+  exercise_index: number;
+  exercise: string;
+  sets?: number | null;
+  reps?: number | null;
+  rpe?: number | null;
+  weight_kg?: number | null;
+  pct_1rm?: number | null;
+  basis_1rm_kg?: number | null;
+  basis_source?: 'pr' | 'recent_sets' | 'none' | null;
+  basis_date?: string | null;
+  training_max_pct?: number | null;
+  prev_week_kg?: number | null;
+  delta_kg?: number | null;
+  mode?: 'rpe' | 'load' | null;
+  is_deload?: boolean;
+  safety_warning?: string | null;
+  skipped_reason?: 'manual' | 'no_basis' | 'reps_too_high' | 'no_target' | null;
+}
+
+export interface StrengthProgressionSuggestResponse {
+  plan_id: string;
+  targets: ProgressionTarget[];
+}
+
+export interface ProgressionApplyTarget {
+  day_id: string;
+  exercise_index: number;
+  weight_kg: number;
+  pct_1rm?: number | null;
+}
+
+export interface StrengthProgressionApplyResponse {
+  plan_id: string;
+  applied: Array<{
+    day_id: string;
+    exercise_index: number;
+    exercise: string;
+    weight_kg?: number | null;
+    pct_1rm?: number | null;
+    applied: boolean;
+    skipped_reason?: string | null;
+  }>;
+  skipped: Array<{
+    day_id: string;
+    exercise_index: number;
+    exercise: string;
+    applied: boolean;
+    skipped_reason?: string | null;
+  }>;
+}
+
+export interface MaterialiseResponse {
+  plan_id: string;
+  rules_saved: number;
+  days_updated: number;
+  entries_updated: Array<{
+    day_id: string;
+    day_date: string;
+    week: number;
+    exercise_index: number;
+    exercise: string;
+    sets?: number | null;
+    reps?: number | null;
+    rpe?: number | null;
+    is_deload: boolean;
+  }>;
+  skipped: Array<{ week: number; exercise: string; reason: string }>;
 }
