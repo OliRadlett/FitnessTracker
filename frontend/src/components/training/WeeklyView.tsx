@@ -46,6 +46,7 @@ import { DayEditor } from './plan/DayEditor';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { UnplannedStrip } from './plan/UnplannedStrip';
+import { ProgramMatrix } from './plan/ProgramMatrix';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
 import { WahooPushModal } from './WahooPushModal';
@@ -135,7 +136,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       : getCurrentWeek(plan.start_date, plan.end_date),
   );
   const [expandedDayId, setExpandedDayId] = useState<string | null>(null);
-  const [view, setView] = useState<'week' | 'all'>('week');
+  const [view, setView] = useState<'week' | 'all' | 'program'>('week');
   const isMobile = useIsMobile();
   const [showRoutePicker, setShowRoutePicker] = useState(false);
   const [showWahooPush, setShowWahooPush] = useState(false);
@@ -428,7 +429,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
         </h3>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 p-0.5 rounded-lg bg-surface-light/30">
-            {(['week', 'all'] as const).map((v) => (
+            {(['week', 'all', 'program'] as const).map((v) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -437,7 +438,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
                   view === v ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
                 }`}
               >
-                {v === 'week' ? 'Week' : 'All weeks'}
+                {v === 'week' ? 'Week' : v === 'all' ? 'All weeks' : 'Program'}
               </button>
             ))}
           </div>
@@ -660,6 +661,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
           ))}
         </div>
       )}
+
+      {view === 'program' && <ProgramMatrix plan={plan} />}
 
       {/* 7 day cards — responsive master bar (scroll on mobile, grid on xl) */}
       {view === 'week' && !weekQuery.isLoading && (
