@@ -48,6 +48,7 @@ import { useIsMobile } from '@/lib/useIsMobile';
 import { UnplannedStrip } from './plan/UnplannedStrip';
 import { ProgramMatrix } from './plan/ProgramMatrix';
 import { BlockTools } from './plan/BlockTools';
+import { LintPanel } from './plan/LintPanel';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
 import { WahooPushModal } from './WahooPushModal';
@@ -686,6 +687,8 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
           }
         />
       )}
+
+      {view === 'week' && <LintPanel plan={plan} />}
 
       {view === 'week' && (
         <BlockTools

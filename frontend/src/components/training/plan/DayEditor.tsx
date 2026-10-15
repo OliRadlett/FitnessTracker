@@ -39,6 +39,7 @@ import { usePlanDayOps } from '@/lib/training/usePlanDayOps';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { computedVolumeKg } from '@/lib/training/planDayHelpers';
+import { warmupRamp } from '@/lib/training/coaching';
 import { goalProgressPct } from '@/components/ui/GoalCard';
 import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLinks';
 import { useAutoregulationMap } from '@/components/lifting/AutoregulationCard';
@@ -82,6 +83,8 @@ export function DayEditor({
   const isRest = day.sport === 'rest';
   const isStrength = day.sport === 'strength';
   const volume = computedVolumeKg(day.planned_exercises);
+  const topKg = Math.max(0, ...(day.planned_exercises ?? []).map((e) => e.weight_kg ?? 0));
+  const ramp = warmupRamp(topKg);
 
   const patch = (payload: UpdateTrainingPlanDayPayload) =>
     edit.mutate({ dayId: day.id, payload });
@@ -419,6 +422,20 @@ export function DayEditor({
             </div>
           </div>
 
+          {/* Warm-up ramp from the day's top set (S4) */}
+          {ramp.length > 0 && (
+            <div className="rounded-lg bg-surface-light/30 border border-surface-light/50 p-2 space-y-0.5">
+              <p className="text-[10px] font-medium text-muted uppercase tracking-wide">
+                Warm-up ramp (top {topKg}kg)
+              </p>
+              {ramp.map((s) => (
+                <p key={s.pct} className="text-[10px] text-muted">
+                  {Math.round(s.pct * 100)}% · {s.kg}kg × {s.reps}
+                </p>
+              ))}
+            </div>
+          )}
+
           {/* Exercises */}
           <div className="space-y-2">
             <label className={labelCls}>
@@ -510,6 +527,14 @@ export function DayEditor({
                 >
                   Remove
                 </button>
+                <input
+                  type="text"
+                  placeholder="Cue (e.g. pause on chest)"
+                  value={ex.note ?? ''}
+                  onChange={(e) => patchExercise(idx, { note: e.target.value || null })}
+                  className="col-span-6 sm:col-span-12 px-2 py-1 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
+                  aria-label={`Cue for ${ex.exercise || 'exercise'}`}
+                />
               </div>
             ))}
             <div className="flex flex-wrap items-center gap-3">
