@@ -24,6 +24,7 @@ from app.services.cycling import (
     estimate_ftp_from_power_curve_detailed,
     get_or_create_cycling_profile,
 )
+from app.services.wahoo_zones import commit_and_enqueue_zone_push
 
 router = APIRouter()
 
@@ -64,10 +65,16 @@ async def create_ftp_history_entry(
 
     # Also update the cycling profile if this is the latest FTP
     profile = await get_or_create_cycling_profile(db, current_user.id)
+    ftp_changed = False
     if not profile.ftp_watts or payload.effective_date >= date.today():
+        ftp_changed = profile.ftp_watts != payload.ftp_watts
         profile.ftp_watts = payload.ftp_watts
 
     await db.flush()
+    if ftp_changed:
+        # Commits, then queues: the worker reads the profile, so it must see the
+        # FTP this request just wrote (services/wahoo_zones).
+        await commit_and_enqueue_zone_push(db, current_user.id, profile)
     return FtpHistoryRead.model_validate(entry)
 
 
@@ -149,6 +156,8 @@ async def estimate_ftp(
         await db.refresh(profile)
         result.accepted = True
         result.previous_ftp = old_ftp
+        if old_ftp != detailed.ftp:
+            await commit_and_enqueue_zone_push(db, current_user.id, profile)
 
     return result
 

@@ -82,6 +82,32 @@ class ZoneDrift(BaseModel):
     delta: float | None = None
 
 
+class WahooZoneSkipped(BaseModel):
+    """A set we deliberately did not write to, and why."""
+
+    id: int
+    reason: str
+
+
+class WahooZonesPushResult(BaseModel):
+    """Outcome of a push. Reports silences, not just successes."""
+
+    ftp: float | None = None
+    updated: list[int] = []
+    created: list[int] = []
+    skipped: list[WahooZoneSkipped] = []
+    # Sets owned by another third-party app, which we refuse to fight over.
+    foreign: list[int] = []
+    # Set when nothing was attempted at all, e.g. the athlete opted out.
+    reason: str | None = None
+
+
+class WahooZonesRevertResult(BaseModel):
+    anchor_value: float | None = None
+    reverted: list[int] = []
+    missing: list[int] = []
+
+
 class WahooZonesStatus(BaseModel):
     connected: bool
     connection_status: str | None = None
