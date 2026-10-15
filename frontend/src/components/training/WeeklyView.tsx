@@ -47,6 +47,7 @@ import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { useIsMobile } from '@/lib/useIsMobile';
 import { UnplannedStrip } from './plan/UnplannedStrip';
 import { ProgramMatrix } from './plan/ProgramMatrix';
+import { BlockTools } from './plan/BlockTools';
 import { RoutePickerModal } from './RoutePickerModal';
 import { AdaptiveSuggestionsCard } from './AdaptiveSuggestionsCard';
 import { WahooPushModal } from './WahooPushModal';
@@ -683,6 +684,15 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
             unassignRoute.isPending ||
             opBusy
           }
+        />
+      )}
+
+      {view === 'week' && (
+        <BlockTools
+          planId={plan.id}
+          week={currentWeek}
+          planStart={plan.start_date}
+          weekDays={weekData?.days ?? []}
         />
       )}
 
