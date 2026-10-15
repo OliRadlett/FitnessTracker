@@ -221,13 +221,16 @@ Surface **planned** tonnage + avg %1RM by week in the program view (reusing the 
 > Companion phases `S1–S4`. Phase `S1` carries the only migration.
 
 ### Phase S1 — Progression engine (backend + model)
-- [ ] Unify `rpe` (deprecate `target_rpe`); add `weight_source`, `note` to the entry shape.
-- [ ] `rpe_to_pct(reps, rpe)` (Brzycki-consistent) + boundary tests.
-- [ ] `resolve_exercise_e1rm(..., within_days=84)` + `basis_date`; keep callers compatible.
-- [ ] Migration: `TrainingPlan.strength_progression`.
-- [ ] Services + endpoints: `suggest`, `apply`, `materialise`; training-max support.
-- [ ] `refresh_strength_targets`: add the `weight_source != 'manual'` guard.
+- [x] Unify `rpe` (deprecate `target_rpe`); add `weight_source`, `note` to the entry shape.
+- [x] `rpe_to_pct(reps, rpe)` (Brzycki-consistent) + boundary tests.
+- [x] `resolve_exercise_e1rm(..., within_days=84)` + `basis_date`; keep callers compatible.
+- [x] Migration: `TrainingPlan.strength_progression`.
+- [x] Services + endpoints: `suggest`, `apply`, `materialise`; training-max support.
+- [x] `refresh_strength_targets`: add the `weight_source != 'manual'` guard.
 - **Tests**: formula boundaries; manual entries skipped by refresh + re-suggest; `load` mode chains; deload applies; ≥95% warning; per-arm not halved; training max applied; materialise fills- vs replaces.
+  → `tests/test_strength_progression.py` (pure: formula, ramp, deload, week numbering) + `tests/integration/test_s1_strength_progression.py` (35 tests) + `tests/test_migration_099_strength_progression.py`.
+  → **Migration 099**. `resolve_exercise_e1rm_basis()` is the date-carrying variant; `resolve_exercise_e1rm()` stays a 2-tuple wrapper.
+  → `materialise` writes sets/reps/RPE only (never weights — those come from suggest + apply), and reports `no_matching_entry` rather than inventing an exercise onto a day that does not train it.
 
 ### Phase S2 — Program matrix (primary) + day editor row
 - [ ] Matrix view (union of exercises × weeks), cell editing, ghost/solid/manual, notes.

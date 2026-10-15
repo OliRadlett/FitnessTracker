@@ -235,6 +235,19 @@ Supersedes the *scope* of [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-
 (whose V3 widgets are reused; its prod deploy is still open). **Nothing built yet** — the
 remaining/deferred register is §15 of the redesign plan.
 
+**Jev strength-session classification** — three specs. [`plans/jev-strength-session-classification.md`](plans/jev-strength-session-classification.md)
+defines the label producer: Jev classifies **every** lifting session (note or not) into three typed axes —
+`session_split` (push/pull/legs/upper/lower/full_body), `session_lift` (squat/bench/deadlift/overhead_press/accessory)
+and `session_class` (max_strength/volume_hypertrophy/speed_power/technique/accessory_conditioning/deload/test) —
+stored on `lifting_sessions` with a deterministic rule fallback and a `taxonomy_version`, best-effort and a
+no-op when Jev is unset. The vocabularies are aligned to `TrainingPlanDay.planned_focus` on purpose, so the
+split+lift axes cover the whole planned-day vocabulary and **label-level conformance ships in Phase 1**.
+[`plans/jev-strength-labels-utilisation.md`](plans/jev-strength-labels-utilisation.md) is what the labels are
+*for* (lift coverage, push/pull balance, phase detection, deload adherence, a `today.py` engine).
+[`plans/cycling-ride-labels-utilisation.md`](plans/cycling-ride-labels-utilisation.md) is the cycling
+counterpart — deliberately leaner and mostly **non-Jev** (the semantic `purpose` tag is already shipped and
+unread; the ride-quality axis is deterministic/power-derived).
+
 Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/lifting-redesign-plan.md`](plans/lifting-redesign-plan.md) (redesign of `/lifting` page — tabbed IA, session cards, PR timeline, plan integration), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/relive-3d-next-level.md`](plans/relive-3d-next-level.md) (Phases A–D: atmosphere, director, perf, audio shipped; WebGPU/share/montage/AI open), [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (training page redesign — V2.1 emoji pass shipped in `33a86e9`; V3.0 weekly master bar + `DayCell`/`ConformitySummaryCard`/`PlanGoalsStrip` shipped in `520edff`; missed-day quick-actions popover shipped in `cf18415`; prod deploy open), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md), [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md) (training page overhaul — plan spine + one Plan-mode editor; supersedes the `v3-planning` surface scope), [`plans/training-strength-programming.md`](plans/training-strength-programming.md) (companion — multi-week strength targets + weight suggestions).
 
 ## Git & Deployment Strategy

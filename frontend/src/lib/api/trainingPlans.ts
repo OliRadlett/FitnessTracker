@@ -11,6 +11,11 @@ import type {
   CreateTrainingPlanDayPayload,
   SubstituteDayPayload,
   UnplannedActualsResponse,
+  ExerciseRule,
+  ProgressionApplyTarget,
+  StrengthProgressionApplyResponse,
+  StrengthProgressionSuggestResponse,
+  MaterialiseResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -238,5 +243,48 @@ export async function getUnplannedActuals(
 ): Promise<UnplannedActualsResponse> {
   return authFetch<UnplannedActualsResponse>(
     `/api/v1/training-plans/${planId}/unplanned?days=${days}`
+  );
+}
+
+// ── S1: strength progression ────────────────────────────────────────────────
+
+/** Propose a working weight per planned exercise (writes nothing). */
+export async function suggestStrengthProgression(
+  authFetch: AuthFetch,
+  planId: string,
+  body: {
+    scope?: 'day' | 'week' | 'plan';
+    day_id?: string;
+    week?: number;
+    force?: boolean;
+  } = {}
+): Promise<StrengthProgressionSuggestResponse> {
+  return authFetch<StrengthProgressionSuggestResponse>(
+    `/api/v1/training-plans/${planId}/strength-progression/suggest`,
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+}
+
+/** Write accepted suggestions into day entries. */
+export async function applyStrengthProgression(
+  authFetch: AuthFetch,
+  planId: string,
+  body: { targets: ProgressionApplyTarget[]; force?: boolean }
+): Promise<StrengthProgressionApplyResponse> {
+  return authFetch<StrengthProgressionApplyResponse>(
+    `/api/v1/training-plans/${planId}/strength-progression/apply`,
+    { method: 'POST', body: JSON.stringify(body) }
+  );
+}
+
+/** Fill per-week sets/reps/RPE cells from the plan's progression rules. */
+export async function materialiseProgression(
+  authFetch: AuthFetch,
+  planId: string,
+  body: { rules?: ExerciseRule[]; weeks?: number[]; mode?: 'replace' | 'fill-empty' } = {}
+): Promise<MaterialiseResponse> {
+  return authFetch<MaterialiseResponse>(
+    `/api/v1/training-plans/${planId}/strength-progression/materialise`,
+    { method: 'POST', body: JSON.stringify(body) }
   );
 }

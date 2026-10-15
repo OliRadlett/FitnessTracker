@@ -30,7 +30,7 @@ from app.schemas.lifting import (
     WarmupTemplateRead,
     WarmupTemplateUpdate,
 )
-from app.services import jev_tagging
+from app.services import jev_classification, jev_tagging
 from app.services import lifting as lifting_service
 from app.services.auth import get_current_user
 from app.services.strava import link_all_unlinked_activities
@@ -57,6 +57,9 @@ async def create_session(
     # run, so the Jev tagger sees the row. (BUG-015: one commit per request.)
     background_tasks.add_task(
         jev_tagging.tag_lifting_session_by_id, session_id, current_user.id
+    )
+    background_tasks.add_task(
+        jev_classification.classify_lifting_session_by_id, session_id, current_user.id
     )
     return response
 
@@ -149,6 +152,9 @@ async def update_session(
     # run, so the Jev tagger sees the row. (BUG-015: one commit per request.)
     background_tasks.add_task(
         jev_tagging.tag_lifting_session_by_id, sid, current_user.id
+    )
+    background_tasks.add_task(
+        jev_classification.classify_lifting_session_by_id, sid, current_user.id
     )
     return response
 

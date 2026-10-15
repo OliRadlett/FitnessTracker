@@ -20,8 +20,9 @@ def _validate_planned_exercises(
             raise ValueError(
                 f"planned_exercises[{i}] missing required keys: {sorted(missing)}"
             )
-    # FL3: optional %e1RM / RPE basis keys ride on the entry (no migration);
-    # validate their ranges when present, otherwise leave the shape alone.
+    # FL3/S1: optional %e1RM / RPE / provenance keys ride on the entry (JSONB,
+    # no migration); validate their ranges when present, leave the shape alone
+    # otherwise.
     for i, entry in enumerate(v):
         pct = entry.get("pct_1rm")
         if pct is not None:
@@ -31,22 +32,44 @@ def _validate_planned_exercises(
                 raise ValueError(
                     f"planned_exercises[{i}].pct_1rm must be a number"
                 ) from None
-            if not 0.3 <= pct_f <= 1.0:
+            # Floor is >0, not 0.3: a deload week legitimately prescribes below
+            # the 0.3 the single-shot suggest-load API accepts (0.30 × 0.9
+            # deload = 0.27), and the basis has to be storable for
+            # refresh-targets to re-solve it.
+            if not 0 < pct_f <= 1.0:
                 raise ValueError(
-                    f"planned_exercises[{i}].pct_1rm must be between 0.3 and 1.0"
+                    f"planned_exercises[{i}].pct_1rm must be between 0 and 1.0"
                 )
-        target_rpe = entry.get("target_rpe")
-        if target_rpe is not None:
+        # ``rpe`` is the canonical target RPE (S1). ``target_rpe`` is
+        # DEPRECATED and accepted only so older payloads keep validating —
+        # ``rpe`` wins wherever both appear.
+        for key in ("rpe", "target_rpe"):
+            rpe = entry.get(key)
+            if rpe is None:
+                continue
             try:
-                rpe_f = float(target_rpe)
+                rpe_f = float(rpe)
             except (TypeError, ValueError):
                 raise ValueError(
-                    f"planned_exercises[{i}].target_rpe must be a number"
+                    f"planned_exercises[{i}].{key} must be a number"
                 ) from None
             if not 1 <= rpe_f <= 10:
                 raise ValueError(
-                    f"planned_exercises[{i}].target_rpe must be between 1 and 10"
+                    f"planned_exercises[{i}].{key} must be between 1 and 10"
                 )
+        # Provenance: 'manual' entries are never overwritten by a suggestion
+        # or by refresh-targets, so the value is load-bearing, not cosmetic.
+        weight_source = entry.get("weight_source")
+        if weight_source is not None and weight_source not in (
+            "manual",
+            "suggested",
+        ):
+            raise ValueError(
+                f"planned_exercises[{i}].weight_source must be 'manual' or 'suggested'"
+            )
+        note = entry.get("note")
+        if note is not None and not isinstance(note, str):
+            raise ValueError(f"planned_exercises[{i}].note must be a string")
     return v
 
 
@@ -258,6 +281,8 @@ class TrainingPlanBase(BaseModel):
 
 class TrainingPlanCreate(TrainingPlanBase):
     days: list[TrainingPlanDayCreate] = []
+    # S1: per-exercise progression rules (see ExerciseRule).
+    strength_progression: list[dict[str, Any]] | None = None
 
 
 class TrainingPlanUpdate(BaseModel):
@@ -268,6 +293,8 @@ class TrainingPlanUpdate(BaseModel):
     plan_type: str | None = None
     status: str | None = None
     event_id: uuid.UUID | None = None
+    # S1: per-exercise progression rules; replacing the list replaces the ramp.
+    strength_progression: list[dict[str, Any]] | None = None
     # DEPRECATED for editing: supplying ``days`` replaces the plan's whole day
     # set — ``save_plan_days`` upserts by ``day_date`` and DELETES dates missing
     # from the payload. Prefer the targeted day endpoints (``PATCH /days/{id}``,
@@ -281,6 +308,8 @@ class TrainingPlanRead(TrainingPlanBase):
     created_at: datetime
     updated_at: datetime
     days: list[TrainingPlanDayRead] = []
+    # S1: null means "no rules" (stateless %e1RM suggestions as before).
+    strength_progression: list[dict[str, Any]] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -379,6 +408,7 @@ class GeneratePlanRequest(BaseModel):
 
 class StrengthWeekTemplate(BaseModel):
     """One week's progressive-overload parameters in a strength template."""
+
     week: int  # 1-indexed
     rpe: float | None = None
     sets: int | None = None
@@ -466,6 +496,182 @@ class RefreshTargetsResponse(BaseModel):
     strength_days_skipped: int = 0
     # FL3: strength days whose %e1RM-basis weights were re-solved (same call).
     strength_refreshed: list[RefreshStrengthDay] = []
+
+
+# ── S1: strength progression (rules · suggest · apply · materialise) ──────
+#
+# The resolver's contract in one line: the *anchor* is recent history (e1RM),
+# the *progression* is the plan's own previous weeks, and the response explains
+# every number it produced. Nothing here writes a weight — ``suggest`` proposes,
+# ``apply`` writes what the user accepted, ``materialise`` fills targets.
+
+
+class ProgressionStart(BaseModel):
+    """Week-1 targets for an exercise ramp."""
+
+    sets: int | None = Field(None, ge=1, le=20)
+    reps: int | None = Field(None, ge=1, le=50)
+    rpe: float | None = Field(None, ge=1, le=10)
+
+
+class ProgressionWeekly(BaseModel):
+    """Per-week increments applied on top of ``start``."""
+
+    rpe_delta: float | None = Field(None, ge=-2, le=2)
+    reps_delta: int | None = Field(None, ge=-5, le=5)
+    sets_delta: int | None = Field(None, ge=-5, le=5)
+    # mode == "load" only: chained off the previous week's prescribed kg.
+    load_delta_kg: float | None = Field(None, ge=-20, le=20)
+    load_delta_pct: float | None = Field(None, ge=-0.2, le=0.2)
+
+
+class ExerciseRule(BaseModel):
+    """One exercise's multi-week progression rule (S1).
+
+    ``mode='rpe'`` (default) re-solves the load from the current e1RM and the
+    week's RPE, so a moving e1RM self-corrects the prescription.
+    ``mode='load'`` chains off the previous week's prescribed weight instead —
+    for coaches who want explicit weekly brackets.
+    """
+
+    exercise: str
+    mode: Literal["rpe", "load"] = "rpe"
+    start: ProgressionStart | None = None
+    weekly: ProgressionWeekly | None = None
+    # Every Nth week is a deload: suppress the ramp's direction and scale back
+    # (load modes × ``deload_factor``, RPE modes −1 RPE).
+    deload_every: int | None = Field(None, ge=2, le=12)
+    deload_factor: float | None = Field(None, gt=0, le=1.0)
+    # Prescribe off a training max (e.g. 0.9) rather than the true e1RM.
+    # Defaults to 1.0 — nothing changes unless asked for. The safety check
+    # always compares against the *true* e1RM.
+    training_max_pct: float | None = Field(None, gt=0, le=1.0)
+
+    @field_validator("exercise")
+    @classmethod
+    def _exercise_required(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("exercise is required")
+        return v.strip()
+
+
+class StrengthProgressionSuggestRequest(BaseModel):
+    """Scope for a suggestion pass (never writes)."""
+
+    scope: Literal["day", "week", "plan"] = "plan"
+    day_id: uuid.UUID | None = None
+    week: int | None = Field(None, ge=1, le=104)
+    # Re-suggest even entries the user set by hand (weight_source='manual').
+    force: bool = False
+
+
+class ProgressionTarget(BaseModel):
+    """One proposed weight, with everything needed to justify it (S1 §4.2)."""
+
+    day_id: uuid.UUID
+    day_date: date
+    week: int | None = None
+    exercise_index: int
+    exercise: str
+    sets: int | None = None
+    reps: int | None = None
+    rpe: float | None = None
+    # Proposal (null when skipped — see skipped_reason).
+    weight_kg: float | None = None
+    pct_1rm: float | None = None
+    # Basis: what the number is anchored on, and when it was achieved.
+    basis_1rm_kg: float | None = None
+    basis_source: Literal["pr", "recent_sets", "none"] | None = None
+    basis_date: date | None = None
+    training_max_pct: float | None = None
+    # Progression: where it came from.
+    prev_week_kg: float | None = None
+    delta_kg: float | None = None
+    mode: Literal["rpe", "load"] | None = None
+    is_deload: bool = False
+    safety_warning: str | None = None
+    skipped_reason: (
+        Literal["manual", "no_basis", "reps_too_high", "no_target"] | None
+    ) = None
+
+
+class StrengthProgressionSuggestResponse(BaseModel):
+    plan_id: uuid.UUID
+    targets: list[ProgressionTarget] = []
+
+
+class ProgressionApplyTarget(BaseModel):
+    """One accepted suggestion, addressed by (day, index in that day's list)."""
+
+    day_id: uuid.UUID
+    exercise_index: int = Field(..., ge=0)
+    weight_kg: float = Field(..., gt=0)
+    # >0 rather than >=0.3: a deload scales the fraction below the single-shot
+    # suggest-load floor (see _validate_planned_exercises).
+    pct_1rm: float | None = Field(None, gt=0, le=1.0)
+
+
+class StrengthProgressionApplyRequest(BaseModel):
+    targets: list[ProgressionApplyTarget] = Field(..., min_length=1)
+    # Overwrite entries the user set by hand (weight_source='manual').
+    force: bool = False
+
+
+class ProgressionApplyResult(BaseModel):
+    day_id: uuid.UUID
+    exercise_index: int
+    exercise: str
+    weight_kg: float | None = None
+    pct_1rm: float | None = None
+    previous_weight_kg: float | None = None
+    previous_weight_source: str | None = None
+    applied: bool = False
+    skipped_reason: str | None = None
+
+
+class StrengthProgressionApplyResponse(BaseModel):
+    plan_id: uuid.UUID
+    applied: list[ProgressionApplyResult] = []
+    skipped: list[ProgressionApplyResult] = []
+
+
+class MaterialiseRequest(BaseModel):
+    """Fill per-week cells from the plan's rules (S1 §3.2).
+
+    ``fill-empty`` writes only where the entry has no value for the field yet;
+    ``replace`` overwrites the rule's fields on every matching entry. Weights
+    are never touched here — they come from ``suggest`` + ``apply``.
+    """
+
+    rules: list[ExerciseRule] | None = None
+    weeks: list[int] | None = None
+    mode: Literal["replace", "fill-empty"] = "fill-empty"
+
+
+class MaterialisedEntry(BaseModel):
+    day_id: uuid.UUID
+    day_date: date
+    week: int
+    exercise_index: int
+    exercise: str
+    sets: int | None = None
+    reps: int | None = None
+    rpe: float | None = None
+    is_deload: bool = False
+
+
+class MaterialiseSkip(BaseModel):
+    week: int
+    exercise: str
+    reason: str  # no_matching_entry | existing_targets
+
+
+class MaterialiseResponse(BaseModel):
+    plan_id: uuid.UUID
+    rules_saved: int = 0
+    days_updated: int = 0
+    entries_updated: list[MaterialisedEntry] = []
+    skipped: list[MaterialiseSkip] = []
 
 
 # ── FL2: missed-session reconciliation ──────────────────────────────────
