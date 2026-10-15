@@ -45,13 +45,19 @@ def _iso_z(dt: datetime) -> str:
     return dt.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def _first_item(payload, key: str) -> dict | None:
-    """Normalise a list / dict-wrapped list response and return the first dict."""
+def _as_list(payload, key: str) -> list[dict]:
+    """Normalise a bare list / dict-wrapped list response into a list of dicts."""
     if isinstance(payload, dict):
         payload = payload.get(key, payload.get("data", []))
-    if isinstance(payload, list) and payload and isinstance(payload[0], dict):
-        return payload[0]
-    return None
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
+    return []
+
+
+def _first_item(payload, key: str) -> dict | None:
+    """Normalise a list / dict-wrapped list response and return the first dict."""
+    items = _as_list(payload, key)
+    return items[0] if items else None
 
 
 class WahooClient:
@@ -283,6 +289,92 @@ class WahooClient:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.delete(
                 f"{WAHOO_API_BASE}/v1/plans/{plan_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            resp.raise_for_status()
+
+    # ── Power zones ──────────────────────────────────────────────────────────
+    #
+    # Wahoo's zone model is *one anchor plus derived boundaries per sport profile*
+    # (plan §3.3): the payload carries `ftp` plus `zone_1..zone_7`. The docs' own
+    # example sends `zone_1..zone_7` with `zone_count=8`, so the convention for
+    # `zone_N` (lower bound? upper? centre?) is not pinned down by the
+    # documentation alone — `plans/wahoo-zone-sync.md` §11 settles it against a
+    # sandbox. The service meanwhile rescales a set's *own* values by ratio, which
+    # preserves whatever the convention turns out to be, so the write path does not
+    # depend on the answer.
+    #
+    # Note the documented docs bug: the "Update a Power Zone" section's HTTP Request
+    # line says `POST /v1/power_zones` while its own curl (and the OpenAPI mirror)
+    # say `PUT /v1/power_zones/{id}`. The curl is authoritative.
+
+    async def get_power_zones(self, access_token: str) -> list[dict]:
+        """Fetch the athlete's power zone sets."""
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{WAHOO_API_BASE}/v1/power_zones",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return _as_list(await retry_request(_fetch), "power_zones")
+
+    async def create_power_zone(self, access_token: str, payload: dict) -> dict:
+        """Create a power zone set; returns Wahoo's record (including ``id``)."""
+        data = {
+            f"power_zone[{key}]": str(value)
+            for key, value in payload.items()
+            if value is not None
+        }
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    f"{WAHOO_API_BASE}/v1/power_zones",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Accept": "application/json",
+                    },
+                    data=data,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
+
+    async def update_power_zone(
+        self, access_token: str, zone_id: int, payload: dict
+    ) -> dict:
+        """Update an existing power zone set."""
+        data = {
+            f"power_zone[{key}]": str(value)
+            for key, value in payload.items()
+            if value is not None
+        }
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.put(
+                    f"{WAHOO_API_BASE}/v1/power_zones/{zone_id}",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Accept": "application/json",
+                    },
+                    data=data,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
+
+    async def delete_power_zone(self, access_token: str, zone_id: int) -> None:
+        """Delete a power zone set."""
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.delete(
+                f"{WAHOO_API_BASE}/v1/power_zones/{zone_id}",
                 headers={"Authorization": f"Bearer {access_token}"},
             )
             resp.raise_for_status()

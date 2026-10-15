@@ -21,6 +21,7 @@ class CyclingProfileRead(BaseModel):
     weight_kg: float | None = None
     lactate_threshold_hr: float | None = None
     auto_estimate_ftp: bool = False
+    push_wahoo_zones: bool = False
     home_lat: float | None = Field(
         None, ge=-90, le=90, description="Home latitude for weather lookups"
     )
@@ -98,6 +99,10 @@ class CyclingProfileUpdate(BaseModel):
     )
     auto_estimate_ftp: bool | None = Field(
         None, description="Enable/disable weekly automatic FTP estimation"
+    )
+    push_wahoo_zones: bool | None = Field(
+        None,
+        description="Keep the athlete's Wahoo power zone sets in step with FitTrack FTP",
     )
     home_lat: float | None = Field(
         None, ge=-90, le=90, description="Home latitude for weather lookups"

@@ -78,9 +78,11 @@ from app.api.cycling.power import router as power_router
 from app.api.cycling.prs import router as prs_router
 from app.api.cycling.training_load import router as training_load_router
 from app.api.cycling.vo2max import router as vo2max_router
+from app.api.cycling.zones import router as zones_router
 
 router.include_router(training_load_router)
 router.include_router(power_router)
 router.include_router(vo2max_router)
 router.include_router(ftp_router)
 router.include_router(prs_router)
+router.include_router(zones_router)

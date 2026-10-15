@@ -1,9 +1,11 @@
 # Push power / HR zones to Wahoo (auto-adjust on FTP & LTHR change)
 
-> **Status**: proposed — not started. Phase 0 is a spike that must run before any
-> code is written, because the HR half of this feature is **not in the documented
-> Wahoo Cloud API** (see §3.2) and the exact semantics of the power-zone payload
-> are **unverified** (see §3.1).
+> **Status**: Phase 1 backend landed on `feature/wahoo-zone-sync` (2026-10-16) —
+> migration 100, model/schemas, `get_power_zones` client read, and a read-only
+> `GET /api/v1/cycling/wahoo-zones` that never fails for a Wahoo-side problem.
+> Write path, card, task wiring and notification still to build. **Phase 0 (the
+> sandbox spike) is still open**, and it is now the thing that gates the *write
+> policy* (D3) rather than the read path — see §3.1 and §11.
 > **Scope**: keep the athlete's Wahoo zone sets in step with FitTrack's FTP / LTHR,
 > so the ELEMNT colours the current zone against the *right* boundaries and pushed
 > structured workouts target the intended watts.
@@ -382,7 +384,7 @@ already fire `connection_reauth` for a 401.
 |---|----------|-----------|
 | **D1** | Opt-in (`push_wahoo_zones`, default off). | Writing into someone else's account unprompted is not acceptable; mirrors `auto_estimate_ftp`, which is also opt-in. |
 | **D2** | **Rescale the existing Wahoo set; do not impose our boundaries.** Write `ftp` **plus** boundaries derived from the set's *own* current proportions. Offer Coggan-mode only as an explicit choice. | Our `POWER_ZONES` are Coggan (55/75/90/105/120/150 %FTP); Wahoo's blog model is ~(55/75/91/100/110/135)% with a 4a/4b split. Pushing Coggan boundaries would silently reshape zones the athlete may have tuned — the feature is about the *anchor*, not the model. If §11 spike shows Wahoo recomputes from `ftp`, even simpler: write `ftp` alone. Holds doubly for HR, where our 80/89/95/105 %LTHR bands differ from Wahoo's ~70/80/87–95/95/105 %LT bands (§3.3). |
-| **D3** | Target one BIKING set per location; create only if none is ours; never delete; never touch non-BIKING families. | `GET` may not be app-scoped (§3.1.3), so identification must be conservative. Deleting another app's set is unrecoverable. |
+| **D3** | Own the athlete's cycling set(s) — **including the set the Wahoo app created** — but never touch a set attributable to *another third-party app*, and never delete a set. | **Revised while building.** The first draft of this rule was "never write to a `fitness_app_id < 1000` set", reasoning that it is the athlete's own customisation. That is backwards: the Wahoo-app set is the one the head unit actually colours against, so refusing to touch it would make the feature do nothing in the common case. The real hazard is a *different* third-party app also syncing zones (`fitness_app_id > 1000`, and not one of our tracked ids) — there we would be fighting another integration. What makes writing the athlete's own set safe is opt-in + snapshot + revert, not provenance. Phase 1's read path confirms how many sets exist and who owns them before this is finalised. |
 | **D4** | Snapshot + explicit revert instead of `UndoLog`. | `UndoLog` has no HTTP surface and no registered production kind, and `RouteMergeLog` was deliberately **not** migrated onto it exactly because a 30-day expiry would be imposed on a working undo (`AGENTS.md`, Active Planning). A `prior` JSONB column plus a revert endpoint is honest and non-expiring. |
 | **D5** | Inline push for user actions; Celery push for passive FTP changes. | The button must be able to say what happened; an FTP edit must not block on Wahoo latency or fail because Wahoo is down. |
 | **D6** | HR zones are **not** shipped on the assumption they are writable. Phase 3 is gated on the §11 spike; if there is no endpoint, deliver drift display + guidance and say so plainly in the card. | §3.2: no documented endpoint, no scope, `user_write` cannot carry it. Shipping a UI that pretends otherwise would be a lie the user detects on the device. The *payload* is known and simple though — a THR anchor plus boundaries, mirroring power exactly (§3.3) — so if Wahoo exposes it, HR is a small increment, not a redesign. |
