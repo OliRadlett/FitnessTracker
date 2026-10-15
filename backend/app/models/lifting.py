@@ -63,6 +63,22 @@ class LiftingSession(Base):
     # "model", "computed_at", "note_hash", "pain_injury", "high_fatigue", ...}.
     # Nullable; tagging is best-effort (see services/jev_tagging.py). Migration 081.
     ai_tags: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Jev strength-session classification, derived from the *sets* + metadata +
+    # note (see services/jev_classification.py). The three typed labels are what
+    # consumers group/filter by; ``ai_classification`` carries provenance
+    # (source/model/taxonomy_version/content_hash/confidence/probabilities and a
+    # deterministic rule cross-check). Nullable; best-effort. Migration 100.
+    session_split: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # push|pull|legs|upper|lower|full_body
+    session_lift: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # squat|bench|deadlift|overhead_press|accessory|none
+    session_class: Mapped[str | None] = mapped_column(
+        String(32), nullable=True
+    )  # max_strength|volume_hypertrophy|speed_power|technique|
+    # accessory_conditioning|deload|test
+    ai_classification: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     # Live-session tracking (set only by /lifting/live flow)
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

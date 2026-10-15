@@ -144,6 +144,10 @@ WITHINGS_CLIENT_SECRET=
 GEMINI_API_KEY=          # weekly + on-demand analysis; tasks skip if unset
 MODAL_TOKEN_ID=          # Modal Intelligence Platform; endpoints 501 if unset
 MODAL_TOKEN_SECRET=
+TYPESAFE_API_KEY=        # TypeSafe Jev — note tags, session classification, match arbitration; all no-op if unset
+# JEV_ENABLED=true       # kill switch
+# JEV_MODEL=jev-latest   # pin a version
+# JEV_TIMEOUT_S=8.0
 
 # ─── Strength videos (optional) ──────────────────────────
 R2_ACCOUNT_ID=           # Cloudflare R2; upload endpoints 501 if unset

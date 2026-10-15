@@ -120,6 +120,13 @@ class LiftingSessionRead(LiftingSessionBase):
     # best-effort. Shape: {source, model, computed_at, note_hash, pain_injury,
     # high_fatigue, pr_mention, outcome, outcome_confidence, energy}.
     ai_tags: dict | None = None
+    # Jev strength-session classification derived from the sets (Phase 1 of the
+    # classification plan). Typed labels are the queryable values; the blob
+    # carries provenance + a deterministic rule cross-check.
+    session_split: str | None = None  # push|pull|legs|upper|lower|full_body
+    session_lift: str | None = None  # squat|bench|deadlift|overhead_press|accessory|none
+    session_class: str | None = None  # max_strength|volume_hypertrophy|...
+    ai_classification: dict | None = None
     sets: list[LiftingSetRead] = []
     linked_activity: LinkedActivityRead | None = None
     started_at: datetime | None = None

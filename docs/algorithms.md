@@ -15,6 +15,7 @@
 | PR detection | [`lifting.py`](../backend/app/services/lifting.py) `_check_and_record_pr()` | Brzycki: `weight × (36/(37-reps))` | Updated in-place (one PR per exercise) |
 | Exercise normalisation | [`exercise_db.py`](../backend/app/services/exercise_db.py) | — | Canonical names, aliases, categories |
 | Workout zone matching | [`workout_planner.py`](../backend/app/services/workout_planner.py) | TSB-based readiness | 5 zones from FTP/LTHR, route scoring: TSS 35%, duration 25%, power 25%, HR 15% |
+| Strength session classification (Jev) | [`jev_classification.py`](../backend/app/services/jev_classification.py) (migration 100) | Jev choice confidence ≥ `0.60` asserted / `0.40–0.60` provisional / else dropped | Labels the session from its **sets** + metadata + note (not the note alone): `session_split` (push/pull/legs/upper/lower/full_body) + `session_lift` (squat/bench/deadlift/overhead_press/accessory/none) + `session_class` (max_strength/volume_hypertrophy/speed_power/technique/accessory_conditioning/deload/test). Vocabularies align to `TrainingPlanDay.planned_focus`. A deterministic rule engine (rep ranges + exercise keywords) is the cross-check (`ai_classification.rule`, `disagreement` flagged) and the on-demand fallback — **never persisted when Jev is unset**. Idempotent by `content_hash` (sets+metadata+`taxonomy_version`) + model |
 
 ## Merge Priority
 
