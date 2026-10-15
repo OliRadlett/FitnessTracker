@@ -48,16 +48,22 @@ class TestGenerationInputs:
 
     async def test_strength_days_are_e1rm_anchored(self, client, test_user, db_session):
         """With a PR for a template exercise, generated strength weights solve."""
-        db_session.add(
-            PersonalRecord(
-                user_id=test_user.id,
-                exercise_name="squat",
-                record_type="1rm",
-                weight_kg=150.0,
-                reps=1,
-                estimated_1rm=150.0,
+        from app.services.exercise_db import normalise_exercise_name
+
+        # Store PRs under the SAME canonical name the resolver looks up, so the
+        # match doesn't depend on the alias map.
+        for raw in ("Back Squat", "Bench Press", "Deadlift"):
+            db_session.add(
+                PersonalRecord(
+                    user_id=test_user.id,
+                    exercise_name=normalise_exercise_name(raw),
+                    record_type="1rm",
+                    weight_kg=150.0,
+                    reps=1,
+                    estimated_1rm=150.0,
+                    achieved_date=date.today(),
+                )
             )
-        )
         await db_session.flush()
 
         start = _next_monday(date.today())
