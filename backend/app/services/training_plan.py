@@ -1092,6 +1092,11 @@ async def generate_plan(
             data.template_type, data.weeks, data.start_date, data.base_tss
         )
 
+    # C2 — anchor generated days on the athlete's CURRENT physiology before any
+    # explicit overrides below: FTP → cycle targets; current e1RM → strength
+    # weights (with a %1RM basis, so refresh-targets can re-solve them later).
+    await _personalise_generated_days(db, user_id, days)
+
     # Backfill planned_volume_kg for strength days by looking at the athlete's
     # recent session history (templates ship with weight_kg=None).
     for day_data in days:
@@ -1141,6 +1146,82 @@ async def generate_plan(
         plan = await link_event_and_apply_taper(db, user_id, plan, data.event_id)
 
     return await _reload_plan(db, plan.id)
+
+
+async def _personalise_generated_days(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    days: list[TrainingPlanDayCreate],
+) -> None:
+    """Anchor freshly generated days on the athlete's current physiology (C2).
+
+    - **Cycle days** get power/TSS/zone from the profile FTP via ``plan_workout``
+      (so a generated plan is FTP-anchored, not template-only). Existing values
+      from the template are preserved.
+    - **Strength days** get ``weight_kg`` solved from the current e1RM — via the
+      entry's RPE when present, else 75% — carrying a ``pct_1rm`` basis and
+      ``weight_source='suggested'`` so ``refresh-targets`` re-solves it later.
+      ``planned_volume_kg`` is then computed from the real weights.
+
+    Best-effort: a missing cycling profile, PR or recent set leaves the
+    template's values untouched (never a fabricated number).
+    """
+    from app.models.cycling import CyclingProfile
+    from app.services.lifting import resolve_exercise_e1rm, rpe_to_pct
+
+    result = await db.execute(
+        select(CyclingProfile).where(CyclingProfile.user_id == user_id)
+    )
+    profile = result.scalar_one_or_none()
+    ftp = profile.ftp_watts if profile and profile.ftp_watts else None
+    lthr = profile.lactate_threshold_hr if profile else None
+    weight_kg = profile.weight_kg if profile else None
+
+    for day_data in days:
+        if day_data.sport == "cycle":
+            if not ftp or not day_data.planned_duration_min:
+                continue
+            if day_data.planned_type == "rest":
+                continue
+            difficulty = _TYPE_TO_DIFFICULTY.get(day_data.planned_type, "z3")
+            targets = plan_workout(
+                ftp=ftp,
+                lthr=lthr,
+                weight_kg=weight_kg,
+                difficulty=difficulty,
+                duration_minutes=day_data.planned_duration_min,
+            )
+            if targets is None:
+                continue
+            if day_data.planned_power_watts is None:
+                day_data.planned_power_watts = targets.target_power_low
+            if day_data.planned_tss is None:
+                day_data.planned_tss = targets.target_tss_low
+            if day_data.planned_zone is None:
+                day_data.planned_zone = difficulty
+        elif day_data.sport == "strength" and day_data.planned_exercises:
+            for ex in day_data.planned_exercises:
+                if not isinstance(ex, dict) or ex.get("weight_kg") is not None:
+                    continue
+                name = str(ex.get("exercise") or "")
+                if not name:
+                    continue
+                basis, _source = await resolve_exercise_e1rm(db, user_id, name)
+                if basis is None:
+                    continue
+                reps = int(ex.get("reps") or 5)
+                rpe = ex.get("rpe")
+                pct = rpe_to_pct(reps, float(rpe)) if rpe is not None else 0.75
+                ex["weight_kg"] = round(basis * pct, 1)
+                ex["pct_1rm"] = round(pct, 3)
+                ex["weight_source"] = "suggested"
+            total = sum(
+                (ex.get("weight_kg") or 0) * (ex.get("sets") or 0) * (ex.get("reps") or 0)
+                for ex in day_data.planned_exercises
+                if isinstance(ex, dict)
+            )
+            if total > 0:
+                day_data.planned_volume_kg = round(total, 2)
 
 
 # ── Weekly view (Phase 5B) ────────────────────────────────────────────────
