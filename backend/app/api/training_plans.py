@@ -16,9 +16,15 @@ from app.schemas.conformity import (
 from app.schemas.training_plan import (
     AdaptiveSuggestionsResponse,
     GeneratePlanRequest,
+    MaterialiseRequest,
+    MaterialiseResponse,
     RefreshTargetsResponse,
     RescheduleDayRequest,
     StrengthPlanSuggestionsResponse,
+    StrengthProgressionApplyRequest,
+    StrengthProgressionApplyResponse,
+    StrengthProgressionSuggestRequest,
+    StrengthProgressionSuggestResponse,
     SubstituteDayRequest,
     SwapDayRequest,
     TrainingPlanCreate,
@@ -264,6 +270,111 @@ async def refresh_plan_targets(
     strength = await plan_service.refresh_strength_targets(db, current_user.id, plan_id)
     result["strength_refreshed"] = strength.get("strength_refreshed", [])
     return RefreshTargetsResponse.model_validate(result)
+
+
+# ── S1: strength progression (suggest · apply · materialise) ─────────────
+
+
+@router.post(
+    "/{plan_id}/strength-progression/suggest",
+    response_model=StrengthProgressionSuggestResponse,
+)
+async def suggest_strength_progression(
+    plan_id: uuid.UUID,
+    data: StrengthProgressionSuggestRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Propose a working weight per planned exercise (S1) — writes nothing.
+
+    Anchored on the current e1RM (84-day window) and progressed by the week's
+    RPE or the previous week's load, per the plan's ``strength_progression``
+    rules. Entries set by hand are skipped unless ``force=true``; each skipped
+    entry says why under ``skipped_reason``.
+    """
+    try:
+        result = await plan_service.suggest_strength_progression(
+            db,
+            current_user.id,
+            plan_id,
+            scope=data.scope,
+            day_id=data.day_id,
+            week=data.week,
+            force=data.force,
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return StrengthProgressionSuggestResponse.model_validate(result)
+
+
+@router.post(
+    "/{plan_id}/strength-progression/apply",
+    response_model=StrengthProgressionApplyResponse,
+)
+async def apply_strength_progression(
+    plan_id: uuid.UUID,
+    data: StrengthProgressionApplyRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Write accepted suggestions into day entries (S1), one transaction.
+
+    Each target addresses an entry by ``(day_id, exercise_index)``; written
+    entries become ``weight_source='suggested'`` with the ``pct_1rm`` basis so
+    ``refresh-targets`` can re-solve them later. Hand-set entries are skipped
+    unless ``force=true``.
+    """
+    try:
+        result = await plan_service.apply_strength_progression(
+            db,
+            current_user.id,
+            plan_id,
+            [t.model_dump() for t in data.targets],
+            force=data.force,
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return StrengthProgressionApplyResponse.model_validate(result)
+
+
+@router.post(
+    "/{plan_id}/strength-progression/materialise",
+    response_model=MaterialiseResponse,
+)
+async def materialise_strength_progression(
+    plan_id: uuid.UUID,
+    data: MaterialiseRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fill per-week sets/reps/RPE cells from the plan's progression rules (S1).
+
+    ``mode='fill-empty'`` (default) writes only fields the entry has no value
+    for; ``'replace'`` overwrites them. Supplying ``rules`` persists them on
+    the plan first. Weights are not written here — use suggest + apply.
+    """
+    try:
+        result = await plan_service.materialise_strength_progression(
+            db,
+            current_user.id,
+            plan_id,
+            rules=(
+                [r.model_dump(exclude_none=True) for r in data.rules]
+                if data.rules is not None
+                else None
+            ),
+            weeks=data.weeks,
+            mode=data.mode,
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return MaterialiseResponse.model_validate(result)
 
 
 # ── FL2: missed-session reconciliation ──────────────────────────────────
@@ -548,7 +659,9 @@ async def generate_plan(
     return _plan_to_read(plan)
 
 
-@router.get("/{plan_id}/strength-suggestions", response_model=StrengthPlanSuggestionsResponse)
+@router.get(
+    "/{plan_id}/strength-suggestions", response_model=StrengthPlanSuggestionsResponse
+)
 async def get_strength_suggestions(
     plan_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

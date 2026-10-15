@@ -1,6 +1,7 @@
 """Lifting service — CRUD, volume calculation, PR detection (Brzycki formula), activity linking, warmup templates."""
 
 import uuid
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 from sqlalchemy import func, select
@@ -43,6 +44,58 @@ def brzycki_1rm(weight_kg: float, reps: int) -> float:
     if reps >= 37:
         return weight_kg * 2  # guard against division by zero
     return weight_kg * (36 / (37 - reps))
+
+
+# ── RPE → %1RM (S1 progression engine) ───────────────────────────────────────
+
+# Lowest fraction of e1RM the RPE conversion will return. 0.30 keeps a
+# prescription sane (a 20-rep set at RPE 6 is below it and clamps here) rather
+# than returning a number nobody should load.
+MIN_RPE_PCT = 0.30
+
+# Plate-loading granularity for suggested working weights. 0.5 kg is the
+# smallest change most gyms can actually make (a pair of 0.25 kg fractional
+# plates); anything finer is false precision.
+PLATE_INCREMENT_KG = 0.5
+
+# Fraction of true 1RM at or above which a prescription is flagged for a
+# spotter/safety bars. One constant so every path that suggests a weight
+# (``suggest_strength_load``, the S1 progression resolver) says the same thing.
+NEAR_MAXIMAL_PCT = 0.95
+NEAR_MAXIMAL_LOAD_WARNING = (
+    "Near-maximal load (95%+ of 1RM) — use a spotter and safety bars."
+)
+
+
+def rpe_to_pct(reps: int, rpe: float) -> float:
+    """Fraction of 1RM implied by ``reps`` performed at ``rpe`` (S1).
+
+    Derived by *inverting* ``brzycki_1rm`` rather than fitting a second curve,
+    so a prescription can never disagree with the e1RM the same set would earn
+    in PRs and charts. Reps-in-reserve turns the RPE into extra reps::
+
+        effReps = clamp(reps + (10 - rpe), 1, 36)
+        pct     = clamp((37 - effReps) / 36, 0.30, 1.00)
+
+    Sanity anchors: RPE 10 @ 1 rep → 1.000; RPE 8 @ 5 → 0.833; RPE 7 @ 8 → 0.722.
+
+    Deliberately *total*: it clamps instead of raising, because it is also used
+    to describe a set that has already happened. The ``reps > 12`` reliability
+    guard lives in the caller (``skipped_reason: "reps_too_high"``) — Brzycki
+    itself degrades past ``MAX_REPS_FOR_1RM_PR``, so the number is still
+    computed here but must not be presented as trustworthy.
+    """
+    if reps < 1:
+        raise ValueError("reps must be >= 1")
+    eff_reps = min(max(reps + (10.0 - float(rpe)), 1.0), 36.0)
+    return min(max((37.0 - eff_reps) / 36.0, MIN_RPE_PCT), 1.0)
+
+
+def round_to_plate(kg: float, increment: float = PLATE_INCREMENT_KG) -> float:
+    """Round a suggested load to the nearest loadable increment (0.5 kg)."""
+    if increment <= 0:
+        return float(kg)
+    return round(round(float(kg) / increment) * increment, 2)
 
 
 # ── Volume calculation ────────────────────────────────────────────────────────
@@ -1124,37 +1177,73 @@ async def _recalculate_pr_after_set_change(
 # ── e1RM resolution + load suggestion (FL3) ───────────────────────────────
 
 
-async def resolve_exercise_e1rm(
-    db: AsyncSession, user_id: uuid.UUID, exercise_name: str
-) -> tuple[float | None, str]:
-    """Current e1RM for an exercise: PR first, else best recent set (FL3).
+# Default recency window for an e1RM anchor (12 weeks — the same window the
+# lifting prefill reference uses). Without it the resolver took the *all-time*
+# best set, so a lift untrained for a year could anchor a prescription: the
+# number was real, but it described an athlete who no longer exists.
+DEFAULT_E1RM_WINDOW_DAYS = 84
+
+
+@dataclass(frozen=True)
+class E1rmBasis:
+    """Resolved e1RM anchor plus the provenance needed to explain it (S1).
+
+    ``basis_date`` is the date the anchor was achieved (PR date, or the
+    session date of the best recent set) — surfaced so a suggestion can say
+    *which* lift it is anchored on rather than presenting a bare number.
+    """
+
+    e1rm_kg: float | None
+    source: str  # "pr" | "recent_sets" | "none"
+    basis_date: date | None = None
+    within_days: int | None = None
+
+
+async def resolve_exercise_e1rm_basis(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    exercise_name: str,
+    within_days: int | None = DEFAULT_E1RM_WINDOW_DAYS,
+) -> E1rmBasis:
+    """Current e1RM for an exercise: PR first, else best recent set (FL3/S1).
 
     Normalises the name, then prefers the stored ``PersonalRecord``
     (``record_type == "1rm"`` with a non-null ``estimated_1rm``). When no PR
     exists, falls back to the best-set Brzycki estimate over non-warmup sets
     in the 1RM-valid rep range (same contention rules as the PR checks).
-    Returns ``(e1rm_kg, source)`` where source is ``"pr"`` / ``"recent_sets"``
-    / ``"none"`` (None e1RM when no history exists at all).
+
+    ``within_days`` restricts *both* sources to history newer than that many
+    days (``None`` disables the window and restores all-time behaviour). The
+    window is what stops a year-old PR from anchoring a suggestion — see
+    ``E1rmBasis.basis_date`` for what the caller should surface.
     """
     normalised = normalise_exercise_name(exercise_name)
+    cutoff = (
+        date.today() - timedelta(days=within_days) if within_days is not None else None
+    )
 
+    pr_query = select(PersonalRecord).where(
+        PersonalRecord.user_id == user_id,
+        PersonalRecord.exercise_name == normalised,
+        PersonalRecord.record_type == "1rm",
+        PersonalRecord.estimated_1rm.isnot(None),
+    )
+    if cutoff is not None:
+        pr_query = pr_query.where(PersonalRecord.achieved_date >= cutoff)
     pr_result = await db.execute(
-        select(PersonalRecord)
-        .where(
-            PersonalRecord.user_id == user_id,
-            PersonalRecord.exercise_name == normalised,
-            PersonalRecord.record_type == "1rm",
-            PersonalRecord.estimated_1rm.isnot(None),
-        )
-        .order_by(PersonalRecord.estimated_1rm.desc())
-        .limit(1)
+        pr_query.order_by(PersonalRecord.estimated_1rm.desc()).limit(1)
     )
     pr = pr_result.scalar_one_or_none()
     if pr is not None and pr.estimated_1rm:
-        return float(pr.estimated_1rm), "pr"
+        return E1rmBasis(
+            e1rm_kg=float(pr.estimated_1rm),
+            source="pr",
+            basis_date=pr.achieved_date,
+            within_days=within_days,
+        )
 
-    best_result = await db.execute(
-        select(LiftingSet)
+    best_query = (
+        select(LiftingSet, LiftingSession.session_date)
         .join(LiftingSession)
         .where(
             LiftingSession.user_id == user_id,
@@ -1164,13 +1253,43 @@ async def resolve_exercise_e1rm(
             LiftingSet.reps <= MAX_REPS_FOR_1RM_PR,
             LiftingSet.reps < 37,
         )
-        .order_by((LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc())
-        .limit(1)
     )
-    best = best_result.scalar_one_or_none()
-    if best is None:
-        return None, "none"
-    return brzycki_1rm(best.weight_kg, best.reps), "recent_sets"
+    if cutoff is not None:
+        best_query = best_query.where(LiftingSession.session_date >= cutoff)
+    best_result = await db.execute(
+        best_query.order_by(
+            (LiftingSet.weight_kg * (36.0 / (37 - LiftingSet.reps))).desc()
+        ).limit(1)
+    )
+    row = best_result.first()
+    if row is None:
+        return E1rmBasis(
+            e1rm_kg=None, source="none", basis_date=None, within_days=within_days
+        )
+    best, session_date = row
+    return E1rmBasis(
+        e1rm_kg=brzycki_1rm(best.weight_kg, best.reps),
+        source="recent_sets",
+        basis_date=session_date,
+        within_days=within_days,
+    )
+
+
+async def resolve_exercise_e1rm(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    exercise_name: str,
+    within_days: int | None = DEFAULT_E1RM_WINDOW_DAYS,
+) -> tuple[float | None, str]:
+    """``(e1rm_kg, source)`` — thin wrapper over ``resolve_exercise_e1rm_basis``.
+
+    Kept as a 2-tuple so existing callers are unchanged; new code that needs
+    ``basis_date`` should call ``resolve_exercise_e1rm_basis`` directly.
+    """
+    basis = await resolve_exercise_e1rm_basis(
+        db, user_id, exercise_name, within_days=within_days
+    )
+    return basis.e1rm_kg, basis.source
 
 
 async def suggest_strength_load(
@@ -1188,6 +1307,11 @@ async def suggest_strength_load(
     Raises ``ValueError`` on out-of-range inputs (routers map it to 422).
     At ``pct_1rm >= 0.95`` the response carries a spotter/safety warning:
     near-maximal loads should be lifted with a spotter and safety bars.
+
+    The anchor is resolved through the 84-day window (S1), so an e1RM whose
+    history has gone stale resolves to ``basis_source: "none"`` instead of
+    quietly anchoring on a lift from a year ago; ``basis_date`` reports when
+    the anchor was achieved.
     """
     if not exercise_name or not exercise_name.strip():
         raise ValueError("exercise_name is required")
@@ -1196,26 +1320,24 @@ async def suggest_strength_load(
     if not 0.3 <= pct_1rm <= 1.0:
         raise ValueError("pct_1rm must be between 0.3 and 1.0")
 
-    safety_warning = (
-        "Near-maximal load (95%+ of 1RM) — use a spotter and safety bars."
-        if pct_1rm >= 0.95
-        else None
-    )
+    safety_warning = NEAR_MAXIMAL_LOAD_WARNING if pct_1rm >= NEAR_MAXIMAL_PCT else None
 
-    basis_1rm, source = await resolve_exercise_e1rm(db, user_id, exercise_name)
-    if basis_1rm is None:
+    basis = await resolve_exercise_e1rm_basis(db, user_id, exercise_name)
+    if basis.e1rm_kg is None:
         return {
             "target_kg": None,
             "basis_1rm_kg": None,
             "pct_1rm": pct_1rm,
             "basis_source": "none",
+            "basis_date": None,
             "safety_warning": safety_warning,
         }
     return {
-        "target_kg": round(basis_1rm * pct_1rm, 1),
-        "basis_1rm_kg": round(basis_1rm, 1),
+        "target_kg": round(basis.e1rm_kg * pct_1rm, 1),
+        "basis_1rm_kg": round(basis.e1rm_kg, 1),
         "pct_1rm": pct_1rm,
-        "basis_source": source,
+        "basis_source": basis.source,
+        "basis_date": basis.basis_date,
         "safety_warning": safety_warning,
     }
 

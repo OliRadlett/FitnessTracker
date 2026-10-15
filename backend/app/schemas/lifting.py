@@ -187,6 +187,8 @@ class SuggestLoadResponse(BaseModel):
     basis_1rm_kg: float | None = None
     pct_1rm: float
     basis_source: Literal["pr", "recent_sets", "none"]
+    # Date the anchor was achieved (S1) — lets the UI say "PR · 3 Sep".
+    basis_date: date | None = None
     safety_warning: str | None = None
 
     model_config = {"from_attributes": True}
