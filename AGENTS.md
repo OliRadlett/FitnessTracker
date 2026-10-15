@@ -252,14 +252,18 @@ split+lift axes cover the whole planned-day vocabulary and **label-level conform
 counterpart — deliberately leaner and mostly **non-Jev** (the semantic `purpose` tag is already shipped and
 unread; the ride-quality axis is deterministic/power-derived).
 
-**Wahoo zone sync** — [`plans/wahoo-zone-sync.md`](plans/wahoo-zone-sync.md) (proposed,
-nothing built). Pushes FTP (and HR threshold, if an endpoint exists) to the user's
-Wahoo zone sets so the ELEMNT colours the live zone against current boundaries, and
-pushed structured workouts resolve their %FTP targets against a current FTP. Uses the
-`power_zones_read`/`power_zones_write` scopes that have been requested since the
-planned-workout push but never exercised. **HR zones are not in the documented Cloud
-API** (no scope, `user_write` cannot carry THR) — Phase 0 is a sandbox spike before
-any code, and Phase 3 (HR) is gated on its result.
+**Wahoo zone sync** — [`plans/wahoo-zone-sync.md`](plans/wahoo-zone-sync.md). Pushes FTP
+into the athlete's Wahoo power zone sets so the ELEMNT colours the live zone against
+current boundaries, and pushed structured workouts resolve their %FTP targets against a
+current FTP. Exercises `power_zones_read`/`power_zones_write`, requested since the
+planned-workout push and unused until now. **Backend landed** (migration 100
+`wahoo_zone_sets`, read/push/revert under `/cycling/wahoo-zones`, triggered from the four
+FTP write sites, `wahoo_zones` notification) — boundary writes **rescale a set's own
+values by the FTP ratio** rather than imposing our zone model, so the sync moves the
+anchor and not the athlete's zone shape. **HR zones remain impossible via the API** (no
+endpoint, no scope, `user_write` cannot carry THR): the card shows local HR zones
+read-only and says so. A sandbox spike (plan §11) is still open and decides whether
+writing `ftp` alone recomputes boundaries.
 
 Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/lifting-redesign-plan.md`](plans/lifting-redesign-plan.md) (redesign of `/lifting` page — tabbed IA, session cards, PR timeline, plan integration), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/relive-3d-next-level.md`](plans/relive-3d-next-level.md) (Phases A–D: atmosphere, director, perf, audio shipped; WebGPU/share/montage/AI open), [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (training page redesign — V2.1 emoji pass shipped in `33a86e9`; V3.0 weekly master bar + `DayCell`/`ConformitySummaryCard`/`PlanGoalsStrip` shipped in `520edff`; missed-day quick-actions popover shipped in `cf18415`; prod deploy open), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md), [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md) (training page overhaul — plan spine + one Plan-mode editor; supersedes the `v3-planning` surface scope), [`plans/training-strength-programming.md`](plans/training-strength-programming.md) (companion — multi-week strength targets + weight suggestions).
 

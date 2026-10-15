@@ -1,11 +1,17 @@
 # Push power / HR zones to Wahoo (auto-adjust on FTP & LTHR change)
 
-> **Status**: Phase 1 backend landed on `feature/wahoo-zone-sync` (2026-10-16) —
-> migration 100, model/schemas, `get_power_zones` client read, and a read-only
-> `GET /api/v1/cycling/wahoo-zones` that never fails for a Wahoo-side problem.
-> Write path, card, task wiring and notification still to build. **Phase 0 (the
-> sandbox spike) is still open**, and it is now the thing that gates the *write
-> policy* (D3) rather than the read path — see §3.1 and §11.
+> **Status**: Phases 1 and 2 **backend landed** on `feature/wahoo-zone-sync`
+> (2026-10-16): migration 100, model/schemas, the power-zone client read/write,
+> `GET /cycling/wahoo-zones`, `POST /cycling/wahoo-zones/push`, `POST
+> /cycling/wahoo-zones/revert`, the automatic trigger from the four FTP write sites,
+> and a `wahoo_zones` notification. The card is in progress; Phase 3 (HR) is
+> unchanged and still **not** built.
+> **Phase 0 (the sandbox spike) is still open.** It no longer blocks shipping — the
+> write path was built to be convention-agnostic (D2) so a wrong guess about
+> `zone_N` cannot reshape an athlete's zones — but it still decides two things:
+> whether writing `ftp` alone recomputes boundaries, and what
+> `GET /v1/power_zones` actually returns (which is what D3's creation path and the
+> read-only card exist to reveal). See §3.1 and §11.
 > **Scope**: keep the athlete's Wahoo zone sets in step with FitTrack's FTP / LTHR,
 > so the ELEMNT colours the current zone against the *right* boundaries and pushed
 > structured workouts target the intended watts.
@@ -326,41 +332,48 @@ so the push changes the *anchor*, not the athlete's zone model.
 
 | Method | Path | Behaviour |
 |--------|------|-----------|
-| `GET` | `/api/v1/cycling/wahoo-zones` | card payload: connected?, opt-in, our local zones (power + HR), Wahoo sets, per-row drift, `pushed_at`, `prior_available`, `last_error`. **Read-only, no write, no connection required** |
-| `POST` | `/api/v1/cycling/wahoo-zones/push` | `{target: "power"｜"all", force?: bool}` → runs `push_power_zones(force=True)`. 409 no connection · 403 missing scope · 422 no FTP |
-| `POST` | `/api/v1/cycling/wahoo-zones/revert` | restores `prior`; clears the row's anchor so the next FTP change re-pushes |
+| `GET` | `/api/v1/cycling/wahoo-zones` | card payload: connected?, opt-in, our local zones (power + HR), Wahoo sets, per-row drift, `pushed_at`, `has_prior`, `last_error`. **Read-only, no write, no connection required** |
+| `POST` | `/api/v1/cycling/wahoo-zones/push` | **no body** → `push_power_zones(force=True)`. 409 no connection · 403 missing scope · 422 no FTP. Per-set failures come back in `skipped[]`, not as an error |
+| `POST` | `/api/v1/cycling/wahoo-zones/revert` | restores each `prior` snapshot and clears it. 409 when there is no snapshot |
 
-- `PATCH /cycling/profile` accepts `push_wahoo_zones`; toggling **on** immediately
-  enqueues a first push so the card is never "on but unapplied".
-- Route-ordering: keep all three **static** paths, and register them before any
-  single-segment dynamic route in the cycling router (AGENTS.md pitfall 13/35).
-  The cycling router currently has none, but the offensive test is the
-  decorator-index assertion pattern, not "the handler exists".
+- The plan sketched a `{target: "power"｜"all"}` body; dropped, because HR has no
+  writable surface at all, so the only meaningful target is power and a body would be
+  ceremony around a constant.
+- `PATCH /cycling/profile` accepts `push_wahoo_zones`. When FTP changes, or when the
+  toggle is switched **on**, the handler commits and then enqueues — see §7 D5 for
+  why the order is load-bearing. The card also pushes immediately on toggle-on, so
+  the first sync does not wait for the weekly task.
+- Route-ordering: all three paths are **static single-segment**, and the cycling
+  router has no `/{param}` route at all, so pitfall 13's collision rule has nothing
+  to bite on (pitfall 35). No ordering assertion is added, because it would lock in
+  caution while checking nothing.
 
-### 6.4 Trigger wiring
+### 6.4 Trigger wiring (as built)
 
-FTP can change in four places; a single helper keeps them in step:
+FTP can change in four places; two helpers keep them in step:
 
 ```python
 # services/wahoo_zones.py
-def schedule_push_if_opted_in(user_id) -> None:
-    """Best-effort Celery enqueue; never raises into the caller."""
+async def commit_and_enqueue_zone_push(db, user_id, profile) -> bool   # endpoint sites
+def enqueue_zone_push_if_opted_in(user_id, profile) -> bool            # weekly task
 ```
+
+The opt-in check lives inside both, so no call site can forget it.
 
 | Site | Call |
 |------|------|
-| `auto_estimate_ftp_weekly` (`scheduler.py:3033`, after the per-user commit) | `schedule_push_if_opted_in(user_id)` |
-| `PATCH /cycling/profile` FTP branch (`api/cycling/__init__.py:44`) | same |
-| `POST /cycling/ftp-history` (`api/cycling/ftp.py:65`) | same |
-| `POST /cycling/estimate-ftp?save=true` (`api/cycling/ftp.py:135`) | same |
-| Manual "Push now" / toggle-on | calls the service **inline** so the UI gets the outcome |
+| `auto_estimate_ftp_weekly` (`scheduler.py`, after the per-user commit) | `enqueue_zone_push_if_opted_in` |
+| `PATCH /cycling/profile` (FTP changed **or** toggle switched on) | `commit_and_enqueue_zone_push` |
+| `POST /cycling/ftp-history` (when it updated the profile) | `commit_and_enqueue_zone_push` |
+| `POST /cycling/estimate-ftp?accept=true` (when the estimate differs) | `commit_and_enqueue_zone_push` |
+| Manual "Push now" (the card) | inline `push_power_zones(force=True)` so the UI gets the answer |
 
 New task `app.tasks.scheduler.push_wahoo_zones_for_user` (per-user, `task_session()`,
-`asyncio.run` — pitfalls 1). **Not** a beat entry: it is enqueued, not scheduled.
-The weekly order matters — the enqueue happens *after* the FTP commit, so the
-reasoning is "FTP changed, now propagate" and a push failure cannot roll back FTP
-(the existing task already wraps each user in try/except + rollback; the enqueue
-must sit outside that `try` or inside its own).
+`asyncio.run` — pitfall 1). **Not** a beat entry: it is enqueued, not scheduled, since
+the trigger is an FTP change rather than a timetable. It re-checks `require_opt_in`,
+so a job queued just before the athlete switched the toggle off cannot still write to
+their account. It notifies only when something was actually written, deduped on the
+FTP value so a re-run cannot re-announce the same move.
 
 ### 6.5 Notification
 
@@ -382,11 +395,11 @@ already fire `connection_reauth` for a 401.
 
 | # | Decision | Rationale |
 |---|----------|-----------|
-| **D1** | Opt-in (`push_wahoo_zones`, default off). | Writing into someone else's account unprompted is not acceptable; mirrors `auto_estimate_ftp`, which is also opt-in. |
-| **D2** | **Rescale the existing Wahoo set; do not impose our boundaries.** Write `ftp` **plus** boundaries derived from the set's *own* current proportions. Offer Coggan-mode only as an explicit choice. | Our `POWER_ZONES` are Coggan (55/75/90/105/120/150 %FTP); Wahoo's blog model is ~(55/75/91/100/110/135)% with a 4a/4b split. Pushing Coggan boundaries would silently reshape zones the athlete may have tuned — the feature is about the *anchor*, not the model. If §11 spike shows Wahoo recomputes from `ftp`, even simpler: write `ftp` alone. Holds doubly for HR, where our 80/89/95/105 %LTHR bands differ from Wahoo's ~70/80/87–95/95/105 %LT bands (§3.3). |
-| **D3** | Own the athlete's cycling set(s) — **including the set the Wahoo app created** — but never touch a set attributable to *another third-party app*, and never delete a set. | **Revised while building.** The first draft of this rule was "never write to a `fitness_app_id < 1000` set", reasoning that it is the athlete's own customisation. That is backwards: the Wahoo-app set is the one the head unit actually colours against, so refusing to touch it would make the feature do nothing in the common case. The real hazard is a *different* third-party app also syncing zones (`fitness_app_id > 1000`, and not one of our tracked ids) — there we would be fighting another integration. What makes writing the athlete's own set safe is opt-in + snapshot + revert, not provenance. Phase 1's read path confirms how many sets exist and who owns them before this is finalised. |
+| **D1** | Opt-in (`push_wahoo_zones`, default off) governs the **automatic** path only. Pressing "Push now" is itself consent, so it does not require the toggle. | Writing into someone else's account unprompted is not acceptable; mirrors `auto_estimate_ftp`, which is also opt-in. But requiring someone to enable *automation* before they may perform the same write by hand is friction with no safety benefit — the manual button is also the path that repairs drift when the automatic push was skipped. |
+| **D2** | **Rescale the existing Wahoo set; do not impose our boundaries.** Write `ftp` **plus** boundaries derived from the set's *own* current proportions. Offer Coggan-mode only as an explicit choice. **As built**: `rescaled_boundaries()` multiplies the set's own values by `new_ftp / old_ftp` (monotonicity enforced after rounding); a set with boundaries but no readable anchor is *skipped* rather than half-updated; `critical_power` is never sent; a **created** set gets the anchor and identity only, no invented boundaries. | Our `POWER_ZONES` are Coggan (55/75/90/105/120/150 %FTP); Wahoo's blog model is ~(55/75/91/100/110/135)% with a 4a/4b split. Pushing Coggan boundaries would silently reshape zones the athlete may have tuned — the feature is about the *anchor*, not the model. If §11 spike shows Wahoo recomputes from `ftp`, even simpler: write `ftp` alone. Holds doubly for HR, where our 80/89/95/105 %LTHR bands differ from Wahoo's ~70/80/87–95/95/105 %LT bands (§3.3). The ratio approach is what made shipping ahead of the spike safe: a wrong guess about `zone_N`'s meaning leaves zones uniformly wrong (visible as drift on the card) instead of reshaped. |
+| **D3** | Own the athlete's cycling set(s) — **including the set the Wahoo app created** — but never touch a set attributable to *another third-party app*, and never delete a set. A new set is created **only when `GET` returns no cycling set at all**. | **Revised while building.** The first draft of this rule was "never write to a `fitness_app_id < 1000` set", reasoning that it is the athlete's own customisation. That is backwards: the Wahoo-app set is the one the head unit actually colours against, so refusing to touch it would make the feature do nothing in the common case. The real hazard is a *different* third-party app also syncing zones (`fitness_app_id > 1000`, and not one of our tracked ids) — there we would be fighting another integration. What makes writing the athlete's own set safe is opt-in + snapshot + revert, not provenance. The create path exists only because `GET` may be app-scoped (the docs do not say, unlike routes and plans); creating a set alongside sets we merely *declined* to touch would be noise on top of a deliberate delegation, so it does not happen. |
 | **D4** | Snapshot + explicit revert instead of `UndoLog`. | `UndoLog` has no HTTP surface and no registered production kind, and `RouteMergeLog` was deliberately **not** migrated onto it exactly because a 30-day expiry would be imposed on a working undo (`AGENTS.md`, Active Planning). A `prior` JSONB column plus a revert endpoint is honest and non-expiring. |
-| **D5** | Inline push for user actions; Celery push for passive FTP changes. | The button must be able to say what happened; an FTP edit must not block on Wahoo latency or fail because Wahoo is down. |
+| **D5** | Automatic pushes are **queued from the endpoint sites** (`commit_and_enqueue_zone_push` commits the FTP change *before* enqueueing) and queued from the weekly task after its own commit. Manual push is inline, because the athlete is waiting for the answer. **Not** inline for automatic pushes. | **Revised while building.** The first draft said "inline for user actions, queued for passive changes" — right in spirit, but the obvious implementation (inline at every FTP write site) would put a Wahoo round trip inside a profile save, and `retry_request` retries 3× with 1/2/4 s backoff around 30 s timeouts, so a Wahoo outage could hang an unrelated request for the better part of two minutes. The queued path has one hazard — a worker that reads the profile before the request commits sees the *previous* FTP and pushes a stale anchor — and that failure is indistinguishable from a successful no-op, so it would never be noticed. Hence commit-then-enqueue, in that order, with a test asserting the order. |
 | **D6** | HR zones are **not** shipped on the assumption they are writable. Phase 3 is gated on the §11 spike; if there is no endpoint, deliver drift display + guidance and say so plainly in the card. | §3.2: no documented endpoint, no scope, `user_write` cannot carry it. Shipping a UI that pretends otherwise would be a lie the user detects on the device. The *payload* is known and simple though — a THR anchor plus boundaries, mirroring power exactly (§3.3) — so if Wahoo exposes it, HR is a small increment, not a redesign. |
 | **D7** | Out of scope: syncing weight/height via `user_write`. | It is a separate unused-scope candidate (`wahoo-planned-workout-push.md:49`) and touches Wahoo's own calorie/W-kg maths. Note the interaction, do not bundle it. |
 
@@ -453,13 +466,13 @@ Phase 0, and its result is *written into §3.1 of this doc*.
 
 ## 10. Phasing
 
-| Phase | Deliverable | Exit criteria |
-|-------|-------------|---------------|
-| **0 — spike** | Sandbox verification of §3.1.1–3.1.5 + the §3.2 undocumented-HR probes. Doc updated with observed statuses/payloads. | §3.1 "unverified" list answered or explicitly still unknown with a chosen fallback |
-| **1 — read-only** | `GET /wahoo-zones` + `WahooZonesCard` showing local zones, Wahoo sets, drift. No writes, no toggle. | Card renders real data with `power_zones_read` only |
-| **2 — power push** | Migration 100, service, client writes, endpoints, toggle, `prior`/revert, task enqueue, notification. | FTP change propagates; revert restores; failures are visible and non-fatal |
-| **3 — HR** | Conditional on Phase 0: real HR push if an endpoint exists, else guided-match UI. | Card tells the truth about what is and is not automatable |
-| **4 — idle** | Weight/height via `user_write` (D7), additional sports' zone sets. | Explicitly separate |
+| Phase | Deliverable | Exit criteria | State |
+|-------|-------------|---------------|-------|
+| **0 — spike** | Sandbox verification of §3.1.1–3.1.5 + the §3.2 undocumented-HR probes. Doc updated with observed statuses/payloads. | §3.1 "unverified" list answered or explicitly still unknown with a chosen fallback | **open** — no longer blocks shipping, still decides D2's simplest branch and the validity of the create path |
+| **1 — read-only** | `GET /wahoo-zones` + `WahooZonesCard` showing local zones, Wahoo sets, drift. No writes, no toggle. | Card renders real data with `power_zones_read` only | backend **built**; card in progress |
+| **2 — power push** | Migration 100, service, client writes, endpoints, toggle, `prior`/revert, task enqueue, notification. | FTP change propagates; revert restores; failures are visible and non-fatal | backend **built** (`23d001c`); card in progress |
+| **3 — HR** | Conditional on Phase 0: real HR push if an endpoint exists, else guided-match UI. | Card tells the truth about what is and is not automatable | **not built** — the card states the limitation and shows local HR zones read-only |
+| **4 — idle** | Weight/height via `user_write` (D7), additional sports' zone sets. | Explicitly separate | not started |
 
 Phase 1 exists so the card is useful and *verifiable* before anything writes to a
 Wahoo account — it also makes the drift visible, which is the feature's whole point.
