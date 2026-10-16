@@ -2646,7 +2646,8 @@ async def copy_plan_day(
 
     Creates a new TrainingPlanDay with the same planned_exercises, focus,
     sport, type, and other planned fields, but on the target_date. The target
-    may hold a session of another sport; the same sport is refused.
+    may hold a session of another sport; the same sport, or ``rest`` on either
+    side, raises ``PlanDayConflictError`` (HTTP 409).
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2667,7 +2668,7 @@ async def copy_plan_day(
         and sports_conflict_on_date(d.sport, source.sport)
         for d in plan.days
     ):
-        raise ValueError(
+        raise PlanDayConflictError(
             f"A {source.sport} session already exists at the target date"
         )
 

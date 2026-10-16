@@ -779,14 +779,17 @@ async def copy_day_to_date(
     """Copy a plan day's exercises to a new date within the same plan.
 
     Creates a new day at the target date with the same planned fields
-    (exercises, focus, sport, type, warmup template, session type, etc.). 400
-    when the target date already holds a session of the same sport — another
-    sport's session may share the date.
+    (exercises, focus, sport, type, warmup template, session type, etc.). 409
+    when the target date already holds a session that cannot share it — the
+    same sport, or ``rest`` on either side. Another sport's session may share
+    the date.
     """
     try:
         day = await plan_service.copy_plan_day(
             db, current_user.id, plan_id, source_day_id, target_date
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         code = 404 if "not found" in detail else 400

@@ -3,8 +3,8 @@
 ``sports_conflict_on_date`` is the single predicate behind the add / copy /
 reschedule / substitute / sport-change guards and the undo restore clash, so it
 is tested directly rather than only through the integration suite (which needs
-Postgres). The two in-place sport-change paths run against a stubbed session, so
-their refusal is pinned here too.
+Postgres). The two in-place sport-change paths and the copy guard run against a
+stubbed session, so their refusal is pinned here too.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from app.schemas.training_plan import TrainingPlanDayCreate, TrainingPlanDayUpda
 from app.services.training_plan import (
     PlanDayConflictError,
     _validate_days,
+    copy_plan_day,
     sports_conflict_on_date,
     substitute_plan_day,
     update_plan_day,
@@ -127,6 +128,8 @@ def _db_returning(plan: TrainingPlan) -> AsyncMock:
     db = AsyncMock()
     # ``AsyncSession.execute`` is awaited but its ``Result`` is not.
     db.execute.return_value.scalar_one_or_none = MagicMock(return_value=plan)
+    # ``AsyncSession.add`` is synchronous.
+    db.add = MagicMock()
     return db
 
 
@@ -275,3 +278,43 @@ class TestUpdateDaySportChange:
         )
 
         assert (day.sport, day.planned_tss) == ("strength", 80.0)
+
+
+# ── Copying onto a date that already holds a session ────────────────────────
+#
+# ``copy_plan_day`` creates a row rather than moving one, so its clash is the
+# same rule as the other four guards and is answered with the same error type —
+# one rule, one status (409).
+
+TARGET = date(2026, 8, 20)
+
+
+class TestCopyOntoASharedDate:
+    async def test_refuses_a_target_holding_the_same_sport(self):
+        plan = _plan_with((DAY, "cycle", "easy"), (TARGET, "cycle", "moderate"))
+        ride = plan.days[0]
+
+        with pytest.raises(PlanDayConflictError, match="already exists at the target"):
+            await copy_plan_day(
+                _db_returning(plan), plan.user_id, plan.id, ride.id, TARGET
+            )
+
+    async def test_refuses_rest_beside_a_target_session(self):
+        plan = _plan_with((DAY, "rest", "rest"), (TARGET, "cycle", "moderate"))
+        rest = plan.days[0]
+
+        with pytest.raises(PlanDayConflictError, match="already exists at the target"):
+            await copy_plan_day(
+                _db_returning(plan), plan.user_id, plan.id, rest.id, TARGET
+            )
+
+    async def test_allows_a_target_holding_another_sport(self):
+        plan = _plan_with((DAY, "cycle", "easy"), (TARGET, "strength", "moderate"))
+        ride = plan.days[0]
+
+        copied = await copy_plan_day(
+            _db_returning(plan), plan.user_id, plan.id, ride.id, TARGET
+        )
+
+        assert (copied.day_date, copied.sport) == (TARGET, "cycle")
+

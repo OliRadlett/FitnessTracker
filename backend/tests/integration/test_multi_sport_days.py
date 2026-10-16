@@ -371,7 +371,9 @@ class TestCopyDayToDate:
             f"/api/v1/training-plans/{plan.id}/days/{ride.id}"
             f"/copy-to-date/{target.isoformat()}"
         )
-        assert resp.status_code == 400
+        # One rule, one status: add / reschedule / substitute / patch all answer
+        # 409 for a date clash, so a copy does too.
+        assert resp.status_code == 409
 
 
 # ── Each row links its own actual ───────────────────────────────────────────
