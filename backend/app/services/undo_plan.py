@@ -13,7 +13,6 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from app.services.undo import register
 
@@ -64,14 +63,14 @@ async def restore_plan_day_delete(
     from app.models.training_plan import TrainingPlan, TrainingPlanDay
 
     plan_id = uuid.UUID(payload["plan_id"])
-    plan = (
+    owned = (
         await db.execute(
-            select(TrainingPlan)
-            .where(TrainingPlan.id == plan_id, TrainingPlan.user_id == user_id)
-            .options(selectinload(TrainingPlan.days))
+            select(TrainingPlan.id).where(
+                TrainingPlan.id == plan_id, TrainingPlan.user_id == user_id
+            )
         )
     ).scalar_one_or_none()
-    if plan is None:
+    if owned is None:
         raise ValueError("Training plan not found")
 
     snap = dict(payload["day"])
@@ -82,8 +81,19 @@ async def restore_plan_day_delete(
             snap[field] = uuid.UUID(snap[field])
 
     # Refuse rather than clobber: a re-sync may have recreated a day at that
-    # date, and that is a conflict, not a restore.
-    if any(d.day_date == snap["day_date"] for d in plan.days):
+    # date, and that is a conflict, not a restore. Asked of the database
+    # directly, *not* of ``plan.days`` — a long-lived session can hold a
+    # collection loaded before the delete, and reading it here would report a
+    # day that no longer exists (and so refuse every restore).
+    clash = (
+        await db.execute(
+            select(TrainingPlanDay.id).where(
+                TrainingPlanDay.plan_id == plan_id,
+                TrainingPlanDay.day_date == snap["day_date"],
+            )
+        )
+    ).first()
+    if clash is not None:
         raise ValueError("A day already exists on that date")
 
     day = TrainingPlanDay(plan_id=plan_id, **snap)
