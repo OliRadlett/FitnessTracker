@@ -232,8 +232,9 @@ scope**: redesign Phase 0 adds `POST /days`, `DELETE /days/{id}`, `POST /days/{i
 `CODEMAP.md:20` "non-destructive upsert" doc bug; companion `S1` adds `TrainingPlan.strength_progression`
 (a new migration — take the next free number at build time and re-check `main` per pitfall 34).
 Supersedes the *scope* of [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md)
-(whose V3 widgets are reused; its prod deploy is still open). **Nothing built yet** — the
-remaining/deferred register is §15 of the redesign plan.
+(whose V3 widgets are reused; its prod deploy is still open). **Built** — Phases 0 to 4, the
+strength progression `S1`, the Program matrix `S2`, and the follow-ons `S3`, `S4` and `C2` to `C5`
+all shipped (`834208e` through `4401812`). The remaining/deferred register is §15 of the redesign plan.
 
 **Jev strength-session classification** — three specs. [`plans/jev-strength-session-classification.md`](plans/jev-strength-session-classification.md)
 defines the label producer: Jev classifies **every** lifting session (note or not) into three typed axes —

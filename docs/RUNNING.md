@@ -55,25 +55,29 @@ python fittrack.py exec backend alembic current
 
 ### Backend (pytest)
 
-Run inside the backend container (has all deps + DB access):
+Run from the host. Dev compose mounts only `backend/app` + `backend/alembic`, so `tests/` is baked into the image and a container run tests stale code after any edit (see AGENTS.md pitfall #23).
+
+```powershell
+# A fresh worktree needs .env copied in, then the CI env vars
+$env:SECRET_KEY = "local-test-secret"; $env:DEBUG = "true"
+$env:DATABASE_URL = "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack"
+$env:TEST_DATABASE_URL = "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test"
+$env:REDIS_URL = "redis://:redis_dev_password@localhost:6379/0"
+
+python -m pytest backend/tests/ -q                      # full suite
+python -m pytest backend/tests/ -m "not integration"    # unit only, fast
+python -m pytest backend/tests/ -m smoke                # quick CI subset
+```
+
+The container path still runs, but it tests the image rather than your working tree:
 
 ```bash
-# Full suite
-python fittrack.py exec backend pytest tests/ -v --tb=short
-
-# Unit tests only (fast, no integration marker)
-python fittrack.py exec backend pytest tests/ -m "not integration"
-
-# Quick CI subset
-python fittrack.py exec backend pytest tests/ -m smoke
+python fittrack.py exec backend pytest tests/ -q
 ```
 
 Markers (defined in [`backend/pyproject.toml`](../backend/pyproject.toml)):
 - `integration` — requires real PostgreSQL; the integration conftest creates its own test database (override via `TEST_DATABASE_URL` env var). Transactional rollback per test.
 - `cheap` / `expensive` / `smoke` — speed tiers for filtering.
-
-⚠️ Dev compose mounts only `backend/app` + `backend/alembic` — `tests/` is baked into the image, so container runs use stale tests after edits (see AGENTS.md pitfall #19). Run from the host instead:
-`$env:TEST_DATABASE_URL = "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test"; python -m pytest backend/tests/ -q`
 
 pytest config: `asyncio_mode = "auto"` — async test functions need no decorator.
 
@@ -109,7 +113,7 @@ OpenCode auto-formats `.py` files with ruff on save (configured in `opencode.jso
 
 ## Database Migrations
 
-⚠️ Chain is sequential from `"001"`; `014_add_composite_indexes.py` is a **stale duplicate** — real chain is 013→014(surface)→015(indexes)→...→079(head).
+⚠️ Revisions run from `"001"` but the numbers are not contiguous. `003` and `073` were never used, and filenames do not always match revision ids (see AGENTS.md pitfall 6), so trust the `revision` and `down_revision` headers. Current head is `101`, and [`backend/tests/test_doc_claims.py`](../backend/tests/test_doc_claims.py) fails if this line goes stale.
 
 ```bash
 # Generate
