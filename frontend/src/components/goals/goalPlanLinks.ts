@@ -158,3 +158,17 @@ export function buildPlanHref(planId: string): string {
 export function goalsForPlanDay(goals: Goal[], day: TrainingPlanDay): Goal[] {
   return goals.filter((g) => g.status === 'active' && dayMatchesGoal(g, day));
 }
+
+/**
+ * Active goals relevant to a date, across every session on it.
+ *
+ * A date holding a ride and a lift supports the union of both sessions' goals,
+ * so a cycling goal and a lifting goal both show on a two-sport day.
+ */
+export function goalsForPlanDate(goals: Goal[], sessions: TrainingPlanDay[]): Goal[] {
+  const byId = new Map<string, Goal>();
+  for (const session of sessions) {
+    for (const goal of goalsForPlanDay(goals, session)) byId.set(goal.id, goal);
+  }
+  return [...byId.values()];
+}

@@ -197,6 +197,11 @@ class TestRescheduleDay:
         assert data["planned_tss"] == pytest.approx(110.0)
 
     async def test_reschedule_409_when_occupied(self, client, test_user, db_session):
+        """A same-sport session on the target date blocks the move.
+
+        (A *different* sport on the target date does not — see
+        ``test_reschedule_onto_a_different_sport_succeeds``.)
+        """
         occupied_date = date.today() + timedelta(days=5)
         plan = await _make_plan(
             db_session,
@@ -210,9 +215,9 @@ class TestRescheduleDay:
                 },
                 {
                     "day_date": occupied_date,
-                    "sport": "strength",
+                    "sport": "cycle",
                     "planned_type": "moderate",
-                    "planned_volume_kg": 8000.0,
+                    "planned_tss": 70.0,
                 },
             ],
         )

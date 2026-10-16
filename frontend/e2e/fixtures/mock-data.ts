@@ -841,6 +841,35 @@ export const mockTrainingWeek = {
   })),
 };
 
+// One Monday-based week of the plan with a **two-session date** — GET
+// /training-plans/{id}/week/{n}. 2026-08-06 holds a lift and a ride, so the day
+// cell must render a chip per session rather than letting the second overwrite
+// the first. Kept separate from `mockTrainingWeek` so the cases that assert
+// against the one-session-per-date fixture keep their shape.
+export const mockTrainingWeekMultiSport = {
+  ...mockTrainingWeek,
+  days: [
+    ...mockTrainingWeek.days.filter((d) => d.day_date !== '2026-08-06'),
+    {
+      ...mockTrainingWeek.days[3],
+      planned_focus: 'squat',
+      planned_exercises: [{ exercise: 'Back Squat', sets: 5, reps: 5, weight_kg: 100 }],
+    },
+    {
+      id: 'plan-1-w1-3b',
+      plan_id: 'plan-1',
+      day_date: '2026-08-06',
+      sport: 'cycle' as const,
+      planned_type: 'easy',
+      completed: false,
+      day_status: 'pending' as const,
+      planned_tss: 45,
+      planned_duration_min: 45,
+      targets_stale: false,
+    },
+  ],
+};
+
 // Conformity — the weekly summary strip + the per-day panel. Without these the
 // general training-plans handler returns a plan object for /{id}/conformity and
 // WeeklyView crashes on `conformity.weeks.length`.

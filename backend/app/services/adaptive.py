@@ -1096,7 +1096,11 @@ async def generate_adaptive_suggestions(
         for s in outcome["suggestions"]:
             if s["type"] == "rest_day" and upcoming:
                 s["actions"] = _actions_for(
-                    plan.id, upcoming, "rest", 1.0, force_rest=True
+                    plan.id,
+                    upcoming,
+                    "rest",
+                    1.0,
+                    force_rest=True,
                 )
 
     # ── CD1: cross-sport fatigue interference ────────────────────────────

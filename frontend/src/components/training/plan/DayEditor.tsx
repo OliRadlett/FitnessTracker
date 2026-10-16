@@ -86,8 +86,13 @@ export function DayEditor({
   const topKg = Math.max(0, ...(day.planned_exercises ?? []).map((e) => e.weight_kg ?? 0));
   const ramp = warmupRamp(topKg);
 
+  // A failed write rolls its optimistic patch back, which reads as "nothing
+  // happened" unless the error is shown.
   const patch = (payload: UpdateTrainingPlanDayPayload) =>
-    edit.mutate({ dayId: day.id, payload });
+    edit.mutate(
+      { dayId: day.id, payload },
+      { onError: (err: Error) => toastError(err.message || 'Could not save that change') },
+    );
 
   // Text fields are local and commit on blur (one PATCH per edit, not keystroke).
   const [desc, setDesc] = useState(day.workout_description ?? '');

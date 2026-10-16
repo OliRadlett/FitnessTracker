@@ -74,9 +74,11 @@ export function BlockTools({ planId, week, planStart, weekDays, onDone }: BlockT
       for (const w of weeks) {
         const tgtStart = addDays(week1, (w - 1) * 7);
         for (let i = 0; i < 7; i++) {
-          const src = weekDays.find((d) => d.day_date.slice(0, 10) === addDays(srcStart, i));
-          if (!src) continue;
-          await copyPlanDayToDate(authFetch, planId, src.id, addDays(tgtStart, i));
+          const srcDate = addDays(srcStart, i);
+          const srcs = weekDays.filter((d) => d.day_date.slice(0, 10) === srcDate);
+          for (const src of srcs) {
+            await copyPlanDayToDate(authFetch, planId, src.id, addDays(tgtStart, i));
+          }
         }
       }
       success?.(`Copied week ${week} to ${weeks.length} week${weeks.length === 1 ? '' : 's'}`);
