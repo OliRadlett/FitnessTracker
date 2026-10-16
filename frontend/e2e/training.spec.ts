@@ -11,6 +11,7 @@
 
 import { test, expect } from './fixtures/authenticated-test';
 import { mockTrainingPlan } from './fixtures/mock-data';
+import * as mockData from './fixtures/mock-data';
 
 test.describe('Training Page — shell', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
@@ -183,5 +184,68 @@ test.describe('Training Page — strength suggestions (plan §12.1)', () => {
     expect(sent[0]).toMatchObject({ weight_kg: 105, pct_1rm: 0.8 });
     expect(sent[1]).toMatchObject({ weight_kg: 0 });
     expect(sent[2]).toMatchObject({ weight_kg: 85 });
+  });
+});
+
+test.describe('Training Page — week ahead (C3)', () => {
+  test('Review mode shows the persisted weekly review', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.goto('/fittrack/training?mode=review');
+    await page.waitForLoadState('networkidle');
+
+    // The card is the only surface for the persisted review; without it the C3
+    // backend work is invisible.
+    await expect(page.getByText('Week ahead')).toBeVisible();
+    await expect(page.getByText('Week of 3 Aug 2026')).toBeVisible();
+    await expect(page.getByText('CTL 48 · ATL 43 · TSB +5')).toBeVisible();
+    await expect(page.getByText('72% · stable')).toBeVisible();
+    await expect(page.getByText('2 missed · 5 Aug, 7 Aug')).toBeVisible();
+    await expect(
+      page.getByText('Hold the build; you are absorbing the load well.'),
+    ).toBeVisible();
+    await expect(page.getByText('Active goals')).toBeVisible();
+  });
+
+  test('Recompute & save asks the endpoint to refresh', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.goto('/fittrack/training?mode=review');
+    await page.waitForLoadState('networkidle');
+
+    // A plain GET is a read; only ?refresh=true persists, so the affordance
+    // must carry the flag.
+    const [request] = await Promise.all([
+      page.waitForRequest((r) => r.url().includes('/review?refresh=true')),
+      page.getByRole('button', { name: /recompute/i }).click(),
+    ]);
+    expect(request.url()).toContain('refresh=true');
+  });
+
+  test('renders with load, conformity and adaptive all degraded', async ({
+    authenticatedPage: page,
+  }) => {
+    // Each engine degrades to null independently, so this is the designed
+    // state, not an error. Registered after the fixture, so it wins.
+    await page.route('**/api/v1/training-plans/*/review*', (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          ...mockData.mockPlanReview,
+          load: null,
+          conformity: null,
+          adaptive: null,
+        }),
+      }),
+    );
+    await page.goto('/fittrack/training?mode=review');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('Week of 3 Aug 2026')).toBeVisible();
+    await expect(page.getByText('2 missed · 5 Aug, 7 Aug')).toBeVisible();
+    await expect(
+      page.getByText('Not available this week: load, conformity, adaptive advice.'),
+    ).toBeVisible();
+    await expect(page.getByText('CTL 48 · ATL 43 · TSB +5')).toHaveCount(0);
   });
 });
