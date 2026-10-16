@@ -182,6 +182,14 @@ export function ActivityCard({
               {activity.purpose}
             </span>
           ) : null}
+          {activity.ride_type ? (
+            <span
+              className="text-muted"
+              title="Energy-system type from the ride's intensity factor"
+            >
+              {activity.ride_type}
+            </span>
+          ) : null}
           {!isStrength && activity.calories ? (
             <span className="text-muted">{Math.round(activity.calories)} cal</span>
           ) : null}

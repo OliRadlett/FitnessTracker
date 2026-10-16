@@ -40,6 +40,7 @@ from app.schemas.activity import (
 from app.services.activity_context import context_to_ride_metrics
 from app.services.auth import get_current_user
 from app.services.charts import ChartService
+from app.services.ride_classification import ride_type_from_context
 from app.services.sport_filter import allowed_sport_types, is_allowed_sport
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,10 @@ def _enrich_activity_read(
     # no ride metrics but does have a purpose), so read it off the context
     # column directly rather than through context_to_ride_metrics.
     read.purpose = _activity_purpose(activity)
+    # Deterministic ride type from the cached IF (None without power).
+    read.ride_type = ride_type_from_context(
+        activity.context, activity.duration_seconds
+    )
     # Stream presence from the eager-loaded relationship when available. Guard
     # on __dict__ — other _enrich callers (FIT upload, manual create, lifting)
     # don't eager-load streams, and lazy loading is illegal in async context.
