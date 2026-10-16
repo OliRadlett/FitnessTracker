@@ -3,13 +3,17 @@
 /**
  * WeekAheadCard — the persisted C3 weekly review as a read-out.
  *
- * The payload's `adaptive.suggestions` carry one-tap apply actions; those belong
+ * Read-only by construction. `docs/review-vs-act.md` gate 4 forbids a review
+ * component from importing a mutation hook or invalidating a query, and it names
+ * refresh actions as action content, so this card renders and nothing more.
+ *
+ * The payload's `adaptive.suggestions` carry one-tap apply actions, which belong
  * to AdaptiveSuggestionsCard, so this card shows the adaptive summary line only.
- * Refresh is the single write: `?refresh=true` recomputes the review and persists it.
+ * The on-demand `?refresh=true` recompute has no surface yet: the beat task owns
+ * scheduled writes, and a refresh belongs in the action layer.
  */
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { RefreshCw } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 
 import { getPlanReview, useAuthFetch } from '@/lib/api';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -26,20 +30,12 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 export function WeekAheadCard({ planId }: { planId: string }) {
   const { authFetch, token } = useAuthFetch();
-  const queryClient = useQueryClient();
 
   const query = useQuery({
     queryKey: ['plan-review', planId],
     queryFn: () => getPlanReview(authFetch, planId),
     staleTime: 5 * 60_000,
     enabled: !!token && !!planId,
-  });
-
-  const refresh = useMutation({
-    mutationFn: () => getPlanReview(authFetch, planId, { refresh: true }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plan-review', planId] });
-    },
   });
 
   if (query.isError || !query.data) {
@@ -51,20 +47,9 @@ export function WeekAheadCard({ planId }: { planId: string }) {
   return (
     <Card>
       <CardHeader>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-baseline gap-3 flex-wrap">
-            <CardTitle>Week ahead</CardTitle>
-            <span className="text-xs uppercase tracking-wide text-muted">{model.weekLabel}</span>
-          </div>
-          <button
-            type="button"
-            onClick={() => refresh.mutate()}
-            disabled={refresh.isPending}
-            className="flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border border-surface-light text-muted hover:text-foreground hover:border-accent/50 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${refresh.isPending ? 'animate-spin' : ''}`} />
-            {refresh.isPending ? 'Recomputing…' : 'Recompute & save'}
-          </button>
+        <div className="flex items-baseline gap-3 flex-wrap">
+          <CardTitle>Week ahead</CardTitle>
+          <span className="text-xs uppercase tracking-wide text-muted">{model.weekLabel}</span>
         </div>
       </CardHeader>
 
@@ -103,10 +88,6 @@ export function WeekAheadCard({ planId }: { planId: string }) {
           <p className="text-xs text-muted italic">
             Not available this week: {model.unavailable.join(', ')}.
           </p>
-        )}
-
-        {refresh.isError && (
-          <p className="text-xs text-warning">Couldn&apos;t recompute the review.</p>
         )}
       </div>
     </Card>
