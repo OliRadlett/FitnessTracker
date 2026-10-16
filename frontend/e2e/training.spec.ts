@@ -10,6 +10,7 @@
  */
 
 import { test, expect } from './fixtures/authenticated-test';
+import { mockTrainingPlan } from './fixtures/mock-data';
 
 test.describe('Training Page — shell', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
@@ -123,5 +124,64 @@ test.describe('Training Page — plan blocks (C1)', () => {
       start_date: '2026-08-03',
       end_date: '2026-08-09',
     });
+  });
+});
+
+test.describe('Training Page — strength suggestions (plan §12.1)', () => {
+  test('Apply All merges every suggested weight into the day', async ({
+    authenticatedPage: page,
+  }) => {
+    // Only a strength plan renders the card (WeeklyView gates on plan_type).
+    // The day also carries a lift that gets no suggestion, which is the case
+    // the merge exists for: sending the suggestions alone would delete it.
+    await page.route('**/api/v1/training-plans/plan-1', (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          ...mockTrainingPlan,
+          plan_type: 'strength',
+          days: mockTrainingPlan.days.map((d) =>
+            d.id === 'day-3'
+              ? {
+                  ...d,
+                  planned_exercises: [
+                    { exercise: 'Back Squat', sets: 5, reps: 5, weight_kg: 100, pct_1rm: 0.8 },
+                    { exercise: 'Plank', sets: 3, reps: 1, weight_kg: 0 },
+                  ],
+                }
+              : d,
+          ),
+        }),
+      }),
+    );
+
+    const patches: {
+      planned_exercises?: { exercise: string; weight_kg?: number; pct_1rm?: number }[];
+    }[] = [];
+    page.on('request', (req) => {
+      if (req.method() === 'PATCH' && req.url().includes('/days/')) {
+        patches.push(req.postDataJSON());
+      }
+    });
+
+    await page.goto('/fittrack/training?plan=plan-1&day=2026-08-04');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: /apply all/i }).click();
+    await expect(page.getByText(/all weight suggestions applied/i)).toBeVisible();
+
+    // The day's list is replaced by whatever the call sends (the array PATCH is
+    // destructive by omission), so one call per exercise keeps only the last,
+    // and sending only the suggestions deletes every exercise they omit.
+    expect(patches).toHaveLength(1);
+    const sent = patches[0].planned_exercises ?? [];
+    expect(sent.map((e) => e.exercise)).toEqual([
+      'Back Squat',
+      'Plank',
+      'Romanian Deadlift',
+    ]);
+    expect(sent[0]).toMatchObject({ weight_kg: 105, pct_1rm: 0.8 });
+    expect(sent[1]).toMatchObject({ weight_kg: 0 });
+    expect(sent[2]).toMatchObject({ weight_kg: 85 });
   });
 });
