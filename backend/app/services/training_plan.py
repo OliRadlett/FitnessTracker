@@ -2934,10 +2934,13 @@ async def swap_plan_days(
     """Exchange ``day_date`` between two uncompleted days of one plan.
 
     A true swap (not two moves): the rows keep their content and linked
-    actuals and only trade dates, so it needs no free slot and cannot hit the
-    ``reschedule`` 409. ``TrainingPlanDay`` has no UNIQUE ``(plan_id,
-    day_date)`` constraint, so this is a plain two-attribute update flushed
-    together — no temp-date dance.
+    actuals and only trade dates, so it needs no free slot.
+    ``TrainingPlanDay`` has no UNIQUE ``(plan_id, day_date)`` constraint, so
+    this is a plain two-attribute update flushed together — no temp-date dance.
+    Each row still arrives on the other's date, where a *third* session may
+    sit, so the same rule and status as a move apply: ``PlanDayConflictError``
+    when either row cannot share the date it lands on. ``ValueError`` for
+    unknown plans/days, a self-swap, or a completed day.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2951,6 +2954,26 @@ async def swap_plan_days(
         raise ValueError("Cannot swap a day with itself")
     if day.completed or target.completed:
         raise ValueError("Cannot swap a completed day")
+
+    # The pair is excluded from its own check: they trade places, so they never
+    # collide with each other. A date holding a third session is what makes this
+    # reachable at all.
+    for row, arriving_date in ((day, target.day_date), (target, day.day_date)):
+        occupant = next(
+            (
+                d
+                for d in plan.days
+                if d.id not in (day.id, target.id)
+                and d.day_date == arriving_date
+                and (d.sport == "rest" or not d.completed)
+                and sports_conflict_on_date(d.sport, row.sport)
+            ),
+            None,
+        )
+        if occupant is not None:
+            raise PlanDayConflictError(
+                f"{arriving_date.isoformat()} already holds a {occupant.sport} session"
+            )
 
     day.day_date, target.day_date = target.day_date, day.day_date
     await db.flush()

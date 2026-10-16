@@ -1,11 +1,12 @@
 """Unit tests for the multi-sport date rules (no database).
 
 ``sports_conflict_on_date`` is the single predicate behind the add / copy /
-reschedule / substitute / sport-change guards and the undo restore clash, so it
-is tested directly rather than only through the integration suite (which needs
-Postgres). The two in-place sport-change paths and the copy guard run against a
-stubbed session, so their refusal is pinned here too, as is the rest-swap
-action's refusal to target a date that holds more than one session.
+reschedule / substitute / swap / sport-change guards and the undo restore clash,
+so it is tested directly rather than only through the integration suite (which
+needs Postgres). The two in-place sport-change paths, the copy guard and the
+swap guard run against a stubbed session, so their refusal is pinned here too,
+as is the rest-swap action's refusal to target a date that holds more than one
+session.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from app.services.training_plan import (
     copy_plan_day,
     sports_conflict_on_date,
     substitute_plan_day,
+    swap_plan_days,
     update_plan_day,
 )
 
@@ -359,6 +361,62 @@ class TestCopyOntoASharedDate:
         )
 
         assert (copied.day_date, copied.sport) == (TARGET, "cycle")
+
+
+# ── Swapping onto a date that holds a third session ─────────────────────────
+#
+# A swap moves each row onto the other's date, so on a date holding more than
+# one session it can land one beside a session it cannot share — the same rule
+# and the same status as a move.
+
+
+class TestSwapOntoASharedDate:
+    async def test_refuses_a_swap_that_would_double_a_sport(self):
+        plan = _plan_with(
+            (DAY, "cycle", "easy"), (DAY, "strength", "moderate"), (TARGET, "cycle", "easy")
+        )
+        _, lift, ride = plan.days
+
+        with pytest.raises(PlanDayConflictError, match="already holds a cycle"):
+            await swap_plan_days(
+                _db_returning(plan), plan.user_id, plan.id, lift.id, ride.id
+            )
+
+        assert (lift.day_date, ride.day_date) == (DAY, TARGET)
+
+    async def test_refuses_a_swap_that_moves_a_rest_row_beside_a_session(self):
+        plan = _plan_with(
+            (DAY, "cycle", "easy"), (DAY, "strength", "moderate"), (TARGET, "rest", "rest")
+        )
+        _, lift, rest = plan.days
+
+        with pytest.raises(PlanDayConflictError, match="already holds a cycle"):
+            await swap_plan_days(
+                _db_returning(plan), plan.user_id, plan.id, lift.id, rest.id
+            )
+
+        assert (lift.day_date, rest.day_date) == (DAY, TARGET)
+
+    async def test_refuses_a_swap_onto_a_date_holding_a_rest_row(self):
+        # Built directly: the state the rule exists to prevent — a rest row on a
+        # date that also holds a session.
+        plan = _plan_with(
+            (DAY, "cycle", "easy"), (TARGET, "strength", "moderate"), (TARGET, "rest", "rest")
+        )
+        ride, lift, _ = plan.days
+
+        with pytest.raises(PlanDayConflictError, match="already holds a rest"):
+            await swap_plan_days(
+                _db_returning(plan), plan.user_id, plan.id, ride.id, lift.id
+            )
+
+    async def test_allows_a_swap_with_no_third_session(self):
+        plan = _plan_with((DAY, "cycle", "easy"), (TARGET, "strength", "moderate"))
+        ride, lift = plan.days
+
+        await swap_plan_days(_db_returning(plan), plan.user_id, plan.id, ride.id, lift.id)
+
+        assert (ride.day_date, lift.day_date) == (TARGET, DAY)
 
 
 # ── The autoregulation rest swap ────────────────────────────────────────────

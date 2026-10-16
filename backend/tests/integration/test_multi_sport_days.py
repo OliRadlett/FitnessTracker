@@ -376,6 +376,41 @@ class TestCopyDayToDate:
         assert resp.status_code == 409
 
 
+# ── Swapping onto a date that holds a third session ─────────────────────────
+
+
+class TestSwapOnASharedDate:
+    async def test_swap_that_would_double_a_sport_returns_409(
+        self, client, test_user, db_session
+    ):
+        shared = TODAY + timedelta(days=2)
+        other = TODAY + timedelta(days=3)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "cycle", "planned_type": "easy"},
+                {"day_date": shared, "sport": "strength", "planned_type": "moderate"},
+                {"day_date": other, "sport": "cycle", "planned_type": "easy"},
+            ],
+        )
+        lift = next(d for d in plan.days if d.sport == "strength")
+        ride = next(d for d in plan.days if d.day_date == other)
+
+        resp = await client.post(
+            f"/api/v1/training-plans/{plan.id}/days/{lift.id}/swap",
+            json={"target_day_id": str(ride.id)},
+        )
+        assert resp.status_code == 409
+
+        # Neither row moved.
+        assert sorted(r.sport for r in await _rows_on(db_session, plan, shared)) == [
+            "cycle",
+            "strength",
+        ]
+        assert [r.sport for r in await _rows_on(db_session, plan, other)] == ["cycle"]
+
+
 # ── Each row links its own actual ───────────────────────────────────────────
 
 

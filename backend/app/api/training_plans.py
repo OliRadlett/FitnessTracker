@@ -585,11 +585,17 @@ async def swap_plan_days(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Atomically exchange two days' dates. Returns both days."""
+    """Atomically exchange two days' dates. Returns both days.
+
+    A swap that would land either day beside a session it cannot share fails
+    with 409; completed days and self-swaps are refused with 400.
+    """
     try:
         day, target = await plan_service.swap_plan_days(
             db, current_user.id, plan_id, day_id, data.target_day_id
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         code = 404 if "not found" in detail else 400
