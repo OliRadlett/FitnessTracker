@@ -202,6 +202,7 @@ from app.api.routes import router as routes_router
 from app.api.search import router as search_router
 from app.api.segments import router as segments_router
 from app.api.training_plans import router as training_plans_router
+from app.api.undo import router as undo_router
 from app.api.videos import router as videos_router
 from app.api.weather import router as weather_router
 from app.api.webhooks import router as webhooks_router
@@ -232,6 +233,7 @@ app.include_router(
 )
 app.include_router(preferences_router, prefix="/api/v1/user", tags=["preferences"])
 app.include_router(push_router, prefix="/api/v1/push", tags=["push"])
+app.include_router(undo_router, prefix="/api/v1/undo", tags=["undo"])
 app.include_router(goals_router, prefix="/api/v1/goals", tags=["goals"])
 app.include_router(deficiency_router, prefix="/api/v1/deficiency", tags=["deficiency"])
 app.include_router(nutrition_router, prefix="/api/v1/nutrition", tags=["nutrition"])
