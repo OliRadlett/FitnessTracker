@@ -113,6 +113,8 @@ async def tag_lifting_session(
     db: AsyncSession,
     user_id: uuid.UUID,
     session: LiftingSession,
+    *,
+    use_budget_guard: bool = True,
 ) -> bool:
     """Tag one session. Returns True when ``ai_tags`` changed. Never raises."""
     note = (session.notes or "").strip()
@@ -129,7 +131,10 @@ async def tag_lifting_session(
 
     try:
         result = await jev_client.decide(
-            _build_state(session), _questions(), user_id=user_id
+            _build_state(session),
+            _questions(),
+            user_id=user_id,
+            use_budget_guard=use_budget_guard,
         )
     except Exception as e:  # decide() shouldn't raise; belt-and-braces
         logger.warning("Jev tagging failed for session %s: %s", session.id, e)
@@ -199,6 +204,8 @@ async def tag_activity(
     db: AsyncSession,
     user_id: uuid.UUID,
     activity: Activity,
+    *,
+    use_budget_guard: bool = True,
 ) -> bool:
     """Tag an activity's name with a purpose label into ``context['tags']``.
 
@@ -222,6 +229,7 @@ async def tag_activity(
             {"name": name, "sport_type": activity.sport_type},
             _activity_questions(),
             user_id=user_id,
+            use_budget_guard=use_budget_guard,
         )
     except Exception as e:
         logger.warning("Jev activity tagging failed for %s: %s", activity.id, e)
@@ -249,7 +257,9 @@ async def backfill_free_text_tags(db: AsyncSession, user_id: uuid.UUID) -> int:
         )
     )
     for session in result.scalars():
-        if await tag_lifting_session(db, user_id, session):
+        if await tag_lifting_session(
+            db, user_id, session, use_budget_guard=False
+        ):
             tagged += 1
 
     act_result = await db.execute(
@@ -260,7 +270,7 @@ async def backfill_free_text_tags(db: AsyncSession, user_id: uuid.UUID) -> int:
         )
     )
     for activity in act_result.scalars():
-        if await tag_activity(db, user_id, activity):
+        if await tag_activity(db, user_id, activity, use_budget_guard=False):
             tagged += 1
 
     return tagged

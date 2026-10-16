@@ -1331,9 +1331,10 @@ def backfill_activity_context() -> dict:
 
 @celery_app.task(name="app.tasks.scheduler.backfill_free_text_tags")
 def backfill_free_text_tags() -> dict:
-    """Tag lifting-session free-text notes with Jev (Phase 1). Idempotent —
-    ``tag_lifting_session`` skips rows already tagged for the current note +
-    model. No-op (skips) when Jev is not configured.
+    """Jev weekly backfill — tag lifting-session notes (Phase 1) and classify
+    sessions from their sets (classification Phase 1). Both are idempotent
+    (note-hash / content-hash + model + taxonomy version) and no-op when Jev is
+    not configured.
     """
     import asyncio
 
@@ -1348,17 +1349,15 @@ def backfill_free_text_tags() -> dict:
         return {"skipped": True, "reason": "Jev not configured"}
 
     async def _run():
+        from app.services.jev_classification import (
+            backfill_session_classifications as _backfill_class,
+        )
         from app.services.jev_tagging import backfill_free_text_tags as _backfill
 
         async with task_session() as db:
-            result = await db.execute(
-                select(LiftingSession.user_id)
-                .where(
-                    LiftingSession.notes.isnot(None),
-                    LiftingSession.notes != "",
-                )
-                .distinct()
-            )
+            # Every user with a lifting session (classification) or a named
+            # activity (purpose tagging); each backfill skips rows it can't use.
+            result = await db.execute(select(LiftingSession.user_id).distinct())
             user_ids = {r for (r,) in result.all()}
             act_result = await db.execute(
                 select(Activity.user_id)
@@ -1368,20 +1367,26 @@ def backfill_free_text_tags() -> dict:
             user_ids |= {r for (r,) in act_result.all()}
 
             total_tagged = 0
+            total_classified = 0
             done = 0
             for user_id in user_ids:
                 try:
                     total_tagged += await _backfill(db, user_id)
+                    total_classified += await _backfill_class(db, user_id)
                     await db.commit()
                     done += 1
                 except Exception as e:
                     logger.error(
-                        f"Jev tag backfill failed for user {user_id}: {e}",
+                        f"Jev backfill failed for user {user_id}: {e}",
                         exc_info=True,
                     )
                     await db.rollback()
 
-            return {"users_processed": done, "sessions_tagged": total_tagged}
+            return {
+                "users_processed": done,
+                "sessions_tagged": total_tagged,
+                "sessions_classified": total_classified,
+            }
 
     return asyncio.run(_run_task_guarded("backfill_free_text_tags", _run))
 
