@@ -61,6 +61,7 @@ async def restore_plan_day_delete(
 ) -> dict[str, Any]:
     """Recreate a deleted plan day from its snapshot (C6)."""
     from app.models.training_plan import TrainingPlan, TrainingPlanDay
+    from app.services.training_plan import sports_conflict_on_date
 
     plan_id = uuid.UUID(payload["plan_id"])
     owned = (
@@ -80,21 +81,22 @@ async def restore_plan_day_delete(
         if isinstance(snap.get(field), str):
             snap[field] = uuid.UUID(snap[field])
 
-    # Refuse rather than clobber: a re-sync may have recreated a day at that
-    # date, and that is a conflict, not a restore. Asked of the database
-    # directly, *not* of ``plan.days`` — a long-lived session can hold a
-    # collection loaded before the delete, and reading it here would report a
-    # day that no longer exists (and so refuse every restore).
-    clash = (
-        await db.execute(
-            select(TrainingPlanDay.id).where(
-                TrainingPlanDay.plan_id == plan_id,
-                TrainingPlanDay.day_date == snap["day_date"],
-            )
+    # Refuse rather than clobber: a re-sync may have recreated a session that
+    # cannot share that date, and that is a conflict, not a restore. Asked of
+    # the database directly, *not* of ``plan.days`` — a long-lived session can
+    # hold a collection loaded before the delete, and reading it here would
+    # report a day that no longer exists (and so refuse every restore).
+    occupied = await db.execute(
+        select(TrainingPlanDay.sport).where(
+            TrainingPlanDay.plan_id == plan_id,
+            TrainingPlanDay.day_date == snap["day_date"],
         )
-    ).first()
-    if clash is not None:
-        raise ValueError("A day already exists on that date")
+    )
+    occupied_sports = occupied.scalars()
+    if any(
+        sports_conflict_on_date(sport, snap["sport"]) for sport in occupied_sports
+    ):
+        raise ValueError("A session of that sport already exists on that date")
 
     day = TrainingPlanDay(plan_id=plan_id, **snap)
     db.add(day)

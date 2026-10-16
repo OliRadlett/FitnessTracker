@@ -91,6 +91,27 @@ export const STATUS_LABEL: Record<DayStatus, string> = {
   partial: 'Partial',
 };
 
+/** Short sport label for a session header ("Ride", "Strength"). */
+export const SPORT_LABEL: Record<string, string> = {
+  cycle: 'Ride',
+  strength: 'Strength',
+  rest: 'Rest',
+};
+
+/**
+ * Card status for a date holding 1..N sessions — the worst session wins.
+ *
+ * A single session is the degenerate case and returns exactly what
+ * ``getStatus`` gives it, so one-session cards are unchanged by the
+ * multi-sport model.
+ */
+export function getCellStatus(sessions: TrainingWeekDay[], todayStr: string): DayStatus {
+  if (sessions.length === 0) return 'neutral';
+  const statuses = sessions.map((s) => getStatus(s, todayStr));
+  const worstFirst: DayStatus[] = ['missed', 'partial', 'planned', 'done', 'neutral'];
+  return worstFirst.find((s) => statuses.includes(s)) ?? 'neutral';
+}
+
 /**
  * Phase 5C — map the card heuristic onto conformity badge statuses.
  * Rest days render nothing; future days are "pending"; past unlogged days

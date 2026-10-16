@@ -116,9 +116,10 @@ async def update_plan(
 ):
     """Update a training plan.
 
-    Days, when provided, are saved non-destructively: dates are matched
-    against existing days and updated in place (preserving completed flags
-    and linked activities), new dates are inserted, removed dates deleted.
+    Days, when provided, are upserted by ``(day_date, sport)``: a matching pair
+    is updated in place (preserving completed flags and linked activities), a
+    new pair is inserted, and a pair missing from the payload is deleted — so
+    omission is destructive and the caller must send the complete set.
     """
     try:
         plan = await plan_service.update_plan(db, current_user.id, plan_id, data)
@@ -182,12 +183,15 @@ async def update_plan_day(
     """Targeted single-day update (e.g. assign a planned route).
 
     Only provided fields change; ``completed`` flags and linked
-    activity/lifting sessions are preserved.
+    activity/lifting sessions are preserved. A ``sport`` change that clashes
+    with the date's other session fails with 409.
     """
     try:
         day = await plan_service.update_plan_day(
             db, current_user.id, plan_id, day_id, data
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         code = 404 if "not found" in detail else 400
@@ -432,9 +436,10 @@ async def reschedule_plan_day(
 ):
     """Move an uncompleted (missed/pending) day to ``target_date`` (FL2).
 
-    All planned fields travel with the day. Returns 409 when another
-    uncompleted non-rest day already occupies the target date, 400 when the
-    day is completed or the target falls outside the plan range.
+    All planned fields travel with the day. Returns 409 when an uncompleted
+    session of the same sport, or a rest row, is already on the target date (a
+    ride may move onto a lift day), 400 when the day is completed or the target
+    falls outside the plan range.
     """
     try:
         day = await plan_service.reschedule_plan_day(
@@ -460,7 +465,8 @@ async def substitute_plan_day(
     """Convert a missed day into an alternate session on the same date (FL2).
 
     E.g. a missed threshold ride becomes an endurance spin; the conversion
-    is recorded in ``notes``. Unknown sport/type values fail with 422.
+    is recorded in ``notes``. Unknown sport/type values fail with 422; a sport
+    that cannot share the day's date fails with 409.
     """
     try:
         day = await plan_service.substitute_plan_day(
@@ -481,6 +487,8 @@ async def substitute_plan_day(
                 exclude_none=True,
             ),
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         if "not found" in detail:
@@ -535,7 +543,7 @@ async def add_plan_day(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Add one day to a plan. 409 when the date already holds a day."""
+    """Add one day to a plan. 409 when that sport is already on the date."""
     try:
         day = await plan_service.add_plan_day(db, current_user.id, plan_id, data)
     except plan_service.PlanDayConflictError as e:
@@ -574,11 +582,17 @@ async def swap_plan_days(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Atomically exchange two days' dates. Returns both days."""
+    """Atomically exchange two days' dates. Returns both days.
+
+    A swap that would land either day beside a session it cannot share fails
+    with 409; completed days and self-swaps are refused with 400.
+    """
     try:
         day, target = await plan_service.swap_plan_days(
             db, current_user.id, plan_id, day_id, data.target_day_id
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         code = 404 if "not found" in detail else 400
@@ -768,12 +782,17 @@ async def copy_day_to_date(
     """Copy a plan day's exercises to a new date within the same plan.
 
     Creates a new day at the target date with the same planned fields
-    (exercises, focus, sport, type, warmup template, session type, etc.).
+    (exercises, focus, sport, type, warmup template, session type, etc.). 409
+    when the target date already holds a session that cannot share it — the
+    same sport, or ``rest`` on either side. Another sport's session may share
+    the date.
     """
     try:
         day = await plan_service.copy_plan_day(
             db, current_user.id, plan_id, source_day_id, target_date
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         code = 404 if "not found" in detail else 400

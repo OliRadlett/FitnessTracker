@@ -779,13 +779,51 @@ async def suggest_strength_updates(
 # ── Internal helpers ─────────────────────────────────────────────────────
 
 
+def sports_conflict_on_date(existing_sport: str, arriving_sport: str) -> bool:
+    """Whether a session of ``arriving_sport`` may not share a date with ``existing_sport``.
+
+    A date holds one session per sport (a morning ride plus an evening lift is
+    the point of the model), and ``rest`` is exclusive — a date that holds a
+    session is not a rest day. Completion is the caller's business: a completed
+    session blocks a *new* row on its date but not a *move* onto it, because a
+    missed session may be moved onto a day that was already ridden.
+    """
+    return (
+        existing_sport == "rest"
+        or arriving_sport == "rest"
+        or existing_sport == arriving_sport
+    )
+
+
 def _validate_days(days: list[TrainingPlanDayCreate]) -> None:
-    """Validate day payloads before persisting."""
+    """Validate day payloads before persisting.
+
+    Rejects a payload that names one ``(day_date, sport)`` twice (the upsert keys
+    on that pair, so a duplicate would silently overwrite itself) and one whose
+    pairs conflict per ``sports_conflict_on_date``. The upsert writes every pair
+    the payload names, so without this a full-array save could create the clash
+    the targeted guards refuse.
+    """
+    sports_by_date: dict[date, set[str]] = {}
     for day_data in days:
         if day_data.planned_type not in VALID_DAY_TYPES:
             raise ValueError(f"Invalid planned_type: {day_data.planned_type}")
         if day_data.sport not in ("cycle", "strength", "rest"):
             raise ValueError(f"Invalid sport: {day_data.sport}")
+        sports = sports_by_date.setdefault(day_data.day_date, set())
+        if day_data.sport in sports:
+            raise ValueError(
+                f"Duplicate {day_data.sport} session on {day_data.day_date.isoformat()}"
+            )
+        clash = next(
+            (s for s in sports if sports_conflict_on_date(s, day_data.sport)), None
+        )
+        if clash is not None:
+            raise ValueError(
+                f"Cannot put a {day_data.sport} session beside a {clash} session "
+                f"on {day_data.day_date.isoformat()}"
+            )
+        sports.add(day_data.sport)
 
 
 async def _get_plan_or_none(
@@ -823,12 +861,15 @@ async def save_plan_days(
     plan_id: uuid.UUID,
     days: list[TrainingPlanDayCreate],
 ) -> TrainingPlan:
-    """Upsert plan days matched by ``day_date``.
+    """Upsert plan days matched by ``(day_date, sport)``.
 
     - Existing dates: update provided fields only (completed / activity_id /
       lifting_session_id are preserved unless explicitly included in payload).
     - New dates: insert.
     - Missing dates: **delete** (so the caller must send the complete set).
+
+    The key is the pair: a payload naming ``(2026-08-05, strength)`` leaves a
+    ``(2026-08-05, cycle)`` row alone, and only a missing *pair* deletes.
 
     Because omission deletes, this path is destructive — prefer the targeted
     day endpoints (``add_plan_day`` / ``update_plan_day`` / ``delete_plan_day``
@@ -840,28 +881,29 @@ async def save_plan_days(
 
     _validate_days(days)
 
-    existing_by_date = {day.day_date: day for day in plan.days}
-    incoming_dates: set[date] = set()
+    existing_by_key = {(day.day_date, day.sport): day for day in plan.days}
+    incoming_keys: set[tuple[date, str]] = set()
 
     for day_data in days:
-        incoming_dates.add(day_data.day_date)
-        row = existing_by_date.get(day_data.day_date)
+        key = (day_data.day_date, day_data.sport)
+        incoming_keys.add(key)
+        row = existing_by_key.get(key)
         if row is None:
             row = TrainingPlanDay(
                 plan_id=plan.id, **day_data.model_dump(exclude_unset=True)
             )
             db.add(row)
-            existing_by_date[row.day_date] = row
+            existing_by_key[key] = row
         else:
             # Only apply fields the caller actually sent — untouched columns
             # (completed flags, linked activity/lifting sessions) survive.
-            for key, value in day_data.model_dump(exclude_unset=True).items():
-                setattr(row, key, value)
+            for field, value in day_data.model_dump(exclude_unset=True).items():
+                setattr(row, field, value)
 
-    for day_date, row in list(existing_by_date.items()):
-        if day_date not in incoming_dates:
+    for key, row in list(existing_by_key.items()):
+        if key not in incoming_keys:
             await db.delete(row)
-            del existing_by_date[day_date]
+            del existing_by_key[key]
 
     # Auto-fill cycling fields when type changes (Feature 2)
     from app.models.cycling import CyclingProfile
@@ -873,7 +915,7 @@ async def save_plan_days(
     ftp = profile.ftp_watts if profile and profile.ftp_watts else None
 
     if ftp:
-        for day_date, row in existing_by_date.items():
+        for row in existing_by_key.values():
             if row.sport == "cycle" and row.planned_type and row.planned_type != "rest":
                 difficulty = _TYPE_TO_DIFFICULTY.get(row.planned_type)
                 if difficulty and row.planned_duration_min:
@@ -930,7 +972,7 @@ async def link_event_and_apply_taper(
         window_start = plan.end_date - timedelta(days=taper_window - 1)
         taper_days = sorted(
             (d for d in plan.days if window_start <= d.day_date <= plan.end_date),
-            key=lambda d: d.day_date,
+            key=lambda d: (d.day_date, d.sport),
         )
         count = len(taper_days)
         for i, day in enumerate(taper_days):
@@ -2128,6 +2170,9 @@ async def update_plan_day(
 
     Only fields present in the payload are changed; everything else —
     including ``completed`` and linked activity/lifting sessions — is preserved.
+    A payload that changes ``sport`` raises ``PlanDayConflictError`` when the
+    date already holds a session that cannot share it; a payload that leaves the
+    sport alone is unaffected.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2143,6 +2188,26 @@ async def update_plan_day(
         and updates["planned_type"] not in VALID_DAY_TYPES
     ):
         raise ValueError(f"Invalid planned_type: {updates['planned_type']}")
+
+    # A sport change can break the one-per-sport / rest-exclusive rule without
+    # moving the row, so it is checked against the date's other sessions before
+    # anything is applied.
+    new_sport = updates.get("sport")
+    if new_sport is not None and new_sport != day.sport:
+        occupant = next(
+            (
+                d
+                for d in plan.days
+                if d.id != day.id
+                and d.day_date == day.day_date
+                and sports_conflict_on_date(d.sport, new_sport)
+            ),
+            None,
+        )
+        if occupant is not None:
+            raise PlanDayConflictError(
+                f"{day.day_date.isoformat()} already holds a {occupant.sport} session"
+            )
 
     # Validate planned_route_id if provided (must exist and belong to user)
     route_id = updates.get("planned_route_id")
@@ -2234,9 +2299,11 @@ async def get_plan_week(
     week_start = week1_start + timedelta(weeks=week_number - 1)
     week_end = week_start + timedelta(days=6)
 
+    # ``sport`` breaks the tie for a date holding more than one session, so the
+    # grid's chip order is stable across requests.
     week_days = sorted(
         (d for d in plan.days if week_start <= d.day_date <= week_end),
-        key=lambda d: d.day_date,
+        key=lambda d: (d.day_date, d.sport),
     )
 
     today = date.today()
@@ -2588,7 +2655,9 @@ async def copy_plan_day(
     """Copy a plan day's exercises to a new date within the same plan.
 
     Creates a new TrainingPlanDay with the same planned_exercises, focus,
-    sport, type, and other planned fields, but on the target_date.
+    sport, type, and other planned fields, but on the target_date. The target
+    may hold a session of another sport; a session it cannot share the date
+    with raises ``PlanDayConflictError`` (HTTP 409).
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2602,10 +2671,16 @@ async def copy_plan_day(
     if target_date < plan.start_date or target_date > plan.end_date:
         raise ValueError("Target date is outside the plan range")
 
-    # Check if a day already exists at the target date
-    existing = next((d for d in plan.days if d.day_date == target_date), None)
-    if existing:
-        raise ValueError("A plan day already exists at the target date")
+    # A copy *creates* a row, so a completed session does not excuse the clash
+    # the way it does for a move.
+    if any(
+        d.day_date == target_date
+        and sports_conflict_on_date(d.sport, source.sport)
+        for d in plan.days
+    ):
+        raise PlanDayConflictError(
+            f"A {source.sport} session already exists at the target date"
+        )
 
     new_day = TrainingPlanDay(
         plan_id=plan.id,
@@ -2634,7 +2709,7 @@ async def copy_plan_day(
 
 
 class PlanDayConflictError(ValueError):
-    """Target date already holds an uncompleted non-rest day (HTTP 409)."""
+    """A session cannot join a date, per ``sports_conflict_on_date`` — HTTP 409."""
 
 
 async def reschedule_plan_day(
@@ -2647,8 +2722,10 @@ async def reschedule_plan_day(
     """Move an uncompleted (missed/pending) day to ``target_date`` (FL2).
 
     All planned fields travel with the day; linked actuals (if any) stay
-    attached. Raises ``PlanDayConflictError`` when another uncompleted
-    non-rest day already occupies the target date, ``ValueError`` for
+    attached. Raises ``PlanDayConflictError`` for a session already on the
+    target date that cannot share it — an uncompleted session of the same
+    sport, or a ``rest`` row (completed or not). A ride may move onto a lift
+    day, and a completed session does not block the move. ``ValueError`` for
     unknown plans/days, completed days, or out-of-range targets.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
@@ -2664,21 +2741,24 @@ async def reschedule_plan_day(
     if target_date < plan.start_date or target_date > plan.end_date:
         raise ValueError("Target date is outside the plan range")
 
+    # A completed session does not block the move — a missed ride may land on a
+    # day that was already ridden — but a rest row always does, whatever its
+    # completion state: a date that holds a session is not a rest day.
     occupant = next(
         (
             d
             for d in plan.days
             if d.id != day.id
             and d.day_date == target_date
-            and d.sport != "rest"
-            and not d.completed
+            and (d.sport == "rest" or not d.completed)
+            and sports_conflict_on_date(d.sport, day.sport)
         ),
         None,
     )
     if occupant is not None:
         raise PlanDayConflictError(
-            f"Target date {target_date.isoformat()} already holds an "
-            "uncompleted session"
+            f"Target date {target_date.isoformat()} already holds a "
+            f"{day.sport} session"
         )
 
     day.day_date = target_date
@@ -2703,7 +2783,8 @@ async def substitute_plan_day(
     (the router maps these to HTTP 422). Optional ``overrides`` replace the
     matching planned targets (duration/tss/power/volume/rpe); every other
     planned field is preserved. The conversion is recorded in ``notes``.
-    Completed days are rejected — substitution is for missed sessions.
+    Completed days are rejected — substitution is for missed sessions. Raises
+    ``PlanDayConflictError`` when the new sport cannot share the day's date.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2719,6 +2800,23 @@ async def substitute_plan_day(
         raise ValueError(f"Invalid sport: {sport}")
     if planned_type not in VALID_DAY_TYPES:
         raise ValueError(f"Invalid planned_type: {planned_type}")
+
+    # The row keeps its date, so a sport change can create in place the clash
+    # `add_plan_day` refuses: a second session of that sport, or `rest` beside one.
+    occupant = next(
+        (
+            d
+            for d in plan.days
+            if d.id != day.id
+            and d.day_date == day.day_date
+            and sports_conflict_on_date(d.sport, sport)
+        ),
+        None,
+    )
+    if occupant is not None:
+        raise PlanDayConflictError(
+            f"{day.day_date.isoformat()} already holds a {occupant.sport} session"
+        )
 
     old_sport, old_type = day.sport, day.planned_type
     day.sport = sport
@@ -2753,7 +2851,7 @@ async def add_plan_day(
     plan_id: uuid.UUID,
     data: TrainingPlanDayCreate,
 ) -> TrainingPlanDay:
-    """Add a single day to a plan (409 when the date is already used).
+    """Add a single day to a plan (409 when that sport is already on the date).
 
     The targeted counterpart to ``save_plan_days``: it never deletes anything,
     so the editor can add one session without rewriting the plan's day set.
@@ -2768,9 +2866,12 @@ async def add_plan_day(
     if data.day_date < plan.start_date or data.day_date > plan.end_date:
         raise ValueError("Day date is outside the plan range")
 
-    if any(d.day_date == data.day_date for d in plan.days):
+    if any(
+        d.day_date == data.day_date and sports_conflict_on_date(d.sport, data.sport)
+        for d in plan.days
+    ):
         raise PlanDayConflictError(
-            f"A day already exists on {data.day_date.isoformat()}"
+            f"A {data.sport} session already exists on {data.day_date.isoformat()}"
         )
 
     day = TrainingPlanDay(plan_id=plan.id, **data.model_dump(exclude_none=True))
@@ -2827,10 +2928,13 @@ async def swap_plan_days(
     """Exchange ``day_date`` between two uncompleted days of one plan.
 
     A true swap (not two moves): the rows keep their content and linked
-    actuals and only trade dates, so it needs no free slot and cannot hit the
-    ``reschedule`` 409. ``TrainingPlanDay`` has no UNIQUE ``(plan_id,
-    day_date)`` constraint, so this is a plain two-attribute update flushed
-    together — no temp-date dance.
+    actuals and only trade dates, so it needs no free slot.
+    ``TrainingPlanDay`` has no UNIQUE ``(plan_id, day_date)`` constraint, so
+    this is a plain two-attribute update flushed together — no temp-date dance.
+    Each row still arrives on the other's date, where a *third* session may
+    sit, so the same rule and status as a move apply: ``PlanDayConflictError``
+    when either row cannot share the date it lands on. ``ValueError`` for
+    unknown plans/days, a self-swap, or a completed day.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2844,6 +2948,26 @@ async def swap_plan_days(
         raise ValueError("Cannot swap a day with itself")
     if day.completed or target.completed:
         raise ValueError("Cannot swap a completed day")
+
+    # The pair is excluded from its own check: they trade places, so they never
+    # collide with each other. A date holding a third session is what makes this
+    # reachable at all.
+    for row, arriving_date in ((day, target.day_date), (target, day.day_date)):
+        occupant = next(
+            (
+                d
+                for d in plan.days
+                if d.id not in (day.id, target.id)
+                and d.day_date == arriving_date
+                and (d.sport == "rest" or not d.completed)
+                and sports_conflict_on_date(d.sport, row.sport)
+            ),
+            None,
+        )
+        if occupant is not None:
+            raise PlanDayConflictError(
+                f"{arriving_date.isoformat()} already holds a {occupant.sport} session"
+            )
 
     day.day_date, target.day_date = target.day_date, day.day_date
     await db.flush()

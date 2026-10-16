@@ -18,7 +18,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Flag, X } from 'lucide-react';
 import type {
   TrainingPlan,
-  TrainingWeekDay,
   PlanDayType,
   RefreshTargetsResponse,
   Event,
@@ -36,12 +35,18 @@ import {
   getCurrentWeek,
 } from '@/lib/training/week';
 import { usePlanDayOps } from '@/lib/training/usePlanDayOps';
+import {
+  groupSessionsByDate,
+  indexSessionsById,
+  newSessionPayload,
+  type AddableSport,
+} from '@/lib/training/sessionGroups';
 import { useToast } from '@/components/ui/Toast';
 import { WeekMasterBar } from './WeekMasterBar';
 import { ConformitySummaryCard } from './ConformitySummaryCard';
 import { PlanGoalsStrip } from './PlanGoalsStrip';
 import { MissedDayPopover } from './MissedDayPopover';
-import { SPORT_ICON } from './dayCellShared';
+import { SPORT_ICON, SPORT_LABEL } from './dayCellShared';
 import { DayEditor } from './plan/DayEditor';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { useIsMobile } from '@/lib/useIsMobile';
@@ -260,11 +265,23 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
 
   const { error: toastError } = useToast();
   const ops = usePlanDayOps(plan.id);
-  const opBusy = ops.moveDay.isPending || ops.substituteDay.isPending;
+  const opBusy =
+    ops.moveDay.isPending || ops.substituteDay.isPending || ops.addDay.isPending;
+
+  const toggleExpand = (dayId: string) =>
+    setExpandedDayId((prev) => (prev === dayId ? null : dayId));
+
+  /** Add the missing sport on an occupied date; 409 means that sport is taken. */
+  const handleAddSession = (date: string, sport: AddableSport) => {
+    ops.addDay.mutate(newSessionPayload(date, sport), {
+      onError: (err: Error) => toastError(err.message || 'Could not add that session'),
+    });
+  };
 
   // Missed-day quick actions — real operations. The PATCH API cannot change a
-  // day's date, so "move" uses the dedicated /reschedule endpoint (409 when the
-  // target slot is taken); "substitute"/"mark rest" use /substitute.
+  // day's date, so "move" uses the dedicated /reschedule endpoint (409 when an
+  // uncompleted session of that sport, or a rest row, is already on the target);
+  // "substitute"/"mark rest" use /substitute.
   const handleMissedReschedule = () => {
     if (!missedDay || !missedNextDay) return;
     ops.moveDay.mutate(
@@ -295,15 +312,18 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     setMissedDayId(null);
   };
 
-  // Drag-and-drop on the week grid: drop onto an occupied (uncompleted) day to
-  // swap, or onto an empty slot to move. Completed days are refused.
-  const handleDropDate = (sourceDate: string, targetDate: string) => {
-    const source = daysByDate.get(sourceDate);
+  // Drag-and-drop on the week grid, carrying a session id: drop onto a date
+  // already holding a session of the *same sport* to swap, or onto any other
+  // date to move (a date may hold one session per sport, so a ride can join a
+  // lift day). Completed sessions are refused.
+  const handleDropSession = (sourceDayId: string, targetDate: string) => {
+    const source = sessionsById.get(sourceDayId);
     if (!source || source.completed) {
       toastError("Completed days can't be moved");
       return;
     }
-    const target = daysByDate.get(targetDate);
+    const occupants = sessionsByDate.get(targetDate) ?? [];
+    const target = occupants.find((d) => d.sport === source.sport);
     if (target) {
       if (target.completed) {
         toastError("Completed days can't be swapped");
@@ -328,53 +348,58 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart],
   );
-  const daysByDate = useMemo(() => {
-    const map = new Map<string, TrainingWeekDay>();
-    weekData?.days.forEach((d) => map.set(d.day_date.slice(0, 10), d));
-    return map;
-  }, [weekData]);
+  const sessionsByDate = useMemo(
+    () => groupSessionsByDate(weekData?.days ?? []),
+    [weekData],
+  );
+  const sessionsById = useMemo(
+    () => indexSessionsById(weekData?.days ?? []),
+    [weekData],
+  );
 
   // All-weeks overview: per-week planned load + sport mix, from the plan's days.
-  const weekSummaries = useMemo(
-    () =>
-      Array.from({ length: totalWeeks }, (_, wi) => {
-        const dates = Array.from({ length: 7 }, (_, i) =>
-          addDays(getWeek1Start(plan.start_date), wi * 7 + i),
-        );
-        const days = dates.map((d) => plan.days.find((pd) => pd.day_date.slice(0, 10) === d));
-        return {
-          weekIndex: wi,
-          totalTss: Math.round(days.reduce((s, d) => s + (d?.planned_tss || 0), 0)),
-          rides: days.filter((d) => d?.sport === 'cycle').length,
-          strength: days.filter((d) => d?.sport === 'strength').length,
-          rest: days.filter((d) => !d || d.sport === 'rest').length,
-        };
-      }),
-    [totalWeeks, plan.start_date, plan.days],
-  );
+  const weekSummaries = useMemo(() => {
+    const sessionsOn = (d: string) =>
+      plan.days.filter((pd) => pd.day_date.slice(0, 10) === d);
+    return Array.from({ length: totalWeeks }, (_, wi) => {
+      const dates = Array.from({ length: 7 }, (_, i) =>
+        addDays(getWeek1Start(plan.start_date), wi * 7 + i),
+      );
+      const days = dates.flatMap(sessionsOn);
+      return {
+        weekIndex: wi,
+        totalTss: Math.round(days.reduce((s, d) => s + (d.planned_tss || 0), 0)),
+        rides: days.filter((d) => d.sport === 'cycle').length,
+        strength: days.filter((d) => d.sport === 'strength').length,
+        rest: dates.filter((d) => {
+          const sessions = sessionsOn(d);
+          return sessions.length === 0 || sessions.every((s) => s.sport === 'rest');
+        }).length,
+      };
+    });
+  }, [totalWeeks, plan.start_date, plan.days]);
 
   const readiness = weekData?.readiness ?? null;
 
-  // Expanded day lookup — the day object for the currently expanded card, used
-  // by the full-width ExpandedPanel rendered below the 7-column grid.
-  const expandedDay = useMemo(() => {
-    if (!expandedDayId) return null;
-    return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === expandedDayId) ?? null;
-  }, [expandedDayId, weekDates, daysByDate]);
+  // Expanded day lookup — the session whose editor is open, used by the
+  // full-width ExpandedPanel rendered below the 7-column grid.
+  const expandedDay = useMemo(
+    () => (expandedDayId ? sessionsById.get(expandedDayId) ?? null : null),
+    [expandedDayId, sessionsById],
+  );
 
-  // Missed-day quick actions (V3): the missed day + the following day it can
-  // move to (within the visible week only — the PATCH cannot change day_date,
-  // so a "move" swaps the two days' planned content instead).
-  const missedDay = useMemo(() => {
-    if (!missedDayId) return null;
-    return weekDates.map((d) => daysByDate.get(d)).find((d) => d?.id === missedDayId) ?? null;
-  }, [missedDayId, weekDates, daysByDate]);
+  // Missed-day quick actions (V3): the missed session + the following date's
+  // first session it can move to (within the visible week only).
+  const missedDay = useMemo(
+    () => (missedDayId ? sessionsById.get(missedDayId) ?? null : null),
+    [missedDayId, sessionsById],
+  );
   const missedNextDay = useMemo(() => {
     if (!missedDay) return null;
     const idx = weekDates.indexOf(missedDay.day_date.slice(0, 10));
     if (idx < 0 || idx >= weekDates.length - 1) return null;
-    return daysByDate.get(weekDates[idx + 1]) ?? null;
-  }, [missedDay, weekDates, daysByDate]);
+    return sessionsByDate.get(weekDates[idx + 1])?.[0] ?? null;
+  }, [missedDay, weekDates, sessionsByDate]);
 
   // Phase 2 `?day=` landing: jump to the week holding the date, auto-expand
   // the day, scroll its card into view. Runs once per deep-link date — week
@@ -670,15 +695,16 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       {view === 'week' && !weekQuery.isLoading && (
         <WeekMasterBar
           weekDates={weekDates}
-          daysByDate={daysByDate}
+          sessionsByDate={sessionsByDate}
           todayStr={todayStr}
           expandedDayId={expandedDayId}
           highlightDate={highlightDate}
           activeGoals={activeGoals}
-          onToggleExpand={setExpandedDayId}
+          onToggleExpand={toggleExpand}
           onToggleCompleted={(dayId, completed) => toggleCompleted.mutate({ dayId, completed })}
           onOpenMissed={setMissedDayId}
-          onDropDate={handleDropDate}
+          onAddSession={handleAddSession}
+          onDropSession={handleDropSession}
           busy={
             toggleCompleted.isPending ||
             assignRoute.isPending ||
@@ -709,7 +735,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
           <div className="flex items-center justify-between">
             <h4 className="text-sm font-semibold text-foreground">
             {(() => { const Icon = SPORT_ICON[expandedDay.sport]; return Icon ? <Icon className="w-4 h-4 inline" /> : null; })()}
-            {expandedDay.day_date.slice(0, 10)} details
+            {expandedDay.day_date.slice(0, 10)} · {SPORT_LABEL[expandedDay.sport] ?? expandedDay.sport} details
             </h4>
             <button
               onClick={() => setExpandedDayId(null)}
@@ -733,7 +759,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
       {view === 'week' && expandedDay && isMobile && (
         <Modal open onClose={() => setExpandedDayId(null)} size="lg" aria-label="Day editor">
           <ModalHeader
-            title={`${expandedDay.day_date.slice(0, 10)} details`}
+            title={`${expandedDay.day_date.slice(0, 10)} · ${SPORT_LABEL[expandedDay.sport] ?? expandedDay.sport} details`}
             onClose={() => setExpandedDayId(null)}
             icon={(() => {
               const Icon = SPORT_ICON[expandedDay.sport];

@@ -8,37 +8,43 @@
  *   - mobile/tablet: a horizontally scrollable strip of fixed-width cells
  *
  * The card itself is `DayCell`; this component only lays them out and maps
- * each cell's date onto its plan day, today/highlight state and goal hints.
+ * each cell's date onto the sessions planned on it, today/highlight state and
+ * goal hints. A date may hold more than one session, so drag-and-drop carries
+ * a *session id*, not a date.
  */
 
 import React from 'react';
 import { getActiveLocale } from '@/lib/utils';
 import type { Goal, TrainingWeekDay } from '@/lib/api';
-import { goalsForPlanDay, goalShortLabel } from '@/components/goals/goalPlanLinks';
+import { goalsForPlanDate, goalShortLabel } from '@/components/goals/goalPlanLinks';
+import type { AddableSport } from '@/lib/training/sessionGroups';
 import { DayCell } from './DayCell';
 
 export interface WeekMasterBarProps {
   /** Seven Monday-aligned dates (YYYY-MM-DD) for the visible week. */
   weekDates: string[];
-  daysByDate: Map<string, TrainingWeekDay>;
+  /** Sessions planned on each date, in payload order (absent = no plan entry). */
+  sessionsByDate: Map<string, TrainingWeekDay[]>;
   todayStr: string;
   expandedDayId: string | null;
   /** Phase 2 `?day=` deep-link highlight. */
   highlightDate?: string | null;
   /** Active goals for the plan → goal cross-link hint. */
   activeGoals: Goal[];
-  onToggleExpand: (dayId: string | null) => void;
+  onToggleExpand: (dayId: string) => void;
   onToggleCompleted: (dayId: string, completed: boolean) => void;
   /** Opens the missed-day quick actions for the given day id. */
   onOpenMissed: (dayId: string) => void;
+  /** Adds a session of `sport` on `date` (409 when that sport is taken). */
+  onAddSession?: (date: string, sport: AddableSport) => void;
   busy: boolean;
-  /** Desktop drag-and-drop: called with (sourceDate, targetDate) on drop. */
-  onDropDate?: (sourceDate: string, targetDate: string) => void;
+  /** Desktop drag-and-drop: called with (sourceDayId, targetDate) on drop. */
+  onDropSession?: (sourceDayId: string, targetDate: string) => void;
 }
 
 export function WeekMasterBar({
   weekDates,
-  daysByDate,
+  sessionsByDate,
   todayStr,
   expandedDayId,
   highlightDate,
@@ -46,8 +52,9 @@ export function WeekMasterBar({
   onToggleExpand,
   onToggleCompleted,
   onOpenMissed,
+  onAddSession,
   busy,
-  onDropDate,
+  onDropSession,
 }: WeekMasterBarProps) {
   const [dragSource, setDragSource] = React.useState<string | null>(null);
 
@@ -58,7 +65,7 @@ export function WeekMasterBar({
       aria-label="Plan week"
     >
       {weekDates.map((date) => {
-        const day = daysByDate.get(date);
+        const sessions = sessionsByDate.get(date) ?? [];
         const dowLabel = new Date(date + 'T00:00:00').toLocaleDateString(getActiveLocale(), {
           weekday: 'short',
         });
@@ -67,9 +74,9 @@ export function WeekMasterBar({
           month: 'short',
         });
         const isToday = date === todayStr;
-        const expanded = !!day && expandedDayId === day.id;
         const highlighted = highlightDate === date;
-        const dayGoals = day ? goalsForPlanDay(activeGoals, day) : [];
+        const dayGoals = goalsForPlanDate(activeGoals, sessions);
+        const isOwnDate = sessions.some((s) => s.id === dragSource);
 
         return (
           <div
@@ -81,29 +88,28 @@ export function WeekMasterBar({
               dowLabel={dowLabel}
               dayLabel={dayLabel}
               isToday={isToday}
-              day={day}
+              sessions={sessions}
               todayStr={todayStr}
-              expanded={expanded}
+              expandedDayId={expandedDayId}
               highlighted={highlighted}
               goalCount={dayGoals.length}
               goalNames={dayGoals.map((g) => goalShortLabel(g))}
-              onToggleExpand={() => day && onToggleExpand(expanded ? null : day.id)}
-              onToggleCompleted={(completed) =>
-                day && onToggleCompleted(day.id, completed)
-              }
-              onOpenMissed={day ? () => onOpenMissed(day.id) : undefined}
+              onToggleExpand={onToggleExpand}
+              onToggleCompleted={onToggleCompleted}
+              onOpenMissed={onOpenMissed}
+              onAddSession={onAddSession}
               busy={busy}
-              draggable={!!day && !day.completed}
-              onDragStart={() => setDragSource(date)}
+              draggable={sessions.length === 1 && !sessions[0].completed}
+              onDragStart={setDragSource}
               onDragOver={(e) => {
-                if (dragSource && dragSource !== date) e.preventDefault();
+                if (dragSource && !isOwnDate) e.preventDefault();
               }}
               onDrop={() => {
-                if (dragSource && dragSource !== date) onDropDate?.(dragSource, date);
+                if (dragSource && !isOwnDate) onDropSession?.(dragSource, date);
                 setDragSource(null);
               }}
               onDragEnd={() => setDragSource(null)}
-              isDropTarget={!!dragSource && dragSource !== date}
+              isDropTarget={!!dragSource && !isOwnDate}
             />
           </div>
         );

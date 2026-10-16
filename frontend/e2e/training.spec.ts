@@ -11,6 +11,7 @@
 
 import { test, expect } from './fixtures/authenticated-test';
 import { mockTrainingPlan } from './fixtures/mock-data';
+import * as mockData from './fixtures/mock-data';
 
 test.describe('Training Page — shell', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
@@ -183,5 +184,100 @@ test.describe('Training Page — strength suggestions (plan §12.1)', () => {
     expect(sent[0]).toMatchObject({ weight_kg: 105, pct_1rm: 0.8 });
     expect(sent[1]).toMatchObject({ weight_kg: 0 });
     expect(sent[2]).toMatchObject({ weight_kg: 85 });
+  });
+});
+
+test.describe('Training Page — week ahead (C3)', () => {
+  test('Review mode shows the persisted weekly review', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.goto('/fittrack/training?mode=review');
+    await page.waitForLoadState('networkidle');
+
+    // The card is the only surface for the persisted review; without it the C3
+    // backend work is invisible.
+    await expect(page.getByText('Week ahead')).toBeVisible();
+    await expect(page.getByText('Week of 3 Aug 2026')).toBeVisible();
+    await expect(page.getByText('CTL 48 · ATL 43 · TSB +5')).toBeVisible();
+    await expect(page.getByText('72% · stable')).toBeVisible();
+    await expect(page.getByText('2 missed · 5 Aug, 7 Aug')).toBeVisible();
+    await expect(
+      page.getByText('Hold the build; you are absorbing the load well.'),
+    ).toBeVisible();
+    await expect(page.getByText('Active goals')).toBeVisible();
+  });
+
+  test('renders with load, conformity and adaptive all degraded', async ({
+    authenticatedPage: page,
+  }) => {
+    // Each engine degrades to null independently, so this is the designed
+    // state, not an error. Registered after the fixture, so it wins.
+    await page.route('**/api/v1/training-plans/*/review*', (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          ...mockData.mockPlanReview,
+          load: null,
+          conformity: null,
+          adaptive: null,
+        }),
+      }),
+    );
+    await page.goto('/fittrack/training?mode=review');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText('Week of 3 Aug 2026')).toBeVisible();
+    await expect(page.getByText('2 missed · 5 Aug, 7 Aug')).toBeVisible();
+    await expect(
+      page.getByText('Not available this week: load, conformity, adaptive advice.'),
+    ).toBeVisible();
+    await expect(page.getByText('CTL 48 · ATL 43 · TSB +5')).toHaveCount(0);
+  });
+});
+
+test.describe('Training Page — multi-sport days', () => {
+  /**
+   * One date holds two sessions (a lift and a ride). The fixture for this case
+   * is its own (`mockTrainingWeekMultiSport`) so the cases above keep asserting
+   * against the one-session-per-date week they were written for.
+   */
+  test('a date holding two sessions renders a chip each, keyed by session', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.route(/\/api\/v1\/training-plans\/[^/]+\/week\/\d+/, (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify(mockData.mockTrainingWeekMultiSport),
+      }),
+    );
+    await page.goto('/fittrack/training');
+    await page.waitForLoadState('networkidle');
+
+    const twoSessions = page.locator('#plan-day-2026-08-06');
+    await expect(twoSessions).toBeVisible();
+
+    // A chip per session, not one day overwriting the other.
+    const squatChip = twoSessions.getByRole('button', { name: 'Squat' });
+    const rideChip = twoSessions.getByRole('button', { name: /45 TSS/ });
+    await expect(squatChip).toBeVisible();
+    await expect(rideChip).toBeVisible();
+
+    // The one-session date still renders its full body.
+    const oneSession = page.locator('#plan-day-2026-08-05');
+    await expect(oneSession.getByText(/60 min/)).toBeVisible();
+
+    // "Add session" is offered while a sport is missing, and disabled once the
+    // date holds both.
+    await expect(
+      oneSession.getByTitle('Add a strength session on 2026-08-05'),
+    ).toBeVisible();
+    await expect(
+      twoSessions.getByRole('button', { name: 'Add session' }),
+    ).toBeDisabled();
+
+    // Each chip opens its own session's editor.
+    await squatChip.click();
+    await expect(page.getByText('2026-08-06 · Strength details')).toBeVisible();
+    await expect(page.getByLabel('Sport')).toHaveValue('strength');
   });
 });
