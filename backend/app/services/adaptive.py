@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import logging
 import uuid
-from collections import Counter
 from datetime import UTC, date, datetime, timedelta, timezone
 
 from sqlalchemy import func, select
@@ -828,29 +827,16 @@ def _actions_for(
     factor: float,
     force_rest: bool = False,
     strength_volume_factor: float | None = None,
-    plan_day_dates: list[date] | None = None,
 ) -> list[dict]:
     """Build one-tap apply actions for the upcoming training days.
 
     ``strength_volume_factor`` (CD2): when set, strength-day
     ``planned_volume_kg`` scales by this combined factor instead of ``factor``
     (still clamped by the existing bounds); cycle days and RPE are untouched.
-
-    ``plan_day_dates`` carries one entry per plan session on the dates in
-    question, so a crowded date is distinguishable from a lone one. A rest row
-    may not share its date with a session, so ``force_rest`` offers no action
-    where the date holds more than one session — the apply would be refused.
     """
-    crowded: set[date] = set()
-    if force_rest and plan_day_dates:
-        counts = Counter(plan_day_dates)
-        crowded = {d for d, n in counts.items() if n > 1}
-
     actions: list[dict] = []
     for day in days:
         if force_rest:
-            if day.day_date in crowded:
-                continue
             fields: dict[str, object] = {"sport": "rest", "planned_type": "rest"}
             label = f"Rest on {day.day_date.isoformat()}"
         else:
@@ -891,25 +877,6 @@ async def _upcoming_training_days(
         )
         .order_by(TrainingPlanDay.day_date.asc())
         .limit(limit)
-    )
-    return list(result.scalars().all())
-
-
-async def _plan_day_dates(
-    db: AsyncSession, plan_id: uuid.UUID, dates: set[date]
-) -> list[date]:
-    """Every plan session's date among ``dates``, one entry per row.
-
-    Read from the plan rather than from the upcoming window, which is capped at
-    ``DAY_ACTION_LIMIT`` and can end mid-date.
-    """
-    if not dates:
-        return []
-    result = await db.execute(
-        select(TrainingPlanDay.day_date).where(
-            TrainingPlanDay.plan_id == plan_id,
-            TrainingPlanDay.day_date.in_(dates),
-        )
     )
     return list(result.scalars().all())
 
@@ -1134,9 +1101,6 @@ async def generate_adaptive_suggestions(
                     "rest",
                     1.0,
                     force_rest=True,
-                    plan_day_dates=await _plan_day_dates(
-                        db, plan.id, {d.day_date for d in upcoming}
-                    ),
                 )
 
     # ── CD1: cross-sport fatigue interference ────────────────────────────

@@ -51,7 +51,7 @@ The cheapest way to avoid a rewrite later is to make Phase 1 **session-scoped** 
 - **A sport changed on an existing row** (day `PATCH`, `substitute`) → same rule, so a second row of that sport or a `rest` beside a session is a 409. The editor's Sport select shows it as a toast.
 - **A swap that would double a sport** → 409, the same rule as a move. `swap_plan_days` exchanges two rows' dates and excludes the pair from its own check, so it only collides when a *third* session sits on one of the two dates — which this phase makes possible.
 - **Rest + session on a date** → rejected; "Mark as rest" is disabled when other sessions exist (and clears a lone session).
-- **Rest-swap action on a two-session date** → not offered. The autoregulation action's intent is to rest a *day*, which is ambiguous where two sessions sit on it, and resting the whole date needs a capability the action does not have — deferred, not guessed at. `_actions_for(force_rest=True)` emits nothing for such a date.
+- **Rest-swap action on a two-session date** → not offered. The autoregulation action's intent is to rest a *day*, which is ambiguous where two sessions sit on it, and resting the whole date needs a capability the action does not have — deferred, not guessed at. The guard that skipped such a date was removed with the rest of the unreachable rest-action path (BUG-099), so the hoist that path needs must re-add it.
 - **`link_activities`** already matches by date **and** sport (cycle→activity, strength→session), so two rows on a date link their own actuals — verify the matcher doesn't cross-link.
 - **Conformity** scores per row (sport + its own linked actual) — already correct.
 - **Weekly `planned_tss`** sums both sessions — desired.
