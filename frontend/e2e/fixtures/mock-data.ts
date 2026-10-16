@@ -989,6 +989,42 @@ export const mockAdaptiveSuggestions = {
   suggestions: [],
 };
 
+// Plan §12.1: "Apply All" must merge each suggested weight into the day's
+// existing exercise list. Two exercises on one day is the minimum that tells
+// the two behaviours apart, because a per-exercise PATCH loop keeps only the
+// last one.
+export const mockStrengthSuggestions = {
+  plan_id: 'plan-1',
+  generated_at: '2026-09-20T06:00:00Z',
+  summary: 'Two lifts ready to progress.',
+  suggestions: [
+    {
+      day_id: 'day-3',
+      day_date: '2026-08-04',
+      sport: 'strength',
+      planned_focus: 'squat',
+      exercises: [
+        {
+          exercise_name: 'Back Squat',
+          old_weight_kg: 100,
+          suggested_weight_kg: 105,
+          rpe: 8,
+          sets: 5,
+          reps: 5,
+        },
+        {
+          exercise_name: 'Romanian Deadlift',
+          old_weight_kg: 80,
+          suggested_weight_kg: 85,
+          rpe: 8,
+          sets: 3,
+          reps: 8,
+        },
+      ],
+    },
+  ],
+};
+
 export const mockRouteTags = [
   { id: 'tag-1', user_id: 'user-1', name: 'Hilly', color: '#ef4444', created_at: '2026-01-01T00:00:00Z' },
   { id: 'tag-2', user_id: 'user-1', name: 'Gravel', color: '#22c55e', created_at: '2026-01-01T00:00:00Z' },
