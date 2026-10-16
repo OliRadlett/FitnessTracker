@@ -27,6 +27,9 @@ from app.schemas.training_plan import (
     StrengthProgressionSuggestResponse,
     SubstituteDayRequest,
     SwapDayRequest,
+    TrainingPlanBlockCreate,
+    TrainingPlanBlockRead,
+    TrainingPlanBlockUpdate,
     TrainingPlanCreate,
     TrainingPlanDayCreate,
     TrainingPlanDayRead,
@@ -41,6 +44,7 @@ from app.schemas.training_plan import (
 )
 from app.services import conformity as conformity_service
 from app.services import training_plan as plan_service
+from app.services import training_plan_blocks as blocks_service
 from app.services import wahoo_push as wahoo_push_service
 from app.services.auth import get_current_user
 
@@ -847,3 +851,89 @@ async def preview_workout(
         "ftp": ftp,
         "message": None,
     }
+
+
+# ── Plan blocks (C1 — the stored block/phase model) ──────────────────────
+
+
+def _block_http_error(exc: blocks_service.BlockConflict) -> HTTPException:
+    """Map a block conflict to the status its cause deserves.
+
+    Three genuinely different mistakes rather than one: a missing row (404), a
+    malformed range (400), and a range that collides with a sibling (409).
+    """
+    detail = str(exc)
+    if "not found" in detail:
+        return HTTPException(status_code=404, detail=detail)
+    if "overlap" in detail:
+        return HTTPException(status_code=409, detail=detail)
+    return HTTPException(status_code=400, detail=detail)
+
+
+@router.get("/{plan_id}/blocks", response_model=list[TrainingPlanBlockRead])
+async def list_plan_blocks(
+    plan_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """This plan's blocks, in date order."""
+    try:
+        blocks = await blocks_service.list_blocks(db, current_user.id, plan_id)
+    except blocks_service.BlockConflict as e:
+        raise _block_http_error(e) from e
+    return [TrainingPlanBlockRead.model_validate(b) for b in blocks]
+
+
+@router.post(
+    "/{plan_id}/blocks",
+    response_model=TrainingPlanBlockRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_plan_block(
+    plan_id: uuid.UUID,
+    data: TrainingPlanBlockCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Add a block. 409 when it would overlap a sibling."""
+    try:
+        block = await blocks_service.create_block(db, current_user.id, plan_id, data)
+    except blocks_service.BlockConflict as e:
+        raise _block_http_error(e) from e
+    return TrainingPlanBlockRead.model_validate(block)
+
+
+@router.patch("/{plan_id}/blocks/{block_id}", response_model=TrainingPlanBlockRead)
+async def update_plan_block(
+    plan_id: uuid.UUID,
+    block_id: uuid.UUID,
+    data: TrainingPlanBlockUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Edit a block. Only the fields sent are changed."""
+    try:
+        block = await blocks_service.update_block(
+            db, current_user.id, plan_id, block_id, data
+        )
+    except blocks_service.BlockConflict as e:
+        raise _block_http_error(e) from e
+    return TrainingPlanBlockRead.model_validate(block)
+
+
+@router.delete("/{plan_id}/blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_plan_block(
+    plan_id: uuid.UUID,
+    block_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Remove a block.
+
+    Days are untouched: a block *labels* a date range, it does not own the days
+    inside it, so deleting one must not delete training.
+    """
+    try:
+        await blocks_service.delete_block(db, current_user.id, plan_id, block_id)
+    except blocks_service.BlockConflict as e:
+        raise _block_http_error(e) from e
