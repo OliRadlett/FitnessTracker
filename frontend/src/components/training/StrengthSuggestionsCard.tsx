@@ -4,8 +4,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useAuthFetch } from '@/lib/api/fetch';
 import { getStrengthSuggestions, updatePlanDay } from '@/lib/api/trainingPlans';
+import { mergeSuggestedWeights } from '@/lib/training/planDayHelpers';
 import { useToast } from '@/components/ui/Toast';
-import type { StrengthPlanSuggestionsResponse } from '@/lib/api/types';
+import type { StrengthPlanSuggestionsResponse, TrainingPlan } from '@/lib/api/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -14,7 +15,7 @@ interface StrengthSuggestionsCardProps {
 }
 
 export function StrengthSuggestionsCard({ planId }: StrengthSuggestionsCardProps) {
-  const { authFetch } = useAuthFetch();
+  const { authFetch, token } = useAuthFetch();
   const { success, error: toastError } = useToast();
   const [isApplying, setIsApplying] = useState(false);
 
@@ -27,6 +28,15 @@ export function StrengthSuggestionsCard({ planId }: StrengthSuggestionsCardProps
     queryFn: () => getStrengthSuggestions(authFetch, planId),
     enabled: !!planId,
     staleTime: 5 * 60 * 1000,
+  });
+
+  // The shell's plan entry, shared by key so a day edit elsewhere is visible
+  // here. Applying a suggestion needs the day's full list, which only the plan
+  // carries.
+  const { data: plan } = useQuery<TrainingPlan>({
+    queryKey: ['training-plan', planId],
+    queryFn: () => authFetch<TrainingPlan>(`/api/v1/training-plans/${planId}`),
+    enabled: !!planId && !!token,
   });
 
   if (isLoading) {
@@ -42,23 +52,20 @@ export function StrengthSuggestionsCard({ planId }: StrengthSuggestionsCardProps
   }
 
   const handleApplyAll = async () => {
-    if (!suggestions) return;
+    if (!suggestions || !plan) return;
     setIsApplying(true);
     try {
       for (const day of suggestions.suggestions) {
-        for (const ex of day.exercises) {
-          await updatePlanDay(authFetch, planId, day.day_id, {
-            planned_exercises: [
-              {
-                exercise: ex.exercise_name,
-                sets: ex.sets,
-                reps: ex.reps,
-                rpe: ex.rpe ?? 8.0,
-                weight_kg: ex.suggested_weight_kg,
-              },
-            ],
-          });
-        }
+        const planDay = plan.days.find((d) => d.id === day.day_id);
+        // A day the plan does not carry has an unknown list; sending the
+        // suggestions alone would delete whatever it holds.
+        if (!planDay) continue;
+        await updatePlanDay(authFetch, planId, day.day_id, {
+          planned_exercises: mergeSuggestedWeights(
+            planDay.planned_exercises,
+            day.exercises,
+          ),
+        });
       }
       success('All weight suggestions applied!');
       refetch();
@@ -84,7 +91,7 @@ export function StrengthSuggestionsCard({ planId }: StrengthSuggestionsCardProps
           size="sm"
           variant="secondary"
           onClick={handleApplyAll}
-          disabled={isApplying}
+          disabled={isApplying || !plan}
         >
           {isApplying ? 'Applying…' : 'Apply All'}
         </Button>
