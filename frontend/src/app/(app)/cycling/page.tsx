@@ -28,7 +28,7 @@ import type {
 } from '@/lib/api';
 import { getWeightHistory } from '@/lib/api';
 import { type PREvent } from '@/components/ui/PRCelebration';
-import { Card } from '@/components/ui/Card';
+import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { MetricCard } from '@/components/cycling/MetricCard';
 import { SyncBadge, WeightCard } from '@/components/athlete';
 import { LoadSummary } from '@/components/dashboard/LoadSummary';
@@ -39,6 +39,7 @@ import {
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
 import { NextSessionCardAuto } from '@/components/training/NextSessionCard';
+import { ChartBody } from '@/components/charts/Chart';
 import { PowerCurveSection } from '@/components/cycling/PowerCurveSection';
 import { PowerModelSection } from '@/components/cycling/PowerModelSection';
 import { WeatherAnalysisSection } from '@/components/cycling/WeatherAnalysisSection';
@@ -324,6 +325,14 @@ function CyclingPageInner() {
     queryKey: ['chart-daily-tss', chartDays],
     queryFn: () => authFetch<ChartData>(`/api/v1/charts/daily_tss?days=${chartDays}`),
     staleTime: 120_000,
+    enabled: !!token,
+  });
+
+  // Deterministic energy-system mix (from the cached ride IF).
+  const { data: chartRideMix } = useQuery<ChartData>({
+    queryKey: ['chart-ride-mix'],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/ride_mix?weeks=12'),
+    staleTime: 300_000,
     enabled: !!token,
   });
 
@@ -864,6 +873,16 @@ function CyclingPageInner() {
           stale={staleProviders.length > 0}
         />
       </div>
+
+      {/* Ride mix — deterministic energy-system types from the cached IF */}
+      <Card>
+        <CardHeader><CardTitle>Ride Mix</CardTitle></CardHeader>
+        <ChartBody
+          data={chartRideMix}
+          emptyMessage="Rides with power appear here once ride metrics are computed"
+          height={240}
+        />
+      </Card>
 
       {/* Personalized Power Model + Weather-Performance Analysis */}
       <PowerModelSection powerModel={powerModel} isLoading={powerModelLoading} />

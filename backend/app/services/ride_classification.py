@@ -59,3 +59,22 @@ def ride_type_from_context(
     return classify_ride_type(
         ride.get("intensity_factor"), duration_seconds=duration_seconds
     )
+
+
+def purpose_matches_execution(
+    purpose: str | None, ride_type: str | None
+) -> bool | None:
+    """Declared purpose vs measured type: True/False, or None when unjudged.
+
+    Only the confident mismatches are judged — a ride logged as ``recovery``
+    measured at tempo or harder, or a ``race`` measured as easy. Every other
+    purpose (commute, training, social, endurance) returns None: their intensity
+    is not a claim to check.
+    """
+    if not purpose or not ride_type:
+        return None
+    if purpose == "recovery":
+        return ride_type not in ("tempo", "threshold", "vo2max")
+    if purpose == "race":
+        return ride_type not in ("recovery", "endurance")
+    return None

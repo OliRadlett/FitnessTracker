@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.services.ride_classification import (
     classify_ride_type,
+    purpose_matches_execution,
     ride_type_from_context,
 )
 
@@ -33,3 +34,21 @@ def test_none_without_power():
 
 def test_from_context_reads_the_cached_if():
     assert ride_type_from_context({"ride": {"intensity_factor": 0.72}}) == "endurance"
+
+
+def test_purpose_vs_execution_only_judges_the_confident_cases():
+    # A "recovery" ride measured at tempo or harder did not do what it claimed.
+    assert purpose_matches_execution("recovery", "recovery") is True
+    assert purpose_matches_execution("recovery", "tempo") is False
+    assert purpose_matches_execution("recovery", "vo2max") is False
+    # A "race" measured as an easy spin is the same shape.
+    assert purpose_matches_execution("race", "threshold") is True
+    assert purpose_matches_execution("race", "endurance") is False
+
+
+def test_purpose_vs_execution_is_unjudged_otherwise():
+    # Other purposes are not intensity claims — no verdict either way.
+    assert purpose_matches_execution("commute", "tempo") is None
+    assert purpose_matches_execution("training", "threshold") is None
+    assert purpose_matches_execution(None, "tempo") is None
+    assert purpose_matches_execution("recovery", None) is None
