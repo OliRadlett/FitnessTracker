@@ -962,7 +962,7 @@ async def link_event_and_apply_taper(
         window_start = plan.end_date - timedelta(days=taper_window - 1)
         taper_days = sorted(
             (d for d in plan.days if window_start <= d.day_date <= plan.end_date),
-            key=lambda d: d.day_date,
+            key=lambda d: (d.day_date, d.sport),
         )
         count = len(taper_days)
         for i, day in enumerate(taper_days):
@@ -2266,9 +2266,11 @@ async def get_plan_week(
     week_start = week1_start + timedelta(weeks=week_number - 1)
     week_end = week_start + timedelta(days=6)
 
+    # ``sport`` breaks the tie for a date holding more than one session, so the
+    # grid's chip order is stable across requests.
     week_days = sorted(
         (d for d in plan.days if week_start <= d.day_date <= week_end),
-        key=lambda d: d.day_date,
+        key=lambda d: (d.day_date, d.sport),
     )
 
     today = date.today()
