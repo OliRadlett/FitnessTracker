@@ -10,8 +10,8 @@ re-run in the same week is a no-op rather than a duplicate snapshot.
 Dialect note: ``JSONB`` comes from ``sqlalchemy.dialects.postgresql`` (AGENTS.md
 pitfall 22 — ``sa.JSONB()`` does not exist and reverts the whole migration).
 
-Revision ID: 100
-Revises: 099
+Revision ID: 101
+Revises: 100
 Create Date: 2026-10-16
 """
 
@@ -23,8 +23,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "100"
-down_revision = "099"
+revision = "101"
+down_revision = "100"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
