@@ -64,14 +64,13 @@ describe('visibleSessions', () => {
     expect(overflow).toBe(0);
   });
 
-  it('caps at two chips and reports the rest as overflow', () => {
-    const three = [
+  it('caps at the given number of chips and reports the rest as overflow', () => {
+    const two = [
       session('a', '2026-08-03', 'cycle'),
       session('b', '2026-08-03', 'strength'),
-      session('c', '2026-08-03', 'rest'),
     ];
-    const { shown, overflow } = visibleSessions(three);
-    expect(shown.map((s) => s.id)).toEqual(['a', 'b']);
+    const { shown, overflow } = visibleSessions(two, 1);
+    expect(shown.map((s) => s.id)).toEqual(['a']);
     expect(overflow).toBe(1);
   });
 
