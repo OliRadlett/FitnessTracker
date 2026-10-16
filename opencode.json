@@ -51,7 +51,6 @@
     "C:\\Users\\oradl\\.config\\opencode\\node_modules\\superpowers"
   ],
   "shell": "pwsh",
-  "snapshot": true,
   "compaction": {
     "auto": true,
     "prune": true,
