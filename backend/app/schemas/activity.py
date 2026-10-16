@@ -85,6 +85,12 @@ class ActivityRead(ActivityBase):
     # (ATL/CTL/TSB) deliberately excluded (moving window, stays on-demand).
     ride_context: dict | None = None
 
+    # Jev (TypeSafe) purpose tag derived from the activity name at sync/backfill
+    # — "training" | "endurance" | "commute" | "recovery" | "race" | "social".
+    # Read straight off the loaded `Activity.context` column (zero extra
+    # queries); None when Jev is unset or has not reached the row.
+    purpose: str | None = None
+
     # Whether any ActivityStream rows exist for this activity. Set from the
     # eager-loaded `streams` relationship when present (list + detail
     # endpoints); False otherwise — never triggers a lazy load (P2-2).

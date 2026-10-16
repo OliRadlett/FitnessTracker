@@ -63,6 +63,15 @@ def _build_linked_session_summary(
     )
 
 
+def _activity_purpose(activity: Activity) -> str | None:
+    """Jev purpose tag off the loaded ``context`` column; None when absent.
+
+    Orthogonal to the ride block: a power-less commute has no ride metrics but
+    does have a purpose, so this does not go through ``context_to_ride_metrics``.
+    """
+    return (activity.context or {}).get("tags", {}).get("purpose")
+
+
 def _extract_encoded_polyline(activity: Activity) -> str | None:
     """Extract an activity's encoded polyline (raw_data, then provider sources).
 
@@ -95,6 +104,10 @@ def _enrich_activity_read(
         read.ride_context = context_to_ride_metrics(
             activity.context, tss_source=activity.tss_source
         )
+    # Jev purpose tag — orthogonal to the ride block (a power-less commute has
+    # no ride metrics but does have a purpose), so read it off the context
+    # column directly rather than through context_to_ride_metrics.
+    read.purpose = _activity_purpose(activity)
     # Stream presence from the eager-loaded relationship when available. Guard
     # on __dict__ — other _enrich callers (FIT upload, manual create, lifting)
     # don't eager-load streams, and lazy loading is illegal in async context.
