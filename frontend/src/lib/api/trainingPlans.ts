@@ -1,5 +1,7 @@
 import type {
   TrainingPlanSummary,
+  TrainingPlanBlock,
+  TrainingPlanBlockPayload,
   TrainingWeekResponse,
   UpdateTrainingPlanDayPayload,
   TrainingPlanDay,
@@ -287,4 +289,50 @@ export async function materialiseProgression(
     `/api/v1/training-plans/${planId}/strength-progression/materialise`,
     { method: 'POST', body: JSON.stringify(body) }
   );
+}
+
+// ── C1: plan blocks (the stored block/phase model) ──────────────────────────
+
+/** This plan's blocks, in date order. */
+export async function getPlanBlocks(
+  authFetch: AuthFetch,
+  planId: string
+): Promise<TrainingPlanBlock[]> {
+  return authFetch<TrainingPlanBlock[]>(`/api/v1/training-plans/${planId}/blocks`);
+}
+
+/** Add a block. Rejects (409) when it would overlap a sibling. */
+export async function createPlanBlock(
+  authFetch: AuthFetch,
+  planId: string,
+  payload: TrainingPlanBlockPayload
+): Promise<TrainingPlanBlock> {
+  return authFetch<TrainingPlanBlock>(`/api/v1/training-plans/${planId}/blocks`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+/** Edit a block. Only the fields sent are changed. */
+export async function updatePlanBlock(
+  authFetch: AuthFetch,
+  planId: string,
+  blockId: string,
+  payload: TrainingPlanBlockPayload
+): Promise<TrainingPlanBlock> {
+  return authFetch<TrainingPlanBlock>(
+    `/api/v1/training-plans/${planId}/blocks/${blockId}`,
+    { method: 'PATCH', body: JSON.stringify(payload) }
+  );
+}
+
+/** Remove a block. Its days are untouched — a block labels a range, it owns nothing. */
+export async function deletePlanBlock(
+  authFetch: AuthFetch,
+  planId: string,
+  blockId: string
+): Promise<void> {
+  return authFetch<void>(`/api/v1/training-plans/${planId}/blocks/${blockId}`, {
+    method: 'DELETE',
+  });
 }

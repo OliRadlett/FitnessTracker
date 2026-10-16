@@ -227,13 +227,17 @@ mid-flight once already (pitfall 34).
 (IA + editor) with companion [`plans/training-strength-programming.md`](plans/training-strength-programming.md)
 (programming). Removes the Build/Week editor split in favour of **one Plan mode** (instant field
 edits + atomic Move/Swap/Add/Delete operations), a plan spine with **Plan · Review · Peaks** modes,
-and a **Program matrix** for multi-week strength targets with weight suggestions. **Backend is in
-scope**: redesign Phase 0 adds `POST /days`, `DELETE /days/{id}`, `POST /days/{id}/swap` and fixes the
-`CODEMAP.md:20` "non-destructive upsert" doc bug; companion `S1` adds `TrainingPlan.strength_progression`
-(a new migration — take the next free number at build time and re-check `main` per pitfall 34).
-Supersedes the *scope* of [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md)
-(whose V3 widgets are reused; its prod deploy is still open). **Nothing built yet** — the
-remaining/deferred register is §15 of the redesign plan.
+and a **Program matrix** for multi-week strength targets with weight suggestions. **Backend was in
+scope throughout, and is shipped**: Phases 0–4 (shell + the one-editor Plan mode, Review, Peaks +
+load strip, mobile), companion S1–S4 (progression engine, Program matrix, block tools, coaching
+aids), and follow-ons C1–C6 (block/phase model, generation inputs, persisted weekly reviews,
+autoregulation, propagation timing, undoable structural ops). Migrations: `099` (S1
+`strength_progression`), `101` (C3 plan-review snapshots), `102` (C1 `training_plan_blocks`).
+**C1 landed the stored block/phase model**, so the load strip's phase names are now the user's own
+blocks instead of derived guesses; **C6 gave `UndoLog` its first HTTP surface** (`/api/v1/undo`)
+plus an undoable plan-day delete. Supersedes the *scope* of
+[`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (whose V3 widgets are reused;
+its prod deploy is still open). The remaining/deferred register is §15 of the redesign plan.
 
 **Jev strength-session classification** — three specs. [`plans/jev-strength-session-classification.md`](plans/jev-strength-session-classification.md)
 defines the label producer: Jev classifies **every** lifting session (note or not) into three typed axes —

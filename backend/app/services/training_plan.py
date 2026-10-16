@@ -2800,6 +2800,19 @@ async def delete_plan_day(
     if day.completed:
         raise ValueError("Cannot delete a completed day")
 
+    # C6 — record the undo claim in the same transaction as the delete: a
+    # rolled-back delete leaves no claim, and a committed one always has a way
+    # back (30-day window).
+    from app.services.undo import record_undo
+    from app.services.undo_plan import snapshot_day
+
+    await record_undo(
+        db,
+        user_id=user_id,
+        kind="plan_day_delete",
+        payload={"plan_id": str(plan.id), "day": snapshot_day(day)},
+    )
+
     await db.delete(day)
     await db.flush()
 

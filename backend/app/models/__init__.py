@@ -38,7 +38,7 @@ from app.models.route_organize import (
 from app.models.rpe_calibration import RpeCalibration
 from app.models.segment import Segment, SegmentEffort
 from app.models.sleep import SleepLog
-from app.models.training_plan import TrainingPlan, TrainingPlanDay
+from app.models.training_plan import TrainingPlan, TrainingPlanBlock, TrainingPlanDay
 from app.models.undo import UndoLog
 from app.models.user import OAuthConnection, User
 from app.models.weather import CachedWeather
@@ -88,6 +88,7 @@ __all__ = [
     "SleepLog",
     "StravaWebhookEvent",
     "TrainingPlan",
+    "TrainingPlanBlock",
     "TrainingPlanDay",
     "UndoLog",
     "User",
