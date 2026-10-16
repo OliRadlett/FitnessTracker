@@ -2160,6 +2160,9 @@ async def update_plan_day(
 
     Only fields present in the payload are changed; everything else —
     including ``completed`` and linked activity/lifting sessions — is preserved.
+    A payload that changes ``sport`` raises ``PlanDayConflictError`` when the
+    date already holds a session that cannot share it (the same sport, or
+    ``rest`` on either side); a payload that leaves the sport alone is unaffected.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2175,6 +2178,26 @@ async def update_plan_day(
         and updates["planned_type"] not in VALID_DAY_TYPES
     ):
         raise ValueError(f"Invalid planned_type: {updates['planned_type']}")
+
+    # A sport change can break the one-per-sport / rest-exclusive rule without
+    # moving the row, so it is checked against the date's other sessions before
+    # anything is applied.
+    new_sport = updates.get("sport")
+    if new_sport is not None and new_sport != day.sport:
+        occupant = next(
+            (
+                d
+                for d in plan.days
+                if d.id != day.id
+                and d.day_date == day.day_date
+                and sports_conflict_on_date(d.sport, new_sport)
+            ),
+            None,
+        )
+        if occupant is not None:
+            raise PlanDayConflictError(
+                f"{day.day_date.isoformat()} already holds a {occupant.sport} session"
+            )
 
     # Validate planned_route_id if provided (must exist and belong to user)
     route_id = updates.get("planned_route_id")
@@ -2675,7 +2698,8 @@ async def copy_plan_day(
 
 
 class PlanDayConflictError(ValueError):
-    """Target date already holds an uncompleted non-rest day (HTTP 409)."""
+    """A date cannot hold this session (the same sport twice, or ``rest`` beside
+    a session) — HTTP 409."""
 
 
 async def reschedule_plan_day(
@@ -2748,7 +2772,9 @@ async def substitute_plan_day(
     (the router maps these to HTTP 422). Optional ``overrides`` replace the
     matching planned targets (duration/tss/power/volume/rpe); every other
     planned field is preserved. The conversion is recorded in ``notes``.
-    Completed days are rejected — substitution is for missed sessions.
+    Completed days are rejected — substitution is for missed sessions. Raises
+    ``PlanDayConflictError`` when the new sport cannot share the day's date with
+    a session already on it.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2764,6 +2790,23 @@ async def substitute_plan_day(
         raise ValueError(f"Invalid sport: {sport}")
     if planned_type not in VALID_DAY_TYPES:
         raise ValueError(f"Invalid planned_type: {planned_type}")
+
+    # The row keeps its date, so a sport change can create in place the clash
+    # `add_plan_day` refuses: a second session of that sport, or `rest` beside one.
+    occupant = next(
+        (
+            d
+            for d in plan.days
+            if d.id != day.id
+            and d.day_date == day.day_date
+            and sports_conflict_on_date(d.sport, sport)
+        ),
+        None,
+    )
+    if occupant is not None:
+        raise PlanDayConflictError(
+            f"{day.day_date.isoformat()} already holds a {occupant.sport} session"
+        )
 
     old_sport, old_type = day.sport, day.planned_type
     day.sport = sport

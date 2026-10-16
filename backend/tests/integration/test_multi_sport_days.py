@@ -511,3 +511,188 @@ class TestUndoOnASharedDate:
             "cycle",
             "strength",
         ]
+
+
+# ── A sport change respects the same rule ───────────────────────────────────
+#
+# The day-editor PATCH and the missed-session substitute both change an existing
+# row's sport in place, which is the one way to break the rule without moving a
+# row. Both must consult the same date rule as add / copy / reschedule.
+
+
+class TestSportChangeOnASharedDate:
+    async def test_patch_to_the_sibling_sport_returns_409(
+        self, client, test_user, db_session
+    ):
+        shared = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "cycle", "planned_type": "easy"},
+                {"day_date": shared, "sport": "strength", "planned_type": "moderate"},
+            ],
+        )
+        lift = next(d for d in plan.days if d.sport == "strength")
+
+        resp = await client.patch(
+            f"/api/v1/training-plans/{plan.id}/days/{lift.id}",
+            json={"sport": "cycle"},
+        )
+        assert resp.status_code == 409
+        assert "cycle" in resp.json()["detail"]
+        assert sorted(r.sport for r in await _rows_on(db_session, plan, shared)) == [
+            "cycle",
+            "strength",
+        ]
+
+    async def test_patch_to_rest_beside_a_session_returns_409(
+        self, client, test_user, db_session
+    ):
+        shared = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "cycle", "planned_type": "easy"},
+                {"day_date": shared, "sport": "strength", "planned_type": "moderate"},
+            ],
+        )
+        lift = next(d for d in plan.days if d.sport == "strength")
+
+        resp = await client.patch(
+            f"/api/v1/training-plans/{plan.id}/days/{lift.id}",
+            json={"sport": "rest", "planned_type": "rest"},
+        )
+        assert resp.status_code == 409
+        assert sorted(r.sport for r in await _rows_on(db_session, plan, shared)) == [
+            "cycle",
+            "strength",
+        ]
+
+    async def test_patch_off_rest_onto_the_sessions_sport_returns_409(
+        self, client, test_user, db_session
+    ):
+        """The reverse direction: a rest row may not take the other row's sport."""
+        shared = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "rest", "planned_type": "rest"},
+                {"day_date": shared, "sport": "cycle", "planned_type": "easy"},
+            ],
+        )
+        rest = next(d for d in plan.days if d.sport == "rest")
+
+        resp = await client.patch(
+            f"/api/v1/training-plans/{plan.id}/days/{rest.id}",
+            json={"sport": "cycle", "planned_type": "easy"},
+        )
+        assert resp.status_code == 409
+        assert "cycle" in resp.json()["detail"]
+        assert sorted(r.sport for r in await _rows_on(db_session, plan, shared)) == [
+            "cycle",
+            "rest",
+        ]
+
+    async def test_patch_to_a_sport_that_conflicts_with_nothing_succeeds(
+        self, client, test_user, db_session
+    ):
+        shared = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "cycle", "planned_type": "easy"},
+                {
+                    "day_date": TODAY + timedelta(days=3),
+                    "sport": "strength",
+                    "planned_type": "moderate",
+                },
+            ],
+        )
+        ride = next(d for d in plan.days if d.day_date == shared)
+
+        resp = await client.patch(
+            f"/api/v1/training-plans/{plan.id}/days/{ride.id}",
+            json={"sport": "strength", "planned_tss": 70.0},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["sport"] == "strength"
+
+        rows = await _rows_on(db_session, plan, shared)
+        assert [(r.sport, r.planned_tss) for r in rows] == [("strength", 70.0)]
+
+    async def test_substitute_to_the_sibling_sport_returns_409(
+        self, client, test_user, db_session
+    ):
+        shared = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "cycle", "planned_type": "easy"},
+                {"day_date": shared, "sport": "strength", "planned_type": "moderate"},
+            ],
+        )
+        lift = next(d for d in plan.days if d.sport == "strength")
+
+        resp = await client.post(
+            f"/api/v1/training-plans/{plan.id}/days/{lift.id}/substitute",
+            json={"sport": "cycle", "planned_type": "easy"},
+        )
+        assert resp.status_code == 409
+        assert sorted(r.sport for r in await _rows_on(db_session, plan, shared)) == [
+            "cycle",
+            "strength",
+        ]
+
+    async def test_substitute_to_rest_beside_a_session_returns_409(
+        self, client, test_user, db_session
+    ):
+        shared = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "cycle", "planned_type": "easy"},
+                {"day_date": shared, "sport": "strength", "planned_type": "moderate"},
+            ],
+        )
+        lift = next(d for d in plan.days if d.sport == "strength")
+
+        resp = await client.post(
+            f"/api/v1/training-plans/{plan.id}/days/{lift.id}/substitute",
+            json={"sport": "rest", "planned_type": "rest"},
+        )
+        assert resp.status_code == 409
+        assert len(await _rows_on(db_session, plan, shared)) == 2
+
+    async def test_substitute_to_a_sport_that_conflicts_with_nothing_succeeds(
+        self, client, test_user, db_session
+    ):
+        shared = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [
+                {"day_date": shared, "sport": "cycle", "planned_type": "hard"},
+                {
+                    "day_date": TODAY + timedelta(days=3),
+                    "sport": "strength",
+                    "planned_type": "moderate",
+                },
+            ],
+        )
+        ride = next(d for d in plan.days if d.day_date == shared)
+
+        resp = await client.post(
+            f"/api/v1/training-plans/{plan.id}/days/{ride.id}/substitute",
+            json={"sport": "strength", "planned_type": "moderate"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["sport"] == "strength"
+
+        rows = await _rows_on(db_session, plan, shared)
+        assert [(r.sport, r.planned_type) for r in rows] == [("strength", "moderate")]

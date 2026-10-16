@@ -36,7 +36,7 @@ The cheapest way to avoid a rewrite later is to make Phase 1 **session-scoped** 
 | `reschedule` 409 | Only when an uncompleted non-rest day **of the same sport** occupies the target date — moving a ride onto a lift day becomes legal. |
 | `add_plan_day` 409 | Only when the **same sport** already exists at that date. |
 | `save_plan_days` / `_validate_days` | Key/dedupe by `(day_date, sport)` instead of `day_date`. (The UI stops using the full-array path in Phase 1 anyway.) |
-| `substitute` | Unchanged (same row, same date). |
+| `substitute` / day `PATCH` | A change to an existing row's **sport** is checked against the date's other sessions — same rule, same 409. |
 
 **Frontend**
 - `DayCell` renders N session chips + an "Add session" affordance (pick the missing sport).
@@ -48,6 +48,7 @@ The cheapest way to avoid a rewrite later is to make Phase 1 **session-scoped** 
 ## 4. Edge cases
 
 - **Two sessions, same sport, one date** → rejected.
+- **A sport changed on an existing row** (day `PATCH`, `substitute`) → same rule, so a second row of that sport or a `rest` beside a session is a 409. The editor's Sport select shows it as a toast.
 - **Rest + session on a date** → rejected; "Mark as rest" is disabled when other sessions exist (and clears a lone session).
 - **`link_activities`** already matches by date **and** sport (cycle→activity, strength→session), so two rows on a date link their own actuals — verify the matcher doesn't cross-link.
 - **Conformity** scores per row (sport + its own linked actual) — already correct.

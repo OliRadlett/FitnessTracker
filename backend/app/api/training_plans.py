@@ -182,12 +182,15 @@ async def update_plan_day(
     """Targeted single-day update (e.g. assign a planned route).
 
     Only provided fields change; ``completed`` flags and linked
-    activity/lifting sessions are preserved.
+    activity/lifting sessions are preserved. A ``sport`` change that clashes
+    with the date's other session fails with 409.
     """
     try:
         day = await plan_service.update_plan_day(
             db, current_user.id, plan_id, day_id, data
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         code = 404 if "not found" in detail else 400
@@ -461,7 +464,8 @@ async def substitute_plan_day(
     """Convert a missed day into an alternate session on the same date (FL2).
 
     E.g. a missed threshold ride becomes an endurance spin; the conversion
-    is recorded in ``notes``. Unknown sport/type values fail with 422.
+    is recorded in ``notes``. Unknown sport/type values fail with 422; a sport
+    that cannot share the day's date fails with 409.
     """
     try:
         day = await plan_service.substitute_plan_day(
@@ -482,6 +486,8 @@ async def substitute_plan_day(
                 exclude_none=True,
             ),
         )
+    except plan_service.PlanDayConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         detail = str(e)
         if "not found" in detail:
