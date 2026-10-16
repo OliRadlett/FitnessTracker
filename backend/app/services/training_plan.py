@@ -2637,8 +2637,8 @@ async def copy_plan_day(
     if target_date < plan.start_date or target_date > plan.end_date:
         raise ValueError("Target date is outside the plan range")
 
-    # A date may hold one session per sport, so only the source's own sport (or
-    # a rest row on either side) blocks the copy.
+    # A copy *creates* a row, so a completed session does not excuse the clash
+    # the way it does for a move.
     if any(
         d.day_date == target_date
         and sports_conflict_on_date(d.sport, source.sport)

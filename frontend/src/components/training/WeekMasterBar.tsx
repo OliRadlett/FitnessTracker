@@ -76,8 +76,6 @@ export function WeekMasterBar({
         const isToday = date === todayStr;
         const highlighted = highlightDate === date;
         const dayGoals = goalsForPlanDate(activeGoals, sessions);
-        // Dropping a session on its own date is a no-op, and a date may only
-        // take one session per sport.
         const isOwnDate = sessions.some((s) => s.id === dragSource);
 
         return (

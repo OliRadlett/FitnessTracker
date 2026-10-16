@@ -284,7 +284,7 @@ export function DayCell({
   );
 }
 
-/** One session on a multi-session date: icon, summary, status dot, expand target. */
+/** One session on a multi-session date. */
 function SessionChip({
   session,
   todayStr,
@@ -361,8 +361,8 @@ function GoalHint({ count, names }: { count: number; names: string[] }) {
 }
 
 /**
- * The full body of a single session — planned line, description, weather,
- * route and the linked actual. Unchanged from the one-session-per-date card.
+ * The body of a single session — unchanged from the one-session-per-date card,
+ * so a date holding one session renders exactly as it always has.
  */
 function SessionBody({
   day,
