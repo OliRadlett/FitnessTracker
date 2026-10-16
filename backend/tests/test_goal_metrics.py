@@ -28,6 +28,7 @@ EXPECTED_METRICS = {
     "body_weight",
     "estimated_1rm",
     "weekly_sessions",
+    "lift_sessions",
     "monthly_distance_km",
     "weekly_tss",
     "vo2max",
@@ -91,6 +92,12 @@ class TestRegistry:
         ftp = next(m for m in metrics if m["key"] == "ftp_watts")
         assert ftp["label"] == "FTP"
         assert ftp["unit"] == "W"
+
+    def test_lift_sessions_has_optional_lift_filter(self):
+        assert METRIC_REGISTRY["lift_sessions"].optional_filter == ["lift"]
+        # No filter is required, so both forms validate.
+        assert validate_metric_filters("lift_sessions", None) is None
+        assert validate_metric_filters("lift_sessions", {"lift": "squat"}) is None
 
     def test_validate_metric_filters_missing_exercise(self):
         error = validate_metric_filters("estimated_1rm", None)
