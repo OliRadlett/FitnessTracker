@@ -77,7 +77,11 @@ On the **Cycling** page, under `ProfileEditor`, a new **Wahoo Zones** card:
 Verified against <https://cloud-api.wahooligan.com/> (fetched 2026-10-15) and the
 OpenAPI mirrors at <https://apis.io/apis/wahoo/wahoo-power-zones-api>.
 
-### 3.1 Power zones — documented, scoped, unverified in detail
+### 3.1 Power zones — documented and scoped; payload semantics still unverified
+
+> **Partially answered by the 2026-10-16 probe (§3.4):** the route is reachable and the
+> scopes are granted (no 403), but the account's list came back **empty**, so items 1–2
+> and 4–5 below remain open and every one of them needs a write.
 
 | Op | Endpoint | Scope |
 |----|----------|-------|
@@ -139,11 +143,12 @@ Checked exhaustively:
   multiple per-sport sets — an app/device-side model, not an API surface.
 
 So the premise "HR zones can be adjusted using the API" is **not supported by the
-published Cloud API**. Two possibilities remain, both cheap to test and both in the
-spike: an **undocumented** path (`GET/POST/PUT /v1/heart_rate_zones`, or a
-`heart_rate_zones` key under `user_write`), or a native-SDK-only path (out of reach
-for a server-side integration). If neither works, HR ships as **drift detection +
-guidance** (§8, D6) rather than a push.
+published Cloud API**, and as of the 2026-10-16 probe that is no longer an assumption
+— see §3.4. The undocumented paths were tested on six spellings and are unrouted; the
+control that makes the negative conclusive is that a deliberately fake path returns the
+*identical* `text/html` 404, while real routes answer in JSON. **Phase 3 (HR) is
+therefore closed, not deferred**: the card's read-only HR section and
+`hr_write_supported = False` are the final answer, not a placeholder.
 
 ### 3.3 How Wahoo builds HR zones (app behaviour — shapes what we would write)
 
@@ -193,6 +198,55 @@ Specifics that matter for this feature:
   a long shot.
 
 ---
+
+### 3.4 Probe results (production, 2026-10-16, read-only)
+
+Run against production with the athlete's own connection, `GET` only. Token live and
+the account in use (`/v1/workouts?per_page=1` → 200, a real 13-minute walk), so the
+results are not an artefact of a dead token.
+
+| Probe | Result | Reading |
+|-------|--------|---------|
+| `GET /v1/power_zones` | **200 `[]`** — and `?page=1&per_page=100` → 200 `[]` | the route is reachable and the scopes **were granted** (no 403). The list is empty. |
+| `GET /v1/power_zones/1` | **422 JSON** `{"error":"Invalid id"}` | the per-id route exists and validates; a real id is needed to exercise it |
+| `/v1/heart_rate_zones`, `/v1/heart-rate-zones`, `/v1/user/heart_rate_zones`, `/v1/heart_rate_zone`, `/v1/heartrate_zones`, `/v1/zones` | **404 `text/html`** on all six, byte-identical to a deliberately fake path | **unrouted**, not forbidden. No 403 anywhere. |
+| `GET /v1/user` | 200, keys: `birth, created_at, email, first, gender, height, id, last, updated_at, weight` | no THR field, no zone keys — `user_write` cannot carry HR zones either |
+| prod schema | `alembic_version = 102`, no `%wahoo%` column on `cycling_profiles`, `to_regclass('public.wahoo_zone_sets')` is NULL | migration 103 will apply cleanly; the `None`s the probe saw for `push_wahoo_zones` mean "not deployed", not "false" |
+| prod anchors | `ftp_watts = 222.3`, `lactate_threshold_hr = 152.0` | what a first push would write (rounded to 222 W) |
+
+**Closed:** §3.2 (HR — §3.4's 404 control is a strong negative), and the "are the
+scopes actually granted?" question (§3.1's 403 never appeared).
+
+**Still open, and all of them need a write:** §3.1.1 (`zone_N` convention), §3.1.2
+(does an FTP-only write recompute boundaries), §3.1.4/.5 (may we `PUT`/`DELETE` a set we
+did not create), §11.5 (the `POST`-vs-`PUT` docs bug), and the second half of §11.6.
+
+#### 3.4.1 The empty list is the important result
+
+`[]` is consistent with two hypotheses and this probe cannot separate them:
+
+1. The Wahoo account genuinely has **no** power zone sets.
+2. **`GET /v1/power_zones` is app-scoped** — it returns only sets created by *our*
+   app, and ours has never created one. Routes and plans are explicitly app-scoped;
+   power zones say only "for the authenticated user", which is why this is §3.1.3.
+
+This matters more than any other unknown here, because hypothesis 2 would mean the read
+path **cannot see the set the head unit actually colours against**. That is load-bearing
+for the feature's premise and for D3: the athlete's own set would be invisible *and*
+unwritable, so the push could only ever maintain a FitTrack-created set that the head
+unit may ignore.
+
+Distinguishing them needs one fact only the athlete has — whether the Wahoo app shows
+power zone sets at all — plus, if it does, a single *reversible* write probe: `POST` one
+set, `GET` the list, `DELETE` the set we created. If the athlete has zones in the app and
+the list showed only ours, app-scoping is proven; either way the same experiment yields
+the `zone_N` payload shape (§3.1.1), which no read can.
+
+If app-scoping holds, the honest options are: (a) ship as best-effort with an explicit
+one-time "assign this zone set to your cycling profile in the Wahoo app" step — after
+which the sync is fully automatic; or (b) ask Wahoo for a Plans-style entitlement that
+covers the athlete's own zone sets. Option (a) is a manual action, not a broken feature,
+but it must be *stated* rather than discovered by an athlete whose colours never change.
 
 ## 4. Pre-implementation state
 
@@ -406,10 +460,10 @@ already fire `connection_reauth` for a 401.
 |---|----------|-----------|
 | **D1** | Opt-in (`push_wahoo_zones`, default off) governs the **automatic** path only. Pressing "Push now" is itself consent, so it does not require the toggle. | Writing into someone else's account unprompted is not acceptable; mirrors `auto_estimate_ftp`, which is also opt-in. But requiring someone to enable *automation* before they may perform the same write by hand is friction with no safety benefit — the manual button is also the path that repairs drift when the automatic push was skipped. |
 | **D2** | **Rescale the existing Wahoo set; do not impose our boundaries.** Write `ftp` **plus** boundaries derived from the set's *own* current proportions. Offer Coggan-mode only as an explicit choice. **As built**: `rescaled_boundaries()` multiplies the set's own values by `new_ftp / old_ftp` (monotonicity enforced after rounding); a set with boundaries but no readable anchor is *skipped* rather than half-updated; `critical_power` is never sent; a **created** set gets the anchor and identity only, no invented boundaries. | Our `POWER_ZONES` are Coggan (55/75/90/105/120/150 %FTP); Wahoo's blog model is ~(55/75/91/100/110/135)% with a 4a/4b split. Pushing Coggan boundaries would silently reshape zones the athlete may have tuned — the feature is about the *anchor*, not the model. If §11 spike shows Wahoo recomputes from `ftp`, even simpler: write `ftp` alone. Holds doubly for HR, where our 80/89/95/105 %LTHR bands differ from Wahoo's ~70/80/87–95/95/105 %LT bands (§3.3). The ratio approach is what made shipping ahead of the spike safe: a wrong guess about `zone_N`'s meaning leaves zones uniformly wrong (visible as drift on the card) instead of reshaped. |
-| **D3** | Own the athlete's cycling set(s) — **including the set the Wahoo app created** — but never touch a set attributable to *another third-party app*, and never delete a set. A new set is created **only when `GET` returns no cycling set at all**. | **Revised while building.** The first draft of this rule was "never write to a `fitness_app_id < 1000` set", reasoning that it is the athlete's own customisation. That is backwards: the Wahoo-app set is the one the head unit actually colours against, so refusing to touch it would make the feature do nothing in the common case. The real hazard is a *different* third-party app also syncing zones (`fitness_app_id > 1000`, and not one of our tracked ids) — there we would be fighting another integration. What makes writing the athlete's own set safe is opt-in + snapshot + revert, not provenance. The create path exists only because `GET` may be app-scoped (the docs do not say, unlike routes and plans); creating a set alongside sets we merely *declined* to touch would be noise on top of a deliberate delegation, so it does not happen. |
+| **D3** | Own the athlete's cycling set(s) — **including the set the Wahoo app created** — but never touch a set attributable to *another third-party app*, and never delete a set. A new set is created **only when `GET` returns no cycling set at all**. | **Revised while building.** The first draft of this rule was "never write to a `fitness_app_id < 1000` set", reasoning that it is the athlete's own customisation. That is backwards: the Wahoo-app set is the one the head unit actually colours against, so refusing to touch it would make the feature do nothing in the common case. The real hazard is a *different* third-party app also syncing zones (`fitness_app_id > 1000`, and not one of our tracked ids) — there we would be fighting another integration. What makes writing the athlete's own set safe is opt-in + snapshot + revert, not provenance. The create path exists only because `GET` may be app-scoped (the docs do not say, unlike routes and plans); creating a set alongside sets we merely *declined* to touch would be noise on top of a deliberate delegation, so it does not happen. **Unproven assumption:** this rule presumes the athlete's set is *readable* at all. The 2026-10-16 probe returned an empty list (§3.4.1), so if `GET` turns out to be app-scoped, the rule cannot execute — the set is invisible and unwritable — and the feature degrades to maintaining a FitTrack-created set plus a one-time manual "assign this set to your cycling profile" step. |
 | **D4** | Snapshot + explicit revert instead of `UndoLog`. | `UndoLog` has no HTTP surface and no registered production kind, and `RouteMergeLog` was deliberately **not** migrated onto it exactly because a 30-day expiry would be imposed on a working undo (`AGENTS.md`, Active Planning). A `prior` JSONB column plus a revert endpoint is honest and non-expiring. |
 | **D5** | Automatic pushes are **queued from the endpoint sites** (`commit_and_enqueue_zone_push` commits the FTP change *before* enqueueing) and queued from the weekly task after its own commit. Manual push is inline, because the athlete is waiting for the answer. **Not** inline for automatic pushes. | **Revised while building.** The first draft said "inline for user actions, queued for passive changes" — right in spirit, but the obvious implementation (inline at every FTP write site) would put a Wahoo round trip inside a profile save, and `retry_request` retries 3× with 1/2/4 s backoff around 30 s timeouts, so a Wahoo outage could hang an unrelated request for the better part of two minutes. The queued path has one hazard — a worker that reads the profile before the request commits sees the *previous* FTP and pushes a stale anchor — and that failure is indistinguishable from a successful no-op, so it would never be noticed. Hence commit-then-enqueue, in that order, with a test asserting the order. |
-| **D6** | HR zones are **not** shipped on the assumption they are writable. Phase 3 is gated on the §11 spike; if there is no endpoint, deliver drift display + guidance and say so plainly in the card. | §3.2: no documented endpoint, no scope, `user_write` cannot carry it. Shipping a UI that pretends otherwise would be a lie the user detects on the device. The *payload* is known and simple though — a THR anchor plus boundaries, mirroring power exactly (§3.3) — so if Wahoo exposes it, HR is a small increment, not a redesign. |
+| **D6** | HR zones are **not** shipped on the assumption they are writable. Phase 3 is **closed**, not deferred — confirmed by probe, not inferred. | §3.2 + §3.4: six spellings of a `heart_rate_zones` path return the *generic* HTML 404 (byte-identical to a deliberately fake path, and real routes answer in JSON), and `GET /v1/user` exposes no THR field, so `user_write` cannot carry one either. Shipping a UI that pretended otherwise would be a lie the athlete detects on the device. |
 | **D7** | Out of scope: syncing weight/height via `user_write`. | It is a separate unused-scope candidate (`wahoo-planned-workout-push.md:49`) and touches Wahoo's own calorie/W-kg maths. Note the interaction, do not bundle it. |
 
 ---
@@ -501,6 +555,13 @@ Phase 1 exists so the card is useful and *verifiable* before anything writes to 
 Wahoo account — it also makes the drift visible, which is the feature's whole point.
 
 ## 11. Spike checklist (Phase 0)
+
+> **Status after the 2026-10-16 production run (§3.4):** item 6 **closed** (HR — no
+> endpoint exists). Items 1 and 4 **partial** — the route is reachable and the scopes are
+> granted, but the list was empty, so nothing about the payload or about app-scoping is
+> settled. Items 2, 3, 5 and the write half of 6 **still need a write**, and the only
+> remaining blocker for those is a deliberate, reversible experiment rather than access.
+> Item 7 still needs a head unit.
 
 1. Sandbox app, authorised user, `power_zones_*` scopes → `GET /v1/power_zones`,
    record the raw payload including `zone_count`, `originator_type`,
