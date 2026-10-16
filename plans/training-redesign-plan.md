@@ -436,7 +436,7 @@ them.
 
 ## 15. Remaining & deferred items (register)
 
-The single place listing what is **not yet built** across the training workstream. Nothing in this plan or its companion has shipped.
+The single place listing what is **not yet built** across the training workstream. Phases 0–4, companion S1–S4 and follow-ons C1–C6 have all shipped; what follows records what they deliberately left open.
 
 ### In-scope build (these are the order)
 - **This plan** Phases 0–4 (§10) — shell + editor primitives, Plan mode (unified editor), Review, Peaks, mobile.
