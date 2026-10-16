@@ -4,7 +4,8 @@
 reschedule / substitute / sport-change guards and the undo restore clash, so it
 is tested directly rather than only through the integration suite (which needs
 Postgres). The two in-place sport-change paths and the copy guard run against a
-stubbed session, so their refusal is pinned here too.
+stubbed session, so their refusal is pinned here too, as is the rest-swap
+action's refusal to target a date that holds more than one session.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import pytest
 
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.schemas.training_plan import TrainingPlanDayCreate, TrainingPlanDayUpdate
+from app.services.adaptive import _actions_for
 from app.services.training_plan import (
     PlanDayConflictError,
     _validate_days,
@@ -318,3 +320,47 @@ class TestCopyOntoASharedDate:
 
         assert (copied.day_date, copied.sport) == (TARGET, "cycle")
 
+
+# ── The autoregulation rest swap ────────────────────────────────────────────
+#
+# The action's intent is to rest a *day*, which a date holding two sessions
+# cannot express, so no action is offered there. ``plan_day_dates`` carries one
+# entry per plan session on the dates in question, which is what tells the two
+# apart.
+
+
+class TestRestSwapActions:
+    def test_offers_the_swap_on_a_date_that_holds_one_session(self):
+        plan = _plan_with((DAY, "cycle", "easy"))
+
+        actions = _actions_for(
+            plan.id, plan.days, "rest", 1.0, force_rest=True, plan_day_dates=[DAY]
+        )
+
+        assert actions == [
+            {
+                "label": f"Rest on {DAY.isoformat()}",
+                "plan_id": str(plan.id),
+                "day_id": str(plan.days[0].id),
+                "fields": {"sport": "rest", "planned_type": "rest"},
+            }
+        ]
+
+    def test_skips_a_date_that_holds_two_sessions(self):
+        other = date(2026, 8, 6)
+        plan = _plan_with(
+            (DAY, "cycle", "easy"),
+            (DAY, "strength", "moderate"),
+            (other, "cycle", "easy"),
+        )
+
+        actions = _actions_for(
+            plan.id,
+            plan.days,
+            "rest",
+            1.0,
+            force_rest=True,
+            plan_day_dates=[DAY, DAY, other],
+        )
+
+        assert [a["day_id"] for a in actions] == [str(plan.days[2].id)]
