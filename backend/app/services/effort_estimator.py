@@ -132,7 +132,7 @@ def estimate_required_power(
       - ftp_pct: percentage of FTP required
     """
     distance = route.distance_meters
-    if distance <= 0:
+    if distance <= 0 or weight_kg <= 0 or ftp_watts <= 0:
         return {"power_watts": 0, "speed_kmh": 0, "wpk": 0, "ftp_pct": 0}
 
     elevation_gain = route.elevation_gain_meters or 0.0
