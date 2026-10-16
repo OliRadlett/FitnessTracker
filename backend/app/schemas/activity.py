@@ -91,6 +91,11 @@ class ActivityRead(ActivityBase):
     # queries); None when Jev is unset or has not reached the row.
     purpose: str | None = None
 
+    # Deterministic energy-system type from the cached ride IF
+    # (recovery|endurance|tempo|threshold|vo2max). None without power. Not Jev —
+    # this axis is measurable; ``purpose`` is the separate semantic axis.
+    ride_type: str | None = None
+
     # Whether any ActivityStream rows exist for this activity. Set from the
     # eager-loaded `streams` relationship when present (list + detail
     # endpoints); False otherwise — never triggers a lazy load (P2-2).
