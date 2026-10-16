@@ -230,13 +230,16 @@ LoadSummary (CTL/ATL/TSB + 7d TSS + FTP + SyncBadge)   ← cross-page pattern, u
 
 ### 5.4 Load strip (derived) — `LoadStrip.tsx`
 
-No stored block model (P9), so the spine strip is derived client-side from `['training-plan', planId].days` + `['events']`, and shows **only data that is real**:
+The spine strip derives what it can client-side from `['training-plan', planId].days` + `['events']`, and shows **only data that is real** — plus, since C1, the plan's **stored blocks**:
 - **Weekly planned-load bars** — Σ`planned_tss` per week (bar height), colour by the week's dominant `sport`.
 - **Event markers** — ▲ at `event_date`, coloured by `event_type`.
 - **Taper window tint** — from the linked event's real `taper_days`.
 - **Today marker**.
 
-It deliberately **does not label weeks "Base/Build/Peak"** — that would fabricate a structure the model does not have. Phase names and an interactive canvas arrive with §11 C1 (Shell C). Until then the strip is a read-only read-out.
+It deliberately **invents no phase names**. Since C1 it draws the plan's **stored blocks**
+(`training_plan_blocks`) — the user's own names — and a plan with no blocks shows no bands. A
+**Blocks** editor on the strip creates and edits them; containment and non-overlap are enforced
+server-side, so an overlap comes back as a 409 rather than a client-side guess at the same rule.
 
 ### 5.5 Plans surface — `?mode=plans`
 
@@ -376,6 +379,12 @@ Mode routing + `?plan=`/`?day=`/`?mode=` round-trip · query-key freeze · `useI
 | C4 | **Autoregulation** — RPE/recovery feed the next strength prescription (see [`training-strength-programming.md`](training-strength-programming.md) §4–5) | M | Service |
 | C5 | **Propagation timing** — auto-flag stale on FTP/1RM/weight change | M | Service |
 | C6 | **Per-edit undo — structural ops only** (delete/swap/move/substitute) via `services/undo.py` (needs an HTTP surface; AGENTS.md). Deliberately *not* every field edit — that would flood the log with keystrokes. | M | API + service |
+
+**All six shipped** (2026-10-16): C1 `#282`, C2 `#271`, C3 `#275`, C4 `#273`, C5 `#272`, C6 `#277`.
+C1 is the one that changed the surface (the strip now draws stored blocks, §5.4); C6 is the one
+that gave `UndoLog` its first HTTP surface. **C6 wired only the delete op** — swap/move/substitute
+would each need their own registered kind, and the surface plus the pattern are now in place for
+them.
 
 ---
 

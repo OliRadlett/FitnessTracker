@@ -40,12 +40,16 @@ def fake_session(
     duration_seconds=None,
     rpe_session=None,
     focus=None,
+    session_lift=None,
+    session_split=None,
 ):
     return SimpleNamespace(
         total_volume_kg=total_volume_kg,
         duration_seconds=duration_seconds,
         rpe_session=rpe_session,
         focus=focus,
+        session_lift=session_lift,
+        session_split=session_split,
     )
 
 
@@ -282,6 +286,38 @@ class TestStrengthConformity:
         )
         focus_bad = next(c for c in mismatch["components"] if c["metric"] == "focus")
         assert focus_bad["component_score"] == 0.0
+
+    def test_focus_uses_jev_lift_label_by_group(self):
+        """A planned split day matches a session's Jev lift label by group."""
+        match = build_strength_conformity(
+            {"planned_focus": "push"}, fake_session(session_lift="bench"), []
+        )
+        focus = next(c for c in match["components"] if c["metric"] == "focus")
+        assert focus["component_score"] == 1.0
+
+        mismatch = build_strength_conformity(
+            {"planned_focus": "pull"}, fake_session(session_lift="bench"), []
+        )
+        focus_bad = next(c for c in mismatch["components"] if c["metric"] == "focus")
+        assert focus_bad["component_score"] == 0.0
+
+    def test_focus_uses_jev_split_label_and_fills_missing_focus(self):
+        """The label scores even when the user left ``focus`` blank."""
+        match = build_strength_conformity(
+            {"planned_focus": "squat"},
+            fake_session(focus=None, session_split="legs"),
+            [],
+        )
+        focus = next(c for c in match["components"] if c["metric"] == "focus")
+        assert focus["component_score"] == 1.0
+
+    def test_focus_falls_back_to_substring_without_jev(self):
+        """No Jev labels → the original substring rule (unconfigured parity)."""
+        result = build_strength_conformity(
+            {"planned_focus": "bench"}, fake_session(focus="Bench Press Day"), []
+        )
+        focus = next(c for c in result["components"] if c["metric"] == "focus")
+        assert focus["component_score"] == 1.0
 
     def test_full_strength_day_renormalises_to_one(self):
         planned = {

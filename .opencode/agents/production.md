@@ -1,18 +1,37 @@
 ---
 description: Production debugger for FitTrack. Use when investigating live issues on the Droplet via SSH — reading remote logs, checking container health, querying the production database, or verifying deployed config.
 mode: subagent
-permission:
-  bash:
-    ssh fittrack-prod *: allow
-    ssh fittrack-prod "docker compose *": allow
-    ssh fittrack-prod "docker logs *": allow
-    ssh fittrack-prod "docker inspect *": allow
-    ssh fittrack-prod "cat *": allow
-    ssh fittrack-prod "grep *": allow
-    ssh fittrack-prod "cd /opt/fitness-tracker && docker compose exec -T *": allow
-    git log *: allow
-    git diff *: allow
-    "*": ask
+permissions:
+  - action: shell
+    resource: '*'
+    effect: ask
+  - action: shell
+    resource: 'ssh fittrack-prod *'
+    effect: allow
+  - action: shell
+    resource: 'ssh fittrack-prod "docker compose *"'
+    effect: allow
+  - action: shell
+    resource: 'ssh fittrack-prod "docker logs *"'
+    effect: allow
+  - action: shell
+    resource: 'ssh fittrack-prod "docker inspect *"'
+    effect: allow
+  - action: shell
+    resource: 'ssh fittrack-prod "cat *"'
+    effect: allow
+  - action: shell
+    resource: 'ssh fittrack-prod "grep *"'
+    effect: allow
+  - action: shell
+    resource: 'ssh fittrack-prod "cd /opt/fitness-tracker && docker compose exec -T *"'
+    effect: allow
+  - action: shell
+    resource: 'git log *'
+    effect: allow
+  - action: shell
+    resource: 'git diff *'
+    effect: allow
 ---
 
 ## When to Use This Agent

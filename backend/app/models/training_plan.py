@@ -56,6 +56,11 @@ class TrainingPlan(Base):
         cascade="all, delete-orphan",
         order_by="TrainingPlanDay.day_date",
     )
+    blocks: Mapped[list["TrainingPlanBlock"]] = relationship(
+        back_populates="plan",
+        cascade="all, delete-orphan",
+        order_by="TrainingPlanBlock.start_date",
+    )
 
 
 class TrainingPlanDay(Base):
@@ -134,3 +139,43 @@ class TrainingPlanDay(Base):
     planned_route: Mapped["Route | None"] = relationship()  # type: ignore[name-defined]
     lifting_session: Mapped["LiftingSession | None"] = relationship()  # type: ignore[name-defined]
     warmup_template: Mapped["WarmupTemplate | None"] = relationship()  # type: ignore[name-defined]
+
+
+class TrainingPlanBlock(Base):
+    """A named, dated phase of a plan (C1 — the stored block/phase model).
+
+    Before this existed the load strip deliberately invented no phase names
+    (redesign plan §5.4). Now the names are the user's own: a block is a date
+    range with an optional focus and weekly TSS target, and the strip draws what
+    is actually stored rather than guessing at "Base/Build/Peak".
+    """
+
+    __tablename__ = "training_plan_blocks"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("training_plans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Free-form by design: the vocabulary (base/build/peak/taper/recovery/race)
+    # is a UI suggestion, not a constraint, so a user can call a block whatever
+    # their coach calls it.
+    focus: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    target_tss_per_week: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    plan: Mapped["TrainingPlan"] = relationship(back_populates="blocks")

@@ -86,3 +86,42 @@ test.describe('Training Page — deep links & Plans surface', () => {
     await expect(page.getByRole('button', { name: /go to plans/i })).toBeVisible();
   });
 });
+
+test.describe('Training Page — plan blocks (C1)', () => {
+  test('the strip opens the Blocks editor and posts a new block', async ({
+    authenticatedPage: page,
+  }) => {
+    // The strip fetches its blocks on load; without this the editor would have
+    // nothing to list. The fixture answers [] for /blocks.
+    const blocksRequest = page.waitForRequest(
+      (r) => r.method() === 'GET' && r.url().includes('/blocks'),
+    );
+    await page.goto('/fittrack/training');
+    await blocksRequest;
+
+    // The editor is the interactive half of C1 — reachable, and its form wired
+    // to the block endpoint. Without this the strip could render bands that
+    // nothing can ever create.
+    await page.getByRole('button', { name: 'Blocks' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Plan blocks' });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/no blocks yet/i)).toBeVisible();
+
+    // The add form is the last set of fields (one set precedes per block).
+    await dialog.getByLabel('Block name').last().fill('Base 1');
+    await dialog.getByLabel('Block start').last().fill('2026-08-03');
+    await dialog.getByLabel('Block end').last().fill('2026-08-09');
+
+    const [post] = await Promise.all([
+      page.waitForRequest(
+        (r) => r.method() === 'POST' && r.url().includes('/blocks'),
+      ),
+      dialog.getByRole('button', { name: /add block/i }).click(),
+    ]);
+    expect(post.postDataJSON()).toMatchObject({
+      name: 'Base 1',
+      start_date: '2026-08-03',
+      end_date: '2026-08-09',
+    });
+  });
+});
