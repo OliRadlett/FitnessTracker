@@ -1,6 +1,6 @@
 """The unified daily verdict for ``/today`` (plan §1).
 
-Five engines already exist and each reaches a different conclusion about what
+Six engines already exist and each reaches a different conclusion about what
 today should be:
 
 - ``_suggest_rest_days`` / training load  -- current CTL/ATL/TSB, recovery
@@ -8,6 +8,7 @@ today should be:
 - ``deficiency.analyze_deficiencies`` -- which weakness is most urgent
 - ``CrossDomainInsight`` -- sleep-performance / cross-sport correlations
 - ``projections.compute_tsb_projection`` -- the week ahead
+- ``_session_mix_row`` -- recent Jev intent mix (a soft type/stance nudge)
 
 ``/dashboard/today`` consumed only the first of those, so the other four were
 computed for other pages and silently absent from the one page whose entire job
@@ -224,6 +225,55 @@ def _projection_row(
     )
 
 
+async def _session_mix_row(db: AsyncSession, user_id: uuid.UUID) -> EngineRow:
+    """Recent Jev session mix → a soft stance on today's session type.
+
+    Deterministic: reads the last 3 weeks of intent labels and names the
+    dominant phase. Silent (``available=False``) until something is classified,
+    so the row is present either way and the consensus keeps a constant width.
+    """
+    from datetime import date, timedelta
+
+    from sqlalchemy import select
+
+    from app.models.lifting import LiftingSession
+    from app.services.strength_insights import phase_read
+
+    cutoff = date.today() - timedelta(days=21)
+    classes = (
+        (
+            await db.execute(
+                select(LiftingSession.session_class).where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSession.session_date >= cutoff,
+                    LiftingSession.session_class.isnot(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not classes:
+        return EngineRow(
+            "session_mix", available=False, reason="no classified sessions yet"
+        )
+
+    counts: dict[str, int] = {}
+    for cls in classes:
+        counts[cls] = counts.get(cls, 0) + 1
+    dominant = max(counts, key=lambda k: counts[k])
+    # An intensity-heavy recent block reads as "ease off"; anything else keeps
+    # training. Low confidence — this is a nudge, not a verdict.
+    stance = STANCE_CUT if dominant in ("max_strength", "test") else STANCE_TRAIN
+    return EngineRow(
+        "session_mix",
+        stance=stance,
+        confidence="low",
+        available=True,
+        note=phase_read(counts) or f"mixed recent sessions ({len(classes)})",
+    )
+
+
 def _headline(should_rest: bool, consensus: list[EngineRow]) -> str:
     """One sentence, driven by whichever engine actually voted.
 
@@ -363,6 +413,16 @@ async def compute_today_verdict(
         except Exception as exc:
             projection_error = f"{type(exc).__name__}: {exc}"
     consensus.append(_projection_row(projection if not projection_error else None, projection_error))
+
+    # 6. Recent session mix (Jev labels) — a soft read on today's session type.
+    #    Always emits a row, so the consensus width does not depend on whether
+    #    anything is classified.
+    try:
+        consensus.append(await _session_mix_row(db, user_id))
+    except Exception as exc:
+        consensus.append(
+            EngineRow("session_mix", available=False, reason=f"{type(exc).__name__}: {exc}")
+        )
 
     # The verdict follows the strongest rest signal, not the average: a verdict
     # that averages "train" against "rest" produces "train, but..." and the

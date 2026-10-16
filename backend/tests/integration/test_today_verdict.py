@@ -36,6 +36,7 @@ ENGINES = {
     "deficiency",
     "cross_domain",
     "projection",
+    "session_mix",
 }
 
 
@@ -62,7 +63,7 @@ async def _verdict(db_session, user_id, *, rest=None, plan_id=None) -> dict:
 
 class TestProvenance:
     async def test_every_engine_appears_even_when_silent(self, db_session, test_user):
-        """The core of §1: five engines, five rows, regardless of outcome.
+        """The core of §1: every engine, a row, regardless of outcome.
 
         With no plan, no data and no cross-domain run, every engine still has a
         row. If silence produced no row, the consensus would be indistinguishable
@@ -80,6 +81,16 @@ class TestProvenance:
                     f"{row['engine']} is unavailable with no reason; the user "
                     "cannot tell a scheduled gap from a failure"
                 )
+
+    async def test_session_mix_is_silent_without_classification(
+        self, db_session, test_user
+    ):
+        """The session-mix engine is present but unavailable until a session is
+        Jev-classified — a constant consensus width, not a missing row."""
+        verdict = await _verdict(db_session, test_user.id)
+        row = _engines(verdict, "session_mix")[0]
+        assert row["available"] is False
+        assert "classif" in row["reason"].lower()
 
     async def test_cross_domain_absence_is_reported_not_hidden(
         self, db_session, test_user
