@@ -373,8 +373,8 @@ class RouteQualityRead(BaseModel):
 
 
 class EffortEstimateRequest(BaseModel):
-    ftp_watts: float
-    weight_kg: float
+    ftp_watts: float = Field(gt=0)
+    weight_kg: float = Field(gt=0)
     bike_type: str = "road"  # road | gravel | mtb
     target_intensity: str = (
         "threshold"  # endurance | tempo | threshold | vo2max | anaerobic
