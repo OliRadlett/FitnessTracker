@@ -66,20 +66,18 @@
   "watcher": {
     "ignore": ["node_modules/**", "dist/**", ".git/**", "backups/**", "*.egg-info/**", "__pycache__/**"]
   },
-  "permission": {
-    "websearch": "allow",
-    "webfetch": "allow",
-    "bash": {
-      "python fittrack.py *": "allow",
-      "docker compose *": "allow",
-      "npm *": "allow",
-      "npx *": "allow",
-      "pip *": "allow",
-      "alembic *": "allow",
-      "ruff *": "allow",
-      "uvicorn *": "allow",
-      "git *": "allow",
-      "*": "allow"
-    }
-  }
+  "permissions": [
+    { "action": "websearch", "resource": "*", "effect": "allow" },
+    { "action": "webfetch", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "*", "effect": "allow" },
+    { "action": "shell", "resource": "python fittrack.py *", "effect": "allow" },
+    { "action": "shell", "resource": "docker compose *", "effect": "allow" },
+    { "action": "shell", "resource": "npm *", "effect": "allow" },
+    { "action": "shell", "resource": "npx *", "effect": "allow" },
+    { "action": "shell", "resource": "pip *", "effect": "allow" },
+    { "action": "shell", "resource": "alembic *", "effect": "allow" },
+    { "action": "shell", "resource": "ruff *", "effect": "allow" },
+    { "action": "shell", "resource": "uvicorn *", "effect": "allow" },
+    { "action": "shell", "resource": "git *", "effect": "allow" }
+  ]
 }
