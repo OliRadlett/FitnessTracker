@@ -175,6 +175,29 @@ export interface TrainingPlan {
   days: TrainingPlanDay[];
 }
 
+/** C1 — a named, dated phase of a plan (the stored block model). */
+export interface TrainingPlanBlock {
+  id: string;
+  plan_id: string;
+  name: string;
+  /** Free-form: base/build/peak/taper/recovery/race are suggestions, not rules. */
+  focus?: string | null;
+  start_date: string;
+  end_date: string;
+  target_tss_per_week?: number | null;
+  notes?: string | null;
+}
+
+/** C1 — create/update payload. PATCH sends only the fields that changed. */
+export interface TrainingPlanBlockPayload {
+  name?: string;
+  focus?: string | null;
+  start_date?: string;
+  end_date?: string;
+  target_tss_per_week?: number | null;
+  notes?: string | null;
+}
+
 export interface TrainingPlanSummary {
   id: string;
   name: string;

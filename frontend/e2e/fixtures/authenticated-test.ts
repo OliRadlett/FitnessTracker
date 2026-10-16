@@ -307,6 +307,11 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   ['/suggestions', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockAdaptiveSuggestions) });
   }],
+  // Plan blocks (C1) MUST come before the general handler, which would
+  // otherwise answer with the plan-summary array and draw nonsense bands.
+  ['/blocks', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify([]) });
+  }],
   ['api/v1/training-plans', (route) => {
     const url = route.request().url();
     const planMatch = url.match(/\/api\/v1\/training-plans\/([a-z0-9-]+)$/);

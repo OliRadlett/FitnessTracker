@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { Event, TrainingPlan } from '@/lib/api';
+import type { Event, TrainingPlan, TrainingPlanBlock } from '@/lib/api';
 import { addDays, mondayOf, toDateStr } from '@/lib/training/week';
 import { derivePeaks } from '@/lib/training/peaks';
 
@@ -80,5 +80,58 @@ describe('derivePeaks', () => {
 
     // The fixed 2026-08 plan is outside today (2026-10+).
     expect(derivePeaks(plan(), []).todayIndex).toBeNull();
+  });
+});
+
+describe('derivePeaks — stored block bands (C1)', () => {
+  // The fixture plan is two weeks: W0 2026-08-03..08-09, W1 2026-08-10..08-16.
+  function block(over: Partial<TrainingPlanBlock> = {}): TrainingPlanBlock {
+    return {
+      id: 'b1',
+      plan_id: 'p1',
+      name: 'Base',
+      start_date: '2026-08-03',
+      end_date: '2026-08-09',
+      ...over,
+    };
+  }
+
+  it('is empty when the plan has no blocks', () => {
+    expect(derivePeaks(plan(), []).bands).toEqual([]);
+  });
+
+  it('maps a block onto the weeks it covers', () => {
+    const bands = derivePeaks(plan(), [], [
+      block(),
+      block({ id: 'b2', name: 'Build', start_date: '2026-08-10', end_date: '2026-08-16' }),
+    ]).bands;
+
+    expect(bands).toHaveLength(2);
+    expect(bands[0]).toMatchObject({ name: 'Base', startIndex: 0, endIndex: 0 });
+    expect(bands[1]).toMatchObject({ name: 'Build', startIndex: 1, endIndex: 1 });
+  });
+
+  it('spans both weeks for a block that straddles them', () => {
+    const [band] = derivePeaks(plan(), [], [
+      block({ start_date: '2026-08-05', end_date: '2026-08-12', target_tss_per_week: 400 }),
+    ]).bands;
+
+    expect(band).toMatchObject({ startIndex: 0, endIndex: 1, targetTssPerWeek: 400 });
+  });
+
+  it('keeps a partially-outside block on the weeks it does overlap', () => {
+    const [band] = derivePeaks(plan(), [], [
+      block({ start_date: '2026-07-01', end_date: '2026-08-05' }),
+    ]).bands;
+
+    expect(band).toMatchObject({ startIndex: 0, endIndex: 0 });
+  });
+
+  it('reports no weeks for a block entirely outside the plan', () => {
+    const [band] = derivePeaks(plan(), [], [
+      block({ start_date: '2026-09-01', end_date: '2026-09-07' }),
+    ]).bands;
+
+    expect(band).toMatchObject({ startIndex: null, endIndex: null });
   });
 });
