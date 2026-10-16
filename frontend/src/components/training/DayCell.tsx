@@ -338,7 +338,7 @@ function chipTitle(session: TrainingWeekDay): string {
   if (session.sport === 'strength') {
     const exercises = session.planned_exercises?.length ?? 0;
     return `Strength · ${session.planned_focus ?? 'no focus'}${
-      exercises ? ` · ${exercises} exercises` : ''
+      exercises ? ` · ${exercises} exercise${exercises === 1 ? '' : 's'}` : ''
     }`;
   }
   const parts = ['Ride', session.planned_type];
