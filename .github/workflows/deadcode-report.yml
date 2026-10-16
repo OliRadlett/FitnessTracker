@@ -1,0 +1,47 @@
+# Dead code report. Advisory only, so it never runs on a pull request and can
+# never gate a merge. Read the artifact from the run page, or run the two
+# commands by hand. Deliberately off the PR path so the PR gate stays the thing
+# that decides whether code lands.
+name: Dead code report
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  report:
+    name: Dead code report
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Backend report with vulture
+        continue-on-error: true
+        run: |
+          pip install --quiet vulture
+          vulture backend/app --min-confidence 80 > deadcode-backend.txt || true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Frontend report with knip
+        continue-on-error: true
+        working-directory: frontend
+        run: |
+          npm ci --no-audit --no-fund || true
+          npx --yes knip > ../deadcode-frontend.txt 2>&1 || true
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dead-code-report
+          path: |
+            deadcode-backend.txt
+            deadcode-frontend.txt
+          if-no-files-found: warn
