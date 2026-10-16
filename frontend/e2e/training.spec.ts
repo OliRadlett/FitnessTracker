@@ -234,3 +234,50 @@ test.describe('Training Page — week ahead (C3)', () => {
     await expect(page.getByText('CTL 48 · ATL 43 · TSB +5')).toHaveCount(0);
   });
 });
+
+test.describe('Training Page — multi-sport days', () => {
+  /**
+   * One date holds two sessions (a lift and a ride). The fixture for this case
+   * is its own (`mockTrainingWeekMultiSport`) so the cases above keep asserting
+   * against the one-session-per-date week they were written for.
+   */
+  test('a date holding two sessions renders a chip each, keyed by session', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.route(/\/api\/v1\/training-plans\/[^/]+\/week\/\d+/, (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify(mockData.mockTrainingWeekMultiSport),
+      }),
+    );
+    await page.goto('/fittrack/training');
+    await page.waitForLoadState('networkidle');
+
+    const twoSessions = page.locator('#plan-day-2026-08-06');
+    await expect(twoSessions).toBeVisible();
+
+    // A chip per session, not one day overwriting the other.
+    const squatChip = twoSessions.getByRole('button', { name: 'Squat' });
+    const rideChip = twoSessions.getByRole('button', { name: /45 TSS/ });
+    await expect(squatChip).toBeVisible();
+    await expect(rideChip).toBeVisible();
+
+    // The one-session date still renders its full body.
+    const oneSession = page.locator('#plan-day-2026-08-05');
+    await expect(oneSession.getByText(/60 min/)).toBeVisible();
+
+    // "Add session" is offered while a sport is missing, and disabled once the
+    // date holds both.
+    await expect(
+      oneSession.getByTitle('Add a strength session on 2026-08-05'),
+    ).toBeVisible();
+    await expect(
+      twoSessions.getByRole('button', { name: 'Add session' }),
+    ).toBeDisabled();
+
+    // Each chip opens its own session's editor.
+    await squatChip.click();
+    await expect(page.getByText('2026-08-06 · Strength details')).toBeVisible();
+    await expect(page.getByLabel('Sport')).toHaveValue('strength');
+  });
+});
