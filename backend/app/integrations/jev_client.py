@@ -122,11 +122,19 @@ async def decide(
     *,
     user_id: uuid.UUID | None = None,
     timeout_s: float | None = None,
+    use_budget_guard: bool = True,
 ) -> JevResult | None:
     """Ask Jev a batch of typed questions.
 
     Returns a :class:`JevResult`, or ``None`` when Jev is unset/disabled, in
     fake mode with no input, or on any failure. Never raises.
+
+    ``use_budget_guard`` applies the shared per-user AI budget/lock (for
+    user-facing calls). Internal bulk work — the weekly free-text backfill —
+    passes ``False``: the guard's 5/min cap would otherwise stall a backfill
+    after five rows (the same cap is shared with note tagging), so it should not
+    throttle a bounded, weekly batch. Jev's own rate limits are far above a
+    single user's session count.
     """
     if not questions:
         return None
@@ -145,7 +153,7 @@ async def decide(
     timeout = timeout_s if timeout_s is not None else settings.jev_timeout_s
 
     try:
-        if user_id is None:
+        if user_id is None or not use_budget_guard:
             return await _call(state, questions, model, timeout)
         # Shared per-user AI budget/lock. The guard raises HTTPException(429)
         # when the budget is exhausted or a duplicate is in flight — swallowed.

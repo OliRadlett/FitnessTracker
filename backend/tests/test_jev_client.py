@@ -86,6 +86,37 @@ async def test_decide_swallows_guard_http_exception(monkeypatch):
     assert res is None
 
 
+async def test_decide_skips_guard_when_disabled(monkeypatch):
+    """Backfill passes ``use_budget_guard=False`` → the per-user 5/min budget
+    guard is never entered, so it cannot stall a bulk weekly backfill."""
+    monkeypatch.delenv("JEV_FAKE", raising=False)
+    monkeypatch.setattr(jev_client, "is_configured", lambda: True)
+
+    entered = {"v": False}
+
+    def exploding_guard(*args, **kwargs):
+        entered["v"] = True
+        raise AssertionError("guard must not be entered when disabled")
+
+    monkeypatch.setattr("app.services.llm_base.ai_generation_guard", exploding_guard)
+
+    sentinel = jev_client.JevResult(answers={}, model="m", computed_at="t")
+
+    async def fake_call(state, questions, model, timeout):
+        return sentinel
+
+    monkeypatch.setattr(jev_client, "_call", fake_call)
+
+    res = await jev_client.decide(
+        "state",
+        {"x": jev_client.noul("?")},
+        user_id=__import__("uuid").uuid4(),
+        use_budget_guard=False,
+    )
+    assert res is sentinel
+    assert entered["v"] is False
+
+
 def test_is_configured_false_without_key(monkeypatch):
     from app import config
 
