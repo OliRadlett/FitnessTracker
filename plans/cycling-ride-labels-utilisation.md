@@ -1,6 +1,9 @@
 # Cycling Ride Labels — Utilisation Plan
 
-> **Status**: Design plan — no code yet. Companion to the strength work:
+> **Status**: Design plan. §4.1 (the `purpose` consumer) is **partly built** —
+> the tag is exposed as `ActivityRead.purpose` and shown as a chip on the
+> activity card; the opt-in "training-only" load view is not yet wired.
+> Companion to the strength work:
 > [`plans/jev-strength-session-classification.md`](jev-strength-session-classification.md)
 > (produces the labels) and [`plans/jev-strength-labels-utilisation.md`](jev-strength-labels-utilisation.md)
 > (consumes them). This doc is the cycling analogue — but deliberately **not** a mirror of it.

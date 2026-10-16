@@ -41,6 +41,8 @@ export interface Activity {
   linked_lifting_session?: LinkedLiftingSessionSummary;
   encoded_polyline?: string;
   ride_context?: RideMetrics | null;
+  /** Jev purpose tag from the activity name: training|endurance|commute|recovery|race|social. */
+  purpose?: string | null;
   has_streams?: boolean;
   sources?: ActivitySource[];
   synced_at: string;
