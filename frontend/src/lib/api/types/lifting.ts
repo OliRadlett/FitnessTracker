@@ -196,6 +196,12 @@ export interface LiftingSession {
   estimated_tss?: number | null;
   notes?: string;
   ai_tags?: JevTags | null;
+  // Jev strength-session classification (from the sets). Typed labels are the
+  // queryable values; ai_classification carries provenance + rule cross-check.
+  session_split?: string | null;
+  session_lift?: string | null;
+  session_class?: string | null;
+  ai_classification?: Record<string, unknown> | null;
   sets: LiftingSet[];
   linked_activity?: LinkedActivity | null;
   started_at?: string | null;
