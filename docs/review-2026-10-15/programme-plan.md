@@ -83,13 +83,13 @@ Each live lane runs in its own worktree at the PR head. Drive through the exact 
 
 **Build.**
 
-- [ ] Add `test_doc_claims.py` asserting the head in `docs/RUNNING.md` equals `alembic heads`, and that no `014_add_composite_indexes.py` claim survives.
+- [ ] Add `test_doc_claims.py` asserting the head in `docs/RUNNING.md` equals the head computed from the revision files, and that every migration file the doc names exists.
 - [ ] Rewrite the `docs/RUNNING.md` test section to lead with the host command and cite pitfall `23`.
 - [ ] Replace the stale `AGENTS.md` training sentence with the shipped state.
 
 **You see.**
 
-- [ ] `python -m pytest backend/tests/test_doc_claims.py -q` reports `1 passed` at head and fails on trunk.
+- [ ] `python -m pytest backend/tests/test_doc_claims.py -q` reports `2 passed` at head and fails on trunk.
 - [ ] The string `079(head)` no longer appears in `docs/RUNNING.md`.
 
 **Verify, unit.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
@@ -99,7 +99,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the exact 
 
 **Verify, live.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked. Ten lanes on the configured `swarm workers` model at the PR head, per the boot recipe.
 
-- [ ] Lane 1. Regression lane against trunk. Run `python -m pytest backend/tests/test_doc_claims.py -q` at trunk and head. Trunk has no such test, so gate the behavior the diff adds. Save `/tmp/swarm-pr-01/lane-01-regression.log`. Pass when trunk reports collection error and head reports `1 passed`.
+- [ ] Lane 1. Regression lane against trunk. Run `python -m pytest backend/tests/test_doc_claims.py -q` at trunk and head. Trunk has no such test, so gate the behavior the diff adds. Save `/tmp/swarm-pr-01/lane-01-regression.log`. Pass when trunk reports collection error and head reports `2 passed`.
 - [ ] Lane 2. Run `python fittrack.py exec backend alembic heads` and diff against the documented head. Save `/tmp/swarm-pr-01/lane-02-head.log`. Pass when the two strings match.
 - [ ] Lane 3. Grep `docs/RUNNING.md` for the phantom file name. Save `/tmp/swarm-pr-01/lane-03-phantom.log`. Pass when the grep returns nothing.
 - [ ] Lane 4. Grep `docs/RUNNING.md` for the wrong pitfall number `#19`. Save `/tmp/swarm-pr-01/lane-04-pitfall.log`. Pass when the grep returns nothing.
@@ -107,7 +107,7 @@ Each live lane runs in its own worktree at the PR head. Drive through the exact 
 - [ ] Lane 6. Run `npx tsc --noEmit` in `frontend/`. Save `/tmp/swarm-pr-01/lane-06-tsc.log`. Pass when it exits zero.
 - [ ] Lane 7. Run the full host unit suite `python -m pytest backend/tests -q -m "not integration"`. Save `/tmp/swarm-pr-01/lane-07-suite.log`. Pass when the failure count is unchanged from trunk.
 - [ ] Lane 8. Run every repo grep the new test performs, by hand, and compare. Save `/tmp/swarm-pr-01/lane-08-manual.log`. Pass when the manual result matches the test.
-- [ ] Lane 9. Check the `AGENTS.md` training sentence against `backend/app/api/training_plans.py` line 485. Save `/tmp/swarm-pr-01/lane-09-agents.log`. Pass when the sentence names the shipped endpoints.
+- [ ] Lane 9. Check the `AGENTS.md` training sentence against the editor-primitive routes `POST /days`, `DELETE /days/{id}` and `POST /days/{id}/swap` in `backend/app/api/training_plans.py`. Save `/tmp/swarm-pr-01/lane-09-agents.log`. Pass when the sentence names the shipped endpoints.
 - [ ] Lane 10. Confirm every relative link in the four audit docs resolves. Save `/tmp/swarm-pr-01/lane-10-links.log`. Pass when no link 404s.
 
 **Verify, perf.** Tests alone are not sufficient verification. A PR is verified only when its unit, live, and perf boxes are all checked.
