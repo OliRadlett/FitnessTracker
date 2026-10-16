@@ -324,6 +324,8 @@ async def classify_lifting_session(
     db: AsyncSession,
     user_id: uuid.UUID,
     session: LiftingSession,
+    *,
+    use_budget_guard: bool = True,
 ) -> bool:
     """Classify one session. Returns True when the labels changed.
 
@@ -349,7 +351,10 @@ async def classify_lifting_session(
     rule = rule_labels(session)
     try:
         result = await jev_client.decide(
-            _build_state(session), _questions(), user_id=user_id
+            _build_state(session),
+            _questions(),
+            user_id=user_id,
+            use_budget_guard=use_budget_guard,
         )
     except Exception as e:  # decide() shouldn't raise; belt-and-braces
         logger.warning("Jev classification failed for session %s: %s", session.id, e)
@@ -409,6 +414,8 @@ async def backfill_session_classifications(
     for session in (await db.execute(stmt)).scalars():
         if not session.sets:
             continue
-        if await classify_lifting_session(db, user_id, session):
+        if await classify_lifting_session(
+            db, user_id, session, use_budget_guard=False
+        ):
             tagged += 1
     return tagged
