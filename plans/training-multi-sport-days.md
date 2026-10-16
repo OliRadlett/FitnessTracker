@@ -12,7 +12,7 @@
 This is possible today — **there is no UNIQUE `(plan_id, day_date)` constraint** (verified while building the swap endpoint). The "one row per date" rule lives only in service logic.
 
 **Invariants**
-- Sessions on a date are distinct by **sport** (no two `cycle` rows on one date).
+- Sessions on a date are distinct by **sport**, with one deliberate carve-out: a *completed* row does not block an arriving row of the same sport, so a missed ride may land on a day that was already ridden. Two **uncompleted** rows of one sport are never allowed.
 - `rest` is exclusive: a rest row may not coexist with other sessions (a date with any session is not a rest day).
 
 ---
@@ -41,7 +41,7 @@ The cheapest way to avoid a rewrite later is to make Phase 1 **session-scoped** 
 **Frontend**
 - `DayCell` renders N session chips + an "Add session" affordance (pick the missing sport).
 - `DayEditor` header shows the session's sport; "Add session" adds the other sport on the same date.
-- Week bar grows with session count (cap: 2 chips + a "+1" overflow).
+- Week bar grows with session count (cap: 2 chips + a "+1" overflow). The cap is only reachable if a third sport becomes addable, since `ADDABLE_SPORTS` offers just cycle and strength, so a date holds at most two sessions today.
 
 ---
 
