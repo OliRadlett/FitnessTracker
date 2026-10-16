@@ -769,3 +769,60 @@ export interface MaterialiseResponse {
   }>;
   skipped: Array<{ week: number; exercise: string; reason: string }>;
 }
+
+// ─── C3: weekly plan review ─────────────────────────────────────────────────
+
+/** CTL/ATL/TSB at the review's generation time. */
+export interface PlanReviewLoad {
+  ctl: number;
+  atl: number;
+  tsb: number;
+}
+
+export interface PlanReviewConformity {
+  overall_pct: number | null;
+  trend: 'improving' | 'declining' | 'stable' | null;
+  patterns: string[];
+}
+
+/** The review's trimmed axis — no `guidance`, unlike AdaptiveAxis. */
+export interface PlanReviewAxis {
+  key: string;
+  title: string;
+  stance: string;
+  severity: string;
+}
+
+/** Carried in the payload but deliberately not rendered by the review card. */
+export interface PlanReviewSuggestion {
+  type: string;
+  title: string;
+  detail: string;
+  severity: string;
+  actions: AdaptiveAction[];
+}
+
+export interface PlanReviewAdaptive {
+  summary: string | null;
+  fatigue: string | null;
+  axes: PlanReviewAxis[];
+  suggestions: PlanReviewSuggestion[];
+}
+
+/**
+ * GET /training-plans/{id}/review — the latest persisted weekly snapshot
+ * (computed on demand when none exists). Each engine computes independently,
+ * so `load`, `conformity` and `adaptive` are nullable one at a time.
+ */
+export interface PlanReviewResponse {
+  week_start: string;
+  generated_at: string;
+  plan_name: string;
+  load: PlanReviewLoad | null;
+  conformity: PlanReviewConformity | null;
+  adaptive: PlanReviewAdaptive | null;
+  missed_days: number;
+  missed_dates: string[];
+  upcoming_days: number;
+  active_goals: number;
+}
