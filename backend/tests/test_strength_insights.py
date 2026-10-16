@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-from app.services.strength_insights import deload_verdict
+from app.services.strength_insights import deload_verdict, phase_read
 
 
 def _weeks(values, start=date(2026, 1, 5)) -> dict[str, float]:
@@ -54,3 +54,22 @@ def test_none_without_enough_history():
 
 def test_zero_prior_baseline_is_guarded():
     assert deload_verdict(_weeks([0, 0, 0, 0, 1200, 1200, 1200, 1200]), [], TODAY) is None
+
+
+# ── phase read ───────────────────────────────────────────────────────────────
+
+
+def test_phase_read_names_a_dominant_block():
+    accumulation = phase_read({"volume_hypertrophy": 4, "max_strength": 1})
+    assert accumulation is not None and "accumulation" in accumulation
+    assert "intensification" in phase_read({"max_strength": 5})
+    assert "deload" in phase_read({"deload": 3, "technique": 1})
+
+
+def test_phase_read_is_silent_when_mixed_or_empty():
+    assert phase_read({}) is None
+    assert phase_read({"max_strength": 2, "volume_hypertrophy": 2, "technique": 1}) is None
+
+
+def test_phase_read_ignores_an_unknown_dominant():
+    assert phase_read({"weird_label": 5}) is None

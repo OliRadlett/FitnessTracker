@@ -56,6 +56,35 @@ def deload_verdict(
     }
 
 
+_PHASE_PHRASES = {
+    "volume_hypertrophy": "an accumulation block",
+    "max_strength": "an intensification block",
+    "speed_power": "a speed/power block",
+    "technique": "a technique block",
+    "accessory_conditioning": "an accessory/conditioning block",
+    "deload": "a deload",
+    "test": "a realization/test phase",
+}
+
+
+def phase_read(intent_counts: dict[str, int], *, min_share: float = 0.5) -> str | None:
+    """Pure: name the training phase from recent intent counts, or None.
+
+    Speaks only when one class holds ≥``min_share`` of the window — a mixed
+    block gets no label rather than a confident-sounding guess.
+    """
+    total = sum(intent_counts.values())
+    if total == 0:
+        return None
+    dominant, count = max(intent_counts.items(), key=lambda kv: kv[1])
+    if count / total < min_share:
+        return None
+    phrase = _PHASE_PHRASES.get(dominant)
+    if phrase is None:
+        return None
+    return f"Recent mix reads as {phrase} ({count}/{total} sessions)."
+
+
 async def deload_adherence(
     db: AsyncSession, user_id: uuid.UUID, weeks: int = 16
 ) -> dict | None:
