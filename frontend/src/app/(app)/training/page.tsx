@@ -42,6 +42,7 @@ import { WeeklyView } from '@/components/training/WeeklyView';
 import { WeatherForecast } from '@/components/training/WeatherForecast';
 import { ConformityTrendCard } from '@/components/training/review/ConformityTrendCard';
 import { AdaptiveSuggestionsCard } from '@/components/training/AdaptiveSuggestionsCard';
+import { WeekAheadCard } from '@/components/training/WeekAheadCard';
 import { StrengthSuggestionsCard } from '@/components/training/StrengthSuggestionsCard';
 import { PlanGoalsStrip } from '@/components/training/PlanGoalsStrip';
 import { EventForm } from '@/components/training/peaks/EventForm';
@@ -322,6 +323,8 @@ export default function TrainingPage() {
              in Plan/Peaks. ──────────────────────────────────────────── */}
       {mode === 'review' && (
         <div className="space-y-4">
+          {selectedPlanId && <WeekAheadCard planId={selectedPlanId} />}
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {selectedPlanId && <ConformityTrendCard planId={selectedPlanId} weeks={8} />}
             {selectedPlanId && <AdaptiveSuggestionsCard planId={selectedPlanId} />}
