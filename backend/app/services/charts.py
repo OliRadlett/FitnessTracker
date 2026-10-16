@@ -33,7 +33,7 @@ from app.services.cycling import (
 )
 from app.services.jev_classification import INTENT_LABELS, LIFT_LABELS
 from app.services.lifting import MAX_REPS_FOR_1RM_PR, brzycki_1rm
-from app.services.strength_insights import deload_adherence
+from app.services.strength_insights import deload_adherence, phase_read
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
@@ -3026,7 +3026,7 @@ class ChartService:
                 )
             )
         ).all()
-        return self._label_mix(
+        chart = self._label_mix(
             list(rows),
             INTENT_LABELS,
             _INTENT_COLORS,
@@ -3036,6 +3036,16 @@ class ChartService:
                 "backfill has not run."
             ),
         )
+        # Phase read — descriptive only, from the last 3 weeks of intents.
+        recent_cutoff = date.today() - timedelta(days=21)
+        recent: dict[str, int] = {}
+        for day, cls in rows:
+            if cls and day >= recent_cutoff:
+                recent[cls] = recent.get(cls, 0) + 1
+        phase = phase_read(recent)
+        if phase:
+            chart.insights.append(phase)
+        return chart
 
     async def lift_frequency(self, user_id: uuid.UUID, weeks: int = 12) -> ChartData:
         """Weekly session count per competition lift (Jev ``session_lift``).
