@@ -31,6 +31,7 @@ from app.services.cycling import (
     get_daily_tss,
     get_or_create_cycling_profile,
 )
+from app.services.jev_classification import INTENT_LABELS, LIFT_LABELS
 from app.services.lifting import MAX_REPS_FOR_1RM_PR, brzycki_1rm
 
 # ── Data classes ──────────────────────────────────────────────────────────────
@@ -124,6 +125,43 @@ def _num(value, default: float = 0.0) -> float:
         return float(value)
     except (TypeError, ValueError):
         return default
+
+
+# Jev strength-session label charts. Both aggregate LiftingSession rows by ISO
+# week and by a label column, zero-filling weeks so a gap reads as "no session"
+# rather than a missing point. Colours are stable per label.
+_INTENT_COLORS = {
+    "max_strength": "#ef4444",
+    "volume_hypertrophy": "#3b82f6",
+    "speed_power": "#f59e0b",
+    "technique": "#22c55e",
+    "accessory_conditioning": "#a855f7",
+    "deload": "#14b8a6",
+    "test": "#e11d48",
+}
+_LIFT_COLORS = {
+    "squat": "#ef4444",
+    "bench": "#3b82f6",
+    "deadlift": "#f59e0b",
+    "overhead_press": "#22c55e",
+    "accessory": "#a855f7",
+}
+
+
+def _weekly_label_counts(
+    rows: list[tuple[date, str | None]], labels: tuple[str, ...]
+) -> tuple[list[str], dict[str, list[int]]]:
+    """ISO-week × label session counts, zero-filled across the observed span."""
+    weeks = sorted(
+        {(day - timedelta(days=day.weekday())).isoformat() for day, _ in rows}
+    )
+    table = {w: dict.fromkeys(labels, 0) for w in weeks}
+    for day, label in rows:
+        if label in labels:
+            week = (day - timedelta(days=day.weekday())).isoformat()
+            if week in table:
+                table[week][label] += 1
+    return weeks, {label: [table[w][label] for w in weeks] for label in labels}
 
 
 # ── Chart Service ─────────────────────────────────────────────────────────────
@@ -2921,6 +2959,102 @@ class ChartService:
             x_label="Week",
             y_label="Volume (kg)",
             insights=insights,
+        )
+
+    # ── Jev session labels ────────────────────────────────────────────────────
+
+    def _label_mix(
+        self,
+        rows: list[tuple[date, str | None]],
+        labels: tuple[str, ...],
+        colors: dict[str, str],
+        *,
+        title: str,
+        empty_insight: str,
+    ) -> ChartData:
+        """Stacked weekly counts for one label axis; empty-but-labelled when none."""
+        weeks, counts = _weekly_label_counts(rows, labels)
+        series = [
+            ChartSeries(name=label, data=counts[label], color=colors.get(label))
+            for label in labels
+            if any(counts[label])
+        ]
+        if not weeks or not series:
+            return ChartData(
+                chart_type="area",
+                title=title,
+                labels=[],
+                series=[],
+                x_label="Week",
+                y_label="Sessions",
+                insights=[empty_insight],
+            )
+        return ChartData(
+            chart_type="area",
+            title=title,
+            labels=weeks,
+            series=series,
+            x_label="Week",
+            y_label="Sessions",
+        )
+
+    async def session_class_mix(
+        self, user_id: uuid.UUID, weeks: int = 26
+    ) -> ChartData:
+        """Weekly session count by Jev training-intent class (stacked).
+
+        Read the shape: sustained ``volume_hypertrophy`` rising into
+        ``max_strength`` is an accumulation → intensification block, and a
+        ``deload`` week should punctuate it. A rising block with no ``deload``
+        is the over-reaching shape.
+        """
+        cutoff = date.today() - timedelta(weeks=weeks)
+        rows = (
+            await self.db.execute(
+                select(LiftingSession.session_date, LiftingSession.session_class).where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSession.session_date >= cutoff,
+                    LiftingSession.session_class.isnot(None),
+                )
+            )
+        ).all()
+        return self._label_mix(
+            list(rows),
+            INTENT_LABELS,
+            _INTENT_COLORS,
+            title="Session mix",
+            empty_insight=(
+                "No classified sessions in range — Jev unset, or the weekly "
+                "backfill has not run."
+            ),
+        )
+
+    async def lift_frequency(self, user_id: uuid.UUID, weeks: int = 12) -> ChartData:
+        """Weekly session count per competition lift (Jev ``session_lift``).
+
+        The exposure counterpart to ``strength_balance`` (which scores level):
+        a strong lift that is not trained often shows as a flat series here.
+        """
+        cutoff = date.today() - timedelta(weeks=weeks)
+        rows = (
+            await self.db.execute(
+                select(LiftingSession.session_date, LiftingSession.session_lift).where(
+                    LiftingSession.user_id == user_id,
+                    LiftingSession.session_date >= cutoff,
+                    LiftingSession.session_lift.isnot(None),
+                    LiftingSession.session_lift != "none",
+                )
+            )
+        ).all()
+        return self._label_mix(
+            list(rows),
+            tuple(label for label in LIFT_LABELS if label != "none"),
+            _LIFT_COLORS,
+            title="Lift frequency",
+            empty_insight=(
+                "No lift-labelled sessions in range — Jev unset, or the weekly "
+                "backfill has not run."
+            ),
         )
 
     # ── RPE drift ─────────────────────────────────────────────────────────────

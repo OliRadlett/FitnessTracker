@@ -273,6 +273,21 @@ export default function LiftingPage() {
     staleTime: 300_000,
   });
 
+  // Jev session-label charts — populated by the weekly classification backfill.
+  const { data: sessionMixChart, isLoading: sessionMixLoading } = useQuery<ChartData>({
+    queryKey: ['chart-session-mix', 26],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/session_class_mix?weeks=26'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
+  const { data: liftFrequencyChart, isLoading: liftFrequencyLoading } = useQuery<ChartData>({
+    queryKey: ['chart-lift-frequency', 12],
+    queryFn: () => authFetch<ChartData>('/api/v1/charts/lift_frequency?weeks=12'),
+    enabled: !!token,
+    staleTime: 300_000,
+  });
+
   // Estimated 1RM history — exercise selector mirrors ExerciseProgressSection:
   // options derived from loaded sessions, auto-selects the first exercise.
   const e1rmExerciseList = useMemo(() => {
@@ -1425,6 +1440,28 @@ export default function LiftingPage() {
           isLoading={strengthBalanceLoading}
           data={strengthBalanceChart}
           emptyMessage="Log lifts with estimated 1RM to see your strength balance"
+          height={280}
+        />
+      </Card>
+
+      {/* Session mix — training intent over time (Jev) */}
+      <Card>
+        <CardHeader><CardTitle>Session Mix</CardTitle></CardHeader>
+        <ChartBody
+          isLoading={sessionMixLoading}
+          data={sessionMixChart}
+          emptyMessage="Classified sessions appear here once the weekly Jev backfill runs"
+          height={280}
+        />
+      </Card>
+
+      {/* Lift frequency — competition-lift exposure over time (Jev) */}
+      <Card>
+        <CardHeader><CardTitle>Lift Frequency</CardTitle></CardHeader>
+        <ChartBody
+          isLoading={liftFrequencyLoading}
+          data={liftFrequencyChart}
+          emptyMessage="Classified sessions appear here once the weekly Jev backfill runs"
           height={280}
         />
       </Card>

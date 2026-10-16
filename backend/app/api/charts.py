@@ -94,6 +94,8 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "consistency_heatmap": {"method": "consistency_heatmap", "params": ["days"]},
     "sleep_consistency": {"method": "sleep_consistency", "params": ["days"]},
     "strength_balance": {"method": "strength_balance", "params": []},
+    "session_class_mix": {"method": "session_class_mix", "params": ["weeks"]},
+    "lift_frequency": {"method": "lift_frequency", "params": ["weeks"]},
     "big_3_total": {"method": "big_3_total", "params": []},
     "rep_range_distribution": {
         "method": "rep_range_distribution",
