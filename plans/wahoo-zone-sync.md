@@ -1,7 +1,7 @@
 # Push power / HR zones to Wahoo (auto-adjust on FTP & LTHR change)
 
 > **Status**: Phases 1 and 2 **built** on `feature/wahoo-zone-sync` (2026-10-16) —
-> backend (migration 100, model/schemas, client read/write, `GET/POST
+> backend (migration 103, model/schemas, client read/write, `GET/POST
 > /cycling/wahoo-zones`, `POST …/push`, `POST …/revert`, the automatic trigger from the
 > five FTP write sites, the `wahoo_zones` notification) and the card on `/cycling`
 > (toggle, drift table, push, revert, read-only HR section). Phase 3 (HR) is unchanged
@@ -216,8 +216,12 @@ Specifics that matter for this feature:
 
 ## 5. Data model (one migration)
 
-Next free revision is **`100`** at time of writing (head is `099`, and `origin/main`
-is also `099`). **Re-check before creating the file** — see AGENTS.md pitfall 34.
+Shipped as **revision `103`** (`103_add_wahoo_zone_sync.py`, `down_revision = "102"`).
+It was written as `100` against a head of `099`, and `main` shipped its own
+100/101/102 while this branch was open — which is pitfall 34 exactly, and it was
+caught only because the production probe flagged it. Two files claiming one revision
+stop `alembic` resolving a head at all, so **re-check the head before creating any
+migration file**, even mid-branch.
 
 ### 5.1 `wahoo_zone_sets` (new table)
 
@@ -489,7 +493,7 @@ never visits `/cycling` either way.
 |-------|-------------|---------------|-------|
 | **0 — spike** | Sandbox verification of §3.1.1–3.1.5 + the §3.2 undocumented-HR probes. Doc updated with observed statuses/payloads. | §3.1 "unverified" list answered or explicitly still unknown with a chosen fallback | **open** — no longer blocks shipping, still decides D2's simplest branch and the validity of the create path |
 | **1 — read-only** | `GET /wahoo-zones` + `WahooZonesCard` showing local zones, Wahoo sets, drift. No writes, no toggle. | Card renders real data with `power_zones_read` only | **built** (`078e1b4` backend, `fcb1551` card) |
-| **2 — power push** | Migration 100, service, client writes, endpoints, toggle, `prior`/revert, task enqueue, notification. | FTP change propagates; revert restores; failures are visible and non-fatal | **built** (`23d001c` backend, `fcb1551` card) |
+| **2 — power push** | Migration 103, service, client writes, endpoints, toggle, `prior`/revert, task enqueue, notification. | FTP change propagates; revert restores; failures are visible and non-fatal | **built** (`23d001c` backend, `fcb1551` card) |
 | **3 — HR** | Conditional on Phase 0: real HR push if an endpoint exists, else guided-match UI. | Card tells the truth about what is and is not automatable | **not built** — the card states the limitation and shows local HR zones read-only |
 | **4 — idle** | Weight/height via `user_write` (D7), additional sports' zone sets. | Explicitly separate | not started |
 
@@ -521,7 +525,7 @@ Wahoo account — it also makes the drift visible, which is the feature's whole 
 ## 12. Files touched
 
 **Backend**
-- `backend/alembic/versions/100_add_wahoo_zone_sync.py` (number: re-check first)
+- `backend/alembic/versions/103_add_wahoo_zone_sync.py`
 - `backend/app/models/wahoo_zones.py` (new) + `backend/app/models/__init__.py`
   (import **and** `__all__`)
 - `backend/app/models/cycling.py` (`push_wahoo_zones`)

@@ -256,7 +256,7 @@ unread; the ride-quality axis is deterministic/power-derived).
 into the athlete's Wahoo power zone sets so the ELEMNT colours the live zone against
 current boundaries, and pushed structured workouts resolve their %FTP targets against a
 current FTP. Exercises `power_zones_read`/`power_zones_write`, requested since the
-planned-workout push and unused until now. **Backend landed** (migration 100
+planned-workout push and unused until now. **Backend landed** (migration 103
 `wahoo_zone_sets`, read/push/revert under `/cycling/wahoo-zones`, triggered from the five
 FTP write sites, `wahoo_zones` notification) — boundary writes **rescale a set's own
 values by the FTP ratio** rather than imposing our zone model, so the sync moves the

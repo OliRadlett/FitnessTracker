@@ -17,13 +17,19 @@ without the flag the cleared value is the JSON literal ``null``, so the row woul
 still match ``IS NOT NULL`` and "has a snapshot" would stay true forever
 (AGENTS.md pitfall 28 — migration 092 repaired exactly this class of bug).
 
+Numbered 103, not 100: this branch was written against a head of 099, and ``main``
+shipped its own 100/101/102 while the branch was open. Two files claiming the same
+revision make ``alembic`` fail to resolve a head at all, which reads as a corrupt
+environment rather than a duplicate number (AGENTS.md pitfall 34). Renumbering an
+unreleased, unapplied migration is the safe fix; editing an applied one is not.
+
 Dialect note: ``JSONB`` is imported from ``sqlalchemy.dialects.postgresql``, never
 referenced as ``sa.JSONB()`` (pitfall 22 — that name does not exist on the top-level
 module, and the resulting ``AttributeError`` reverts the *whole* migration under
 transactional DDL).
 
-Revision ID: 100
-Revises: 099
+Revision ID: 103
+Revises: 102
 Create Date: 2026-10-15
 """
 
@@ -35,8 +41,8 @@ from sqlalchemy.dialects import postgresql
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision = "100"
-down_revision = "099"
+revision = "103"
+down_revision = "102"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
