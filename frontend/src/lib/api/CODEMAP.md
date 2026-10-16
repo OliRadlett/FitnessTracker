@@ -37,7 +37,7 @@ requests with an optional JWT Bearer token and `credentials: 'include'`.
 | `useAuthFetch()` | `hook` | Returns `{ authFetch, authFetchWithHeaders }` — injects JWT from NextAuth session. |
 
 ### `index.ts` — Barrel file
-Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`, `segments`, `weather`, `conformity`, `projections`, `exercises`, `notifications`, `weight`, `search`, `account`, `healthPrefs`.
+Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`, `segments`, `weather`, `conformity`, `projections`, `exercises`, `notifications`, `weight`, `search`, `account`, `healthPrefs`, `cycling`.
 
 ### Per-module API surface
 
@@ -57,11 +57,16 @@ Re-exports from: `types`, `fetch`, `lifting`, `routes`, `goals`, `trainingPlans`
 | **`search.ts`** | `/api/v1/search` | `globalSearch` (command-palette lookup) | cross-domain result types |
 | **`account.ts`** | `/api/v1/export`, `/api/v1/account` | `exportFullJson`, `deleteAccount`, `downloadExport` (§3.9 portability), `logoutBackend` (SEC-07 token revocation) | `types/export.ts` |
 | **`healthPrefs.ts`** | `/api/v1/metrics/health-preferences` | `getHealthPreferences`, `updateHealthPreferences` (§3.12) | `types/health.ts` |
+| **`cycling.ts`** | `/api/v1/cycling/wahoo-zones`, `/api/v1/cycling/profile` | **`getWahooZones`**, **`pushWahooZones`**, **`revertWahooZones`** (Wahoo zone sync: status / manual push / restore pre-write snapshot), `updateCyclingProfile` (PATCH, incl. the `push_wahoo_zones` opt-in) — used by `cycling/WahooZonesCard` | `types/wahooZones.ts` (`WahooZonesStatus`, `LocalZoneSet`, `WahooPowerZoneSet`, `WahooZoneSetTracked`, `ZoneDrift`, `WahooZonesPushResult`, `WahooZonesRevertResult`), `CyclingProfilePatch` |
 
 > B-10 removals (2026-09-20): `cycling.ts` (12 unused fns), `crossDomain.ts`,
 > `preferences.ts` (fns only — types stay in `types/`) deleted; 3 unused video
 > fns pruned from `lifting.ts`. All remaining module functions are imported
 > somewhere (survey 2026-09-20).
+>
+> `cycling.ts` returned 2026-10 for the Wahoo zone sync (4 fns, all called from
+> `cycling/WahooZonesCard` — still within the "≥2 call sites" convention, and the
+> status/push/revert trio is the feature's whole surface).
 
 > Note: many pages (dashboard, activities, cycling, events, nutrition, LLM
 > analysis, workout planner, deficiency) call their endpoints **inline** via
@@ -75,7 +80,7 @@ Domain type modules re-exported via `types.ts`:
   `types/training.ts`, `types/llm.ts`, `types/deficiency.ts`,
   `types/nutrition.ts`, `types/weather.ts`, `types/conformity.ts`,
   `types/projections.ts`, `types/notifications.ts`, `types/segments.ts`,
-  `types/export.ts`, `types/preferences.ts`
+  `types/export.ts`, `types/preferences.ts`, `types/wahooZones.ts`
 
 ### `types/generated.ts` — OpenAPI codegen (B-11, §5.9)
 Regenerate with `npm run codegen` (requires the backend stack for
