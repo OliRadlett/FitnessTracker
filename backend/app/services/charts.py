@@ -147,6 +147,14 @@ _LIFT_COLORS = {
     "overhead_press": "#22c55e",
     "accessory": "#a855f7",
 }
+_RIDE_COLORS = {
+    "recovery": "#14b8a6",
+    "endurance": "#22c55e",
+    "tempo": "#3b82f6",
+    "threshold": "#f59e0b",
+    "vo2max": "#ef4444",
+}
+_RIDE_TYPE_ORDER = ("recovery", "endurance", "tempo", "threshold", "vo2max")
 
 
 def _weekly_label_counts(
@@ -3074,6 +3082,61 @@ class ChartService:
                 "backfill has not run."
             ),
         )
+
+    # ── Ride labels ───────────────────────────────────────────────────────────
+
+    async def ride_mix(self, user_id: uuid.UUID, weeks: int = 12) -> ChartData:
+        """Weekly mix of ride types, computed from the cached ride IF.
+
+        Deterministic — a ride's type is measurable, not semantic. Also counts
+        declared-vs-measured mismatches: a ride logged as a recovery spin whose
+        IF says tempo did not do what it claimed.
+        """
+        from app.models.activity import Activity
+        from app.services.ride_classification import (
+            purpose_matches_execution,
+            ride_type_from_context,
+        )
+
+        cutoff = date.today() - timedelta(weeks=weeks)
+        rows = (
+            await self.db.execute(
+                select(
+                    Activity.start_date,
+                    Activity.duration_seconds,
+                    Activity.context,
+                ).where(
+                    Activity.user_id == user_id,
+                    Activity.sport_type == "cycling",
+                    Activity.start_date >= cutoff,
+                )
+            )
+        ).all()
+
+        labelled: list[tuple[date, str | None]] = []
+        mismatches = 0
+        for start, duration, ctx in rows:
+            ride_type = ride_type_from_context(ctx, duration)
+            if ride_type is None:
+                continue
+            labelled.append((start.date(), ride_type))
+            purpose = (ctx or {}).get("tags", {}).get("purpose")
+            if purpose_matches_execution(purpose, ride_type) is False:
+                mismatches += 1
+
+        chart = self._label_mix(
+            labelled,
+            _RIDE_TYPE_ORDER,
+            _RIDE_COLORS,
+            title="Ride mix",
+            empty_insight="No rides with power in range.",
+        )
+        if mismatches:
+            chart.insights.append(
+                f"{mismatches} ride(s) logged with a purpose that does not match "
+                "the measured intensity."
+            )
+        return chart
 
     # ── RPE drift ─────────────────────────────────────────────────────────────
 

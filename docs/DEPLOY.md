@@ -342,6 +342,13 @@ In production, always pass `--prod` to include the production compose overrides.
 ./start.sh --prod restart backend       # Restart single service
 ```
 
+> ⚠️ **`restart` does not re-read `.env`.** It reuses the running containers, so
+> a new/edited env var silently does not apply — the service looks restarted and
+> healthy but is running the old value. After changing `.env`, **recreate** the
+> affected services instead: `./start.sh --prod up backend worker beat`. (This is
+> how the Jev key appeared "added" but inactive until the containers were
+> recreated.)
+
 ### Update to latest code
 ```bash
 cd /opt/fitness-tracker
