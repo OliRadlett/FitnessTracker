@@ -75,8 +75,6 @@ export function BlockTools({ planId, week, planStart, weekDays, onDone }: BlockT
         const tgtStart = addDays(week1, (w - 1) * 7);
         for (let i = 0; i < 7; i++) {
           const srcDate = addDays(srcStart, i);
-          // A date may hold more than one session (a ride and a lift), and each
-          // copies to its own sport's slot on the target date.
           const srcs = weekDays.filter((d) => d.day_date.slice(0, 10) === srcDate);
           for (const src of srcs) {
             await copyPlanDayToDate(authFetch, planId, src.id, addDays(tgtStart, i));

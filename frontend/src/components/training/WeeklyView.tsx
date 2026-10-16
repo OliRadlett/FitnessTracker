@@ -279,8 +279,9 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
   };
 
   // Missed-day quick actions — real operations. The PATCH API cannot change a
-  // day's date, so "move" uses the dedicated /reschedule endpoint (409 when the
-  // target slot is taken); "substitute"/"mark rest" use /substitute.
+  // day's date, so "move" uses the dedicated /reschedule endpoint (409 when an
+  // uncompleted session of that sport, or a rest row, is already on the target);
+  // "substitute"/"mark rest" use /substitute.
   const handleMissedReschedule = () => {
     if (!missedDay || !missedNextDay) return;
     ops.moveDay.mutate(
@@ -347,8 +348,6 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)),
     [weekStart],
   );
-  // A date may hold more than one session, so the grid holds a list per date and
-  // resolves by session id wherever it used to resolve "the day on this date".
   const sessionsByDate = useMemo(
     () => groupSessionsByDate(weekData?.days ?? []),
     [weekData],
@@ -359,7 +358,6 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
   );
 
   // All-weeks overview: per-week planned load + sport mix, from the plan's days.
-  // A date may hold several sessions, so every session counts towards the week.
   const weekSummaries = useMemo(() => {
     const sessionsOn = (d: string) =>
       plan.days.filter((pd) => pd.day_date.slice(0, 10) === d);

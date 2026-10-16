@@ -81,13 +81,11 @@ async def restore_plan_day_delete(
         if isinstance(snap.get(field), str):
             snap[field] = uuid.UUID(snap[field])
 
-    # Refuse rather than clobber: a re-sync may have recreated a session of the
-    # same sport at that date, and that is a conflict, not a restore. A session
-    # of another sport is not — a date holds one session per sport, so a
-    # deleted lift restores beside a ride. Asked of the database directly,
-    # *not* of ``plan.days`` — a long-lived session can hold a collection loaded
-    # before the delete, and reading it here would report a day that no longer
-    # exists (and so refuse every restore).
+    # Refuse rather than clobber: a re-sync may have recreated a session that
+    # cannot share that date, and that is a conflict, not a restore. Asked of
+    # the database directly, *not* of ``plan.days`` — a long-lived session can
+    # hold a collection loaded before the delete, and reading it here would
+    # report a day that no longer exists (and so refuse every restore).
     occupied = await db.execute(
         select(TrainingPlanDay.sport).where(
             TrainingPlanDay.plan_id == plan_id,

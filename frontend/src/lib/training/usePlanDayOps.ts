@@ -40,7 +40,7 @@ export function usePlanDayOps(planId: string | null) {
   };
 
   return {
-    /** Add a session on a (previously empty) date. 409 when the date is taken. */
+    /** Add a session on a date; 409 when that sport is already on it. */
     addDay: useMutation({
       mutationFn: (payload: CreateTrainingPlanDayPayload) => {
         if (!planId) throw new Error('No plan selected');
@@ -67,7 +67,10 @@ export function usePlanDayOps(planId: string | null) {
       onSettled: invalidate,
     }),
 
-    /** Move an uncompleted day to another date (409 when the target is occupied). */
+    /**
+     * Move an uncompleted day to another date; 409 when an uncompleted session
+     * of that sport, or a rest row, is on the target.
+     */
     moveDay: useMutation({
       mutationFn: ({ dayId, targetDate }: { dayId: string; targetDate: string }) => {
         if (!planId) throw new Error('No plan selected');

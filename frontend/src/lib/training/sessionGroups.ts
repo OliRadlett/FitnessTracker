@@ -3,10 +3,8 @@
 /**
  * Multi-sport day grouping.
  *
- * A plan date may hold more than one session (a morning ride and an evening
- * lift), so the week payload is a flat list of sessions that the grid groups by
- * date: `Map<date, TrainingWeekDay[]>`. Within a date, sessions are distinct by
- * sport and `rest` never shares the date.
+ * A plan date may hold more than one session, so the week payload is a flat
+ * list of sessions that the grid groups by date: `Map<date, TrainingWeekDay[]>`.
  *
  * Kept free of React so the grouping, the chip cap and the "add session"
  * choices can be unit tested directly.

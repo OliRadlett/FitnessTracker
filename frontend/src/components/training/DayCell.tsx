@@ -7,10 +7,8 @@
  * (WeekMasterBar) and any other consumer can render one date with the same
  * status colouring, badges, planned/actual summaries and weather.
  *
- * A date may hold more than one session (a morning ride and an evening lift).
- * One session renders exactly as it always has; several render as compact
- * chips (two visible, then a "+N" overflow) because a 160px cell cannot hold
- * two full session bodies.
+ * Several sessions on one date render as compact chips, because a 160px cell
+ * cannot hold two full session bodies.
  */
 
 import React from 'react';
@@ -65,7 +63,6 @@ export interface DayCellProps {
   /** Adds a session of `sport` on this date (409 when that sport is taken). */
   onAddSession?: (date: string, sport: AddableSport) => void;
   busy: boolean;
-  /** Desktop drag-and-drop: drag a day card onto another to swap or move it. */
   draggable?: boolean;
   onDragStart?: (dayId: string) => void;
   onDragOver?: (e: React.DragEvent) => void;
