@@ -44,6 +44,7 @@ import { VideoChip } from '@/components/lifting/VideoChip';
 import { SessionBrowser } from '@/components/lifting/SessionBrowser';
 import { useSessionBrowserFilters } from '@/components/lifting/useSessionBrowserFilters';
 import { SessionFocusChips } from '@/components/lifting/SessionFocusChips';
+import { SessionLabels } from '@/components/lifting/SessionLabels';
 import { RepeatSessionButton } from '@/components/lifting/RepeatSessionButton';
 import { BestByRepRangeStrip } from '@/components/lifting/BestByRepRangeStrip';
 import { SetsVisualizer } from '@/components/lifting/SetsVisualizer';
@@ -903,6 +904,11 @@ export default function LiftingPage() {
                           )}
                       </div>
                     )}
+                    <SessionLabels
+                      split={sessionDetail.session_split}
+                      lift={sessionDetail.session_lift}
+                      sessionClass={sessionDetail.session_class}
+                    />
                   </div>
                   <div className="flex items-center gap-2">
                     <RepeatSessionButton
