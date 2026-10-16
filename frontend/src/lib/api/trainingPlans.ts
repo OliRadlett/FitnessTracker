@@ -18,6 +18,7 @@ import type {
   StrengthProgressionApplyResponse,
   StrengthProgressionSuggestResponse,
   MaterialiseResponse,
+  PlanReviewResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -335,4 +336,16 @@ export async function deletePlanBlock(
   return authFetch<void>(`/api/v1/training-plans/${planId}/blocks/${blockId}`, {
     method: 'DELETE',
   });
+}
+
+// ── C3: weekly plan review ──────────────────────────────────────────────────
+
+/** The latest weekly review snapshot (C3). A plain call is a read. */
+export async function getPlanReview(
+  authFetch: AuthFetch,
+  planId: string
+): Promise<PlanReviewResponse> {
+  return authFetch<PlanReviewResponse>(
+    `/api/v1/training-plans/${planId}/review`
+  );
 }

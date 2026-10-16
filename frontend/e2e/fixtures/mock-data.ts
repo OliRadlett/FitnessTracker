@@ -862,6 +862,25 @@ export const mockPlanConformity = {
   patterns: [],
 };
 
+// Weekly plan review (C3) — the Review-mode Week ahead card.
+export const mockPlanReview = {
+  week_start: '2026-08-03',
+  generated_at: '2026-08-03T06:00:00Z',
+  plan_name: 'Base Building Block',
+  load: { ctl: 48.4, atl: 43.1, tsb: 5.2 },
+  conformity: { overall_pct: 72, trend: 'stable' as const, patterns: [] },
+  adaptive: {
+    summary: 'Hold the build; you are absorbing the load well.',
+    fatigue: 'fresh',
+    axes: [],
+    suggestions: [],
+  },
+  missed_days: 2,
+  missed_dates: ['2026-08-05', '2026-08-07'],
+  upcoming_days: 3,
+  active_goals: 1,
+};
+
 export const mockDayConformity = {
   plan_id: 'plan-1',
   day_id: 'plan-1-w1-0',

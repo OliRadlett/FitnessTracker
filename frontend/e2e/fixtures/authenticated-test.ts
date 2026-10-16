@@ -322,6 +322,11 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   ['/blocks', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify([]) });
   }],
+  // Weekly plan review (C3) MUST come before the general handler, which would
+  // otherwise answer /{id}/review with the plan-summary array.
+  ['/review', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockPlanReview) });
+  }],
   ['api/v1/training-plans', (route) => {
     const url = route.request().url();
     const planMatch = url.match(/\/api\/v1\/training-plans\/([a-z0-9-]+)$/);
