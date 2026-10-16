@@ -5034,6 +5034,42 @@ async def build_weekly_plan_review(db, user_id: uuid.UUID) -> dict | None:
         },
     )
 
+    # C3 — persist a snapshot of this review (read back by GET /{id}/review).
+    # Built from the values already computed here, so there is no second pass.
+    try:
+        from datetime import UTC, datetime
+
+        from app.services import plan_review as review_service
+
+        await review_service.persist_plan_review(
+            db,
+            user_id,
+            plan.id,
+            {
+                "week_start": review_service.monday_of(today).isoformat(),
+                "generated_at": datetime.now(UTC).isoformat(),
+                "plan_name": plan.name,
+                "stance": stance,
+                "conformity": {
+                    "overall_pct": conformity_pct,
+                    "trend": conf.get("trend") if isinstance(conf, dict) else None,
+                    "patterns": conf.get("patterns", []) if isinstance(conf, dict) else [],
+                },
+                "adaptive": {
+                    "summary": suggestions.get("summary"),
+                    "fatigue": suggestions.get("fatigue"),
+                    "axes": suggestions.get("axes", []),
+                    "suggestions": suggestions.get("suggestions", []),
+                },
+                "missed_days": len(missed_days),
+                "missed_dates": [d.day_date.isoformat() for d in missed_days[:10]],
+                "stale_targets": stale_targets,
+                "off_pace_goals": [g["metric"] for g in off_pace],
+            },
+        )
+    except Exception:
+        logger.warning("weekly review snapshot persist failed", exc_info=True)
+
     return {
         "plan_id": str(plan.id),
         "week": week_key,
