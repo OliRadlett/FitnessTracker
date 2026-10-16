@@ -38,7 +38,11 @@ export function WeekAheadCard({ planId }: { planId: string }) {
     enabled: !!token && !!planId,
   });
 
-  if (query.isError || !query.data) {
+  // Review mode must render for a plan that has no review yet, so a missing or
+  // failed payload shows nothing rather than an error card. A hard failure is
+  // therefore indistinguishable from "no review" here, which is deliberate: the
+  // endpoint already degrades section by section.
+  if (!query.data) {
     return null;
   }
 

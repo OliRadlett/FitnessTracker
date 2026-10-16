@@ -862,8 +862,7 @@ export const mockPlanConformity = {
   patterns: [],
 };
 
-// Weekly plan review (C3) — the Review-mode Week ahead card. All three engine
-// sections present; the card must also survive any of them being null.
+// Weekly plan review (C3) — the Review-mode Week ahead card.
 export const mockPlanReview = {
   week_start: '2026-08-03',
   generated_at: '2026-08-03T06:00:00Z',

@@ -340,18 +340,12 @@ export async function deletePlanBlock(
 
 // ── C3: weekly plan review ──────────────────────────────────────────────────
 
-/**
- * The latest weekly review snapshot. A plain call is a read; `refresh`
- * recomputes it and persists the result, so it is the one write here.
- */
+/** The latest weekly review snapshot (C3). A plain call is a read. */
 export async function getPlanReview(
   authFetch: AuthFetch,
-  planId: string,
-  options: { refresh?: boolean } = {}
+  planId: string
 ): Promise<PlanReviewResponse> {
-  const { refresh = false } = options;
-  const query = refresh ? '?refresh=true' : '';
   return authFetch<PlanReviewResponse>(
-    `/api/v1/training-plans/${planId}/review${query}`
+    `/api/v1/training-plans/${planId}/review`
   );
 }
