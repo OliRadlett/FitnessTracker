@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { TrainingPlanDay } from '@/lib/api';
+import type { PlannedExercise, TrainingPlanDay } from '@/lib/api';
 import {
   REST_FIELDS,
   computedVolumeKg,
+  mergeSuggestedWeights,
   planningFields,
 } from '@/lib/training/planDayHelpers';
 
@@ -86,5 +87,107 @@ describe('REST_FIELDS', () => {
     expect(REST_FIELDS.planned_exercises).toBeNull();
     expect(REST_FIELDS.planned_route_id).toBeNull();
     expect(REST_FIELDS.workout_description).toBeNull();
+  });
+});
+
+describe('mergeSuggestedWeights', () => {
+  const squat: PlannedExercise = {
+    exercise: 'Back Squat',
+    sets: 5,
+    reps: 5,
+    weight_kg: 100,
+    rpe: 7,
+    pct_1rm: 0.8,
+    target_rpe: 8,
+    note: 'belt up on the last set',
+    weight_source: 'manual',
+  };
+  const legCurl: PlannedExercise = {
+    exercise: 'Leg Curl',
+    sets: 3,
+    reps: 12,
+    weight_kg: 40,
+  };
+
+  it('overrides the suggestion fields and keeps every field it does not set', () => {
+    const merged = mergeSuggestedWeights([squat, legCurl], [
+      {
+        exercise_name: 'Back Squat',
+        old_weight_kg: 100,
+        suggested_weight_kg: 105,
+        rpe: 9,
+        sets: 4,
+        reps: 3,
+      },
+    ]);
+
+    expect(merged.map((e) => e.exercise)).toEqual(['Back Squat', 'Leg Curl']);
+    expect(merged[0]).toEqual({
+      exercise: 'Back Squat',
+      sets: 4,
+      reps: 3,
+      weight_kg: 105,
+      rpe: 9,
+      pct_1rm: 0.8,
+      target_rpe: 8,
+      note: 'belt up on the last set',
+      weight_source: 'manual',
+    });
+  });
+
+  it('returns the existing list unchanged when there is no suggestion for it', () => {
+    expect(mergeSuggestedWeights([squat, legCurl], [])).toEqual([squat, legCurl]);
+  });
+
+  it('matches names trimmed and case-insensitively, defaulting rpe to 8', () => {
+    const merged = mergeSuggestedWeights([{ ...squat, exercise: '  back squat ' }], [
+      {
+        exercise_name: 'Back Squat',
+        old_weight_kg: 100,
+        suggested_weight_kg: 105,
+        rpe: null,
+        sets: 4,
+        reps: 6,
+      },
+    ]);
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0].exercise).toBe('  back squat ');
+    expect(merged[0].sets).toBe(4);
+    expect(merged[0].rpe).toBe(8);
+    expect(merged[0].weight_kg).toBe(105);
+  });
+
+  it('appends a suggestion that matches no existing entry', () => {
+    const merged = mergeSuggestedWeights([legCurl], [
+      {
+        exercise_name: 'Romanian Deadlift',
+        old_weight_kg: 80,
+        suggested_weight_kg: 85,
+        rpe: 8,
+        sets: 3,
+        reps: 8,
+      },
+    ]);
+
+    expect(merged.map((e) => e.exercise)).toEqual(['Leg Curl', 'Romanian Deadlift']);
+    expect(merged[1].weight_kg).toBe(85);
+  });
+
+  it('treats a missing list as empty', () => {
+    expect(
+      mergeSuggestedWeights(undefined, [
+        {
+          exercise_name: 'Back Squat',
+          old_weight_kg: null,
+          suggested_weight_kg: 105,
+          rpe: 8,
+          sets: 5,
+          reps: 5,
+        },
+      ]),
+    ).toEqual([
+      { exercise: 'Back Squat', sets: 5, reps: 5, rpe: 8, weight_kg: 105 },
+    ]);
   });
 });
