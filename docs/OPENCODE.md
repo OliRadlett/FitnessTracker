@@ -276,6 +276,8 @@ Skills are reusable instruction sets for complex tasks. Located in `.opencode/sk
 
 Specialized agents for different domains. Use `@agentname` in prompts.
 
+Agent frontmatter uses OpenCode V2's `permissions` ruleset: an ordered list of `action`/`resource`/`effect` rules where **the last matching rule wins**. The catch-all `shell *: ask` therefore goes first, with the per-command `allow` rules after it, so a specific allow overrides the catch-all. The V1 `permission:` map is **not** a recognised frontmatter field in V2 and is silently ignored, which leaves an agent's entire allowlist inert while the agent still loads normally. Use `shell` for shell commands and `subagent` for child agents; `bash` and `task` are V1 action names.
+
 ### `@backend`
 **Purpose**: Backend Python/FastAPI specialist.
 **Use for**: API routes, services, models, migrations, Celery tasks.
@@ -289,7 +291,7 @@ Specialized agents for different domains. Use `@agentname` in prompts.
 ### `@ask` (Ask Mode)
 **Purpose**: Non-agentic conversational chat for Q&A, general questions, code explanation, and web research.
 **Use for**: Answering questions, explaining concepts, brainstorming designs, clarifying code, researching external documentation — without modifying project files.
-**Permissions**: `edit`, `bash`, `todowrite`, `task` = **deny**. `read`, `glob`, `grep`, `websearch`, `webfetch`, `question` = **allow**.
+**Permissions**: `edit`, `shell`, `todowrite`, `subagent` = **deny**. `read`, `glob`, `grep`, `websearch`, `webfetch`, `question` = **allow**.
 **How to switch**: Press `Tab` to cycle into Ask mode, or use the mode selector. Web search is globally permitted via `opencode.json` permissions (`websearch`/`webfetch: "allow"`).
 **Example**:
 ```
