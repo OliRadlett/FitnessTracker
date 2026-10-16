@@ -304,6 +304,16 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   ['api/v1/training-plans/generate', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockTrainingPlan) });
   }],
+  // Strength suggestions (plan §12.1) MUST come before the generic
+  // '/suggestions' matcher below, which is a substring of this path. Without
+  // this the card receives the adaptive-suggestions shape and renders nothing,
+  // which is why no test has ever driven it.
+  ['/strength-suggestions', (route) => {
+    route.fulfill({
+      status: 200,
+      body: JSON.stringify(mockData.mockStrengthSuggestions),
+    });
+  }],
   ['/suggestions', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockAdaptiveSuggestions) });
   }],

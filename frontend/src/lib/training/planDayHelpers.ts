@@ -7,6 +7,7 @@
 
 import type {
   PlannedExercise,
+  StrengthExerciseSuggestion,
   TrainingPlanDay,
   UpdateTrainingPlanDayPayload,
 } from '@/lib/api';
@@ -61,3 +62,54 @@ export const REST_FIELDS: UpdateTrainingPlanDayPayload = {
   planned_route_id: null,
   warmup_template_id: null,
 };
+
+/**
+ * Exercise names match trimmed and case-insensitively, as the backend's
+ * `normalise_exercise_name` compares them.
+ */
+function normaliseExerciseName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * Fold weight suggestions into a day's existing exercise list.
+ *
+ * The day PATCH replaces the whole `planned_exercises` array, and the
+ * suggestions cover only big-3 lifts with a performance record, so sending
+ * them alone would delete every other exercise. Existing entries keep their
+ * order and every field a suggestion does not set (`pct_1rm`, `note`,
+ * `weight_source`); a suggestion matching no entry is appended.
+ */
+export function mergeSuggestedWeights(
+  existing: PlannedExercise[] | null | undefined,
+  suggestions: StrengthExerciseSuggestion[],
+): PlannedExercise[] {
+  const unmatched = new Map<string, StrengthExerciseSuggestion>();
+  for (const s of suggestions) unmatched.set(normaliseExerciseName(s.exercise_name), s);
+
+  const merged: PlannedExercise[] = (existing ?? []).map((ex) => {
+    const key = normaliseExerciseName(ex.exercise);
+    const s = unmatched.get(key);
+    if (!s) return { ...ex };
+    unmatched.delete(key);
+    return {
+      ...ex,
+      sets: s.sets,
+      reps: s.reps,
+      rpe: s.rpe ?? 8.0,
+      weight_kg: s.suggested_weight_kg,
+    };
+  });
+
+  for (const s of unmatched.values()) {
+    merged.push({
+      exercise: s.exercise_name,
+      sets: s.sets,
+      reps: s.reps,
+      rpe: s.rpe ?? 8.0,
+      weight_kg: s.suggested_weight_kg,
+    });
+  }
+
+  return merged;
+}
