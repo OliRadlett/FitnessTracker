@@ -91,6 +91,46 @@ class TestValidateDays:
             ]
         )
 
+    def test_rejects_rest_beside_a_session_on_one_date(self):
+        # The upsert writes every pair the payload names, so a full-array save
+        # could otherwise create the clash the targeted guards refuse.
+        with pytest.raises(ValueError, match="Cannot put a rest session beside a cycle"):
+            _validate_days(
+                [
+                    TrainingPlanDayCreate(
+                        day_date=date(2026, 8, 5), sport="cycle", planned_type="easy"
+                    ),
+                    TrainingPlanDayCreate(
+                        day_date=date(2026, 8, 5), sport="rest", planned_type="rest"
+                    ),
+                ]
+            )
+
+    def test_rejects_a_session_beside_rest_on_one_date(self):
+        with pytest.raises(ValueError, match="Cannot put a cycle session beside a rest"):
+            _validate_days(
+                [
+                    TrainingPlanDayCreate(
+                        day_date=date(2026, 8, 5), sport="rest", planned_type="rest"
+                    ),
+                    TrainingPlanDayCreate(
+                        day_date=date(2026, 8, 5), sport="cycle", planned_type="easy"
+                    ),
+                ]
+            )
+
+    def test_accepts_rest_beside_a_session_on_another_date(self):
+        _validate_days(
+            [
+                TrainingPlanDayCreate(
+                    day_date=date(2026, 8, 5), sport="cycle", planned_type="easy"
+                ),
+                TrainingPlanDayCreate(
+                    day_date=date(2026, 8, 6), sport="rest", planned_type="rest"
+                ),
+            ]
+        )
+
 
 # ── A sport change on an existing row ───────────────────────────────────────
 #

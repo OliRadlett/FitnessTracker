@@ -798,21 +798,33 @@ def sports_conflict_on_date(existing_sport: str, arriving_sport: str) -> bool:
 def _validate_days(days: list[TrainingPlanDayCreate]) -> None:
     """Validate day payloads before persisting.
 
-    Also rejects a payload that names one ``(day_date, sport)`` twice: the
-    upsert keys on that pair, so a duplicate would silently overwrite itself.
+    Rejects a payload that names one ``(day_date, sport)`` twice (the upsert keys
+    on that pair, so a duplicate would silently overwrite itself) and one that
+    puts a session beside another the date rule forbids — the same-sport and
+    ``rest``-exclusive pair ``sports_conflict_on_date`` describes. The upsert
+    writes every pair the payload names, so without this a full-array save could
+    create the clash the add / copy / reschedule guards refuse.
     """
-    seen: set[tuple[date, str]] = set()
+    sports_by_date: dict[date, set[str]] = {}
     for day_data in days:
         if day_data.planned_type not in VALID_DAY_TYPES:
             raise ValueError(f"Invalid planned_type: {day_data.planned_type}")
         if day_data.sport not in ("cycle", "strength", "rest"):
             raise ValueError(f"Invalid sport: {day_data.sport}")
-        key = (day_data.day_date, day_data.sport)
-        if key in seen:
+        sports = sports_by_date.setdefault(day_data.day_date, set())
+        if day_data.sport in sports:
             raise ValueError(
                 f"Duplicate {day_data.sport} session on {day_data.day_date.isoformat()}"
             )
-        seen.add(key)
+        clash = next(
+            (s for s in sports if sports_conflict_on_date(s, day_data.sport)), None
+        )
+        if clash is not None:
+            raise ValueError(
+                f"Cannot put a {day_data.sport} session beside a {clash} session "
+                f"on {day_data.day_date.isoformat()}"
+            )
+        sports.add(day_data.sport)
 
 
 async def _get_plan_or_none(

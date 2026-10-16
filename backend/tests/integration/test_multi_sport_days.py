@@ -476,6 +476,32 @@ class TestSavePlanDays:
         )
         assert resp.status_code == 400
 
+    async def test_rest_beside_a_session_in_the_payload_is_refused(
+        self, client, test_user, db_session
+    ):
+        """The upsert writes every pair the payload names, so the payload-level
+        validation has to carry the same date rule the targeted guards do."""
+        day = TODAY + timedelta(days=2)
+        plan = await _make_plan(
+            db_session,
+            test_user,
+            [{"day_date": day, "sport": "cycle", "planned_type": "easy"}],
+        )
+
+        resp = await client.patch(
+            f"/api/v1/training-plans/{plan.id}",
+            json={
+                "days": [
+                    {"day_date": day.isoformat(), "sport": "cycle", "planned_type": "easy"},
+                    {"day_date": day.isoformat(), "sport": "rest", "planned_type": "rest"},
+                ]
+            },
+        )
+        assert resp.status_code == 400
+        assert [
+            (r.sport, r.planned_type) for r in await _rows_on(db_session, plan, day)
+        ] == [("cycle", "easy")]
+
 
 # ── Undo restores alongside the other sport ─────────────────────────────────
 
