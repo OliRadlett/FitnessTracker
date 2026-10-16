@@ -1,12 +1,19 @@
 ﻿---
 description: Frontend Next.js specialist for FitTrack. Use when working on React components, pages, API clients, Tailwind styling, or React Query.
 mode: subagent
-permission:
-  bash:
-    npm run *: allow
-    npm install *: allow
-    npx *: allow
-    "*": ask
+permissions:
+  - action: shell
+    resource: '*'
+    effect: ask
+  - action: shell
+    resource: 'npm run *'
+    effect: allow
+  - action: shell
+    resource: 'npm install *'
+    effect: allow
+  - action: shell
+    resource: 'npx *'
+    effect: allow
 ---
 
 ## When to Use This Agent

@@ -1,16 +1,31 @@
 ﻿---
 description: Backend Python/FastAPI specialist for FitTrack. Use when working on API routes, services, models, database migrations, or Celery tasks.
 mode: subagent
-permission:
-  bash:
-    python fittrack.py exec backend *: allow
-    python fittrack.py logs backend *: allow
-    python fittrack.py restart backend worker beat: allow
-    ruff *: allow
-    alembic *: allow
-    uvicorn *: allow
-    pip *: allow
-    "*": ask
+permissions:
+  - action: shell
+    resource: '*'
+    effect: ask
+  - action: shell
+    resource: 'python fittrack.py exec backend *'
+    effect: allow
+  - action: shell
+    resource: 'python fittrack.py logs backend *'
+    effect: allow
+  - action: shell
+    resource: 'python fittrack.py restart backend worker beat'
+    effect: allow
+  - action: shell
+    resource: 'ruff *'
+    effect: allow
+  - action: shell
+    resource: 'alembic *'
+    effect: allow
+  - action: shell
+    resource: 'uvicorn *'
+    effect: allow
+  - action: shell
+    resource: 'pip *'
+    effect: allow
 ---
 
 ## When to Use This Agent

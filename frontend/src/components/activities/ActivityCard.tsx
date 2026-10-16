@@ -174,6 +174,14 @@ export function ActivityCard({
           {activity.rpe != null && activity.rpe > 0 ? (
             <span className="text-orange-400">RPE {activity.rpe}</span>
           ) : null}
+          {activity.purpose ? (
+            <span
+              className="text-muted capitalize"
+              title="Jev-classified activity purpose"
+            >
+              {activity.purpose}
+            </span>
+          ) : null}
           {!isStrength && activity.calories ? (
             <span className="text-muted">{Math.round(activity.calories)} cal</span>
           ) : null}

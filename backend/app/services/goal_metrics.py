@@ -197,6 +197,29 @@ async def _resolve_weekly_sessions(
     return count
 
 
+async def _resolve_lift_sessions(
+    db: AsyncSession, user_id: uuid.UUID, filters: dict | None
+) -> float | None:
+    """Rolling-30-day lifting-session count, optionally filtered by Jev lift.
+
+    Uses the Jev ``session_lift`` label so "squat sessions" can be targeted
+    without depending on free-text exercise names. Without a ``lift`` filter it
+    counts every lifting session in the window.
+    """
+    from app.models.lifting import LiftingSession
+
+    cutoff = date.today() - timedelta(days=30)
+    conditions = [
+        LiftingSession.user_id == user_id,
+        LiftingSession.session_date >= cutoff,
+    ]
+    lift = (filters or {}).get("lift")
+    if lift:
+        conditions.append(LiftingSession.session_lift == lift)
+    result = await db.execute(select(LiftingSession.id).where(*conditions))
+    return float(len(list(result.scalars().all())))
+
+
 async def _resolve_weekly_tss(
     db: AsyncSession, user_id: uuid.UUID, filters: dict | None
 ) -> float | None:
@@ -365,6 +388,15 @@ METRIC_REGISTRY: dict[str, MetricDef] = {
             optional_filter=["sport"],
             default_direction="increase",
             resolver=_resolve_weekly_sessions,
+        ),
+        MetricDef(
+            key="lift_sessions",
+            label="Lift Sessions (30d)",
+            unit="count",
+            requires_filter=None,
+            optional_filter=["lift"],
+            default_direction="increase",
+            resolver=_resolve_lift_sessions,
         ),
         MetricDef(
             key="monthly_distance_km",

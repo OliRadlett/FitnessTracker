@@ -16,6 +16,7 @@ import { useAuthFetch } from '@/lib/api';
 import type { LiftVideo, LiftingSession, PersonalRecord } from '@/lib/api';
 import { getActiveLocale } from '@/lib/utils';
 import { SessionCardMini } from '@/components/lifting/SessionCardMini';
+import { CLASS_LABELS, SPLIT_LABELS } from '@/components/lifting/SessionLabels';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import {
@@ -74,6 +75,12 @@ function matchesFilters(session: LiftingSession, filters: SessionBrowserFilters)
   }
   const focus = filters.focus.trim().toLowerCase();
   if (focus && !(session.focus ?? '').toLowerCase().includes(focus)) return false;
+  const split = filters.split.trim().toLowerCase();
+  if (split && (session.session_split ?? '').toLowerCase() !== split) return false;
+  const sessionClass = filters.sessionClass.trim().toLowerCase();
+  if (sessionClass && (session.session_class ?? '').toLowerCase() !== sessionClass) {
+    return false;
+  }
   const exercise = filters.exercise.trim().toLowerCase();
   if (
     exercise &&
@@ -185,6 +192,19 @@ export function SessionBrowser({
     return Array.from(names).sort((a, b) => a.localeCompare(b));
   }, [fetched]);
 
+  // Jev label facets — from the loaded window (like focus).
+  const splitOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const s of fetched) if (s.session_split) names.add(s.session_split);
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [fetched]);
+
+  const classOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const s of fetched) if (s.session_class) names.add(s.session_class);
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [fetched]);
+
   const filteredSessions = useMemo(
     () => (filtering ? fetched.filter((s) => matchesFilters(s, filters)) : fetched),
     [fetched, filtering, filters],
@@ -228,6 +248,8 @@ export function SessionBrowser({
 
   const advancedActive =
     filters.focus.trim() !== '' ||
+    filters.split.trim() !== '' ||
+    filters.sessionClass.trim() !== '' ||
     filters.exercise.trim() !== '' ||
     filters.from !== '' ||
     filters.to !== '';
@@ -238,6 +260,8 @@ export function SessionBrowser({
   const activeFilterCount =
     (filters.q.trim() !== '' ? 1 : 0) +
     (filters.focus.trim() !== '' ? 1 : 0) +
+    (filters.split.trim() !== '' ? 1 : 0) +
+    (filters.sessionClass.trim() !== '' ? 1 : 0) +
     (filters.exercise.trim() !== '' ? 1 : 0) +
     (filters.from !== '' || filters.to !== '' ? 1 : 0);
 
@@ -327,6 +351,40 @@ export function SessionBrowser({
                   ))}
               </select>
             </label>
+            {splitOptions.length > 0 && (
+              <label className="block">
+                <span className="block text-xs text-muted mb-1">Split</span>
+                <select
+                  value={filters.split}
+                  onChange={(e) => setPartial({ split: e.target.value })}
+                  className="w-full min-h-[44px] bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">All</option>
+                  {splitOptions.map((v) => (
+                    <option key={v} value={v}>
+                      {SPLIT_LABELS[v] ?? v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {classOptions.length > 0 && (
+              <label className="block">
+                <span className="block text-xs text-muted mb-1">Session type</span>
+                <select
+                  value={filters.sessionClass}
+                  onChange={(e) => setPartial({ sessionClass: e.target.value })}
+                  className="w-full min-h-[44px] bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
+                >
+                  <option value="">All</option>
+                  {classOptions.map((v) => (
+                    <option key={v} value={v}>
+                      {CLASS_LABELS[v] ?? v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="block">
               <span className="block text-xs text-muted mb-1">Exercise</span>
               <input

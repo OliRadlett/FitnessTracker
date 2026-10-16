@@ -32,6 +32,9 @@ other personal data are sent.
 - `pain_injury` / `high_fatigue` can, at most, **escalate an already-nonzero**
   deterministic injury-risk signal — a tag never creates an alert on its own.
 - Tags are read-only hints. They are not editable and are not medical advice.
+- The activity `purpose` tag is exposed as `ActivityRead.purpose` and shown as a
+  chip on the activity card. It is **not** yet used to filter load or
+  consistency views (see `plans/cycling-ride-labels-utilisation.md` §4.1).
 
 ## Strength-session classification
 

@@ -10,7 +10,7 @@ const LIFT_LABELS: Record<string, string> = {
   none: 'no focus',
 };
 
-const SPLIT_LABELS: Record<string, string> = {
+export const SPLIT_LABELS: Record<string, string> = {
   push: 'push',
   pull: 'pull',
   legs: 'legs',
@@ -19,7 +19,7 @@ const SPLIT_LABELS: Record<string, string> = {
   full_body: 'full body',
 };
 
-const CLASS_LABELS: Record<string, string> = {
+export const CLASS_LABELS: Record<string, string> = {
   max_strength: 'max strength',
   volume_hypertrophy: 'volume',
   speed_power: 'speed / power',

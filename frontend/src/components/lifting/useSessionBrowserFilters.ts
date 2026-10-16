@@ -12,6 +12,8 @@ import { useCallback, useEffect, useState } from 'react';
 export interface SessionBrowserFilters {
   q: string;
   focus: string;
+  split: string;
+  sessionClass: string;
   exercise: string;
   from: string;
   to: string;
@@ -21,6 +23,8 @@ export interface SessionBrowserFilters {
 export const DEFAULT_SESSION_BROWSER_FILTERS: SessionBrowserFilters = {
   q: '',
   focus: '',
+  split: '',
+  sessionClass: '',
   exercise: '',
   from: '',
   to: '',
@@ -31,6 +35,8 @@ export const DEFAULT_SESSION_BROWSER_FILTERS: SessionBrowserFilters = {
 const URL_KEYS = {
   q: 's_q',
   focus: 's_focus',
+  split: 's_split',
+  sessionClass: 's_class',
   exercise: 's_ex',
   from: 's_from',
   to: 's_to',
@@ -48,6 +54,8 @@ function readFiltersFromLocation(): SessionBrowserFilters {
   return {
     q: params.get(URL_KEYS.q) ?? '',
     focus: params.get(URL_KEYS.focus) ?? '',
+    split: params.get(URL_KEYS.split) ?? '',
+    sessionClass: params.get(URL_KEYS.sessionClass) ?? '',
     exercise: params.get(URL_KEYS.exercise) ?? '',
     from: params.get(URL_KEYS.from) ?? '',
     to: params.get(URL_KEYS.to) ?? '',
@@ -64,6 +72,8 @@ function writeFiltersToLocation(filters: SessionBrowserFilters): void {
   };
   setOrDelete(URL_KEYS.q, filters.q);
   setOrDelete(URL_KEYS.focus, filters.focus);
+  setOrDelete(URL_KEYS.split, filters.split);
+  setOrDelete(URL_KEYS.sessionClass, filters.sessionClass);
   setOrDelete(URL_KEYS.exercise, filters.exercise);
   setOrDelete(URL_KEYS.from, filters.from);
   setOrDelete(URL_KEYS.to, filters.to);
@@ -79,11 +89,16 @@ function writeFiltersToLocation(filters: SessionBrowserFilters): void {
 
 /** True when any filter narrows the session set (page excluded). */
 export function hasActiveSessionFilters(
-  filters: Pick<SessionBrowserFilters, 'q' | 'focus' | 'exercise' | 'from' | 'to'>,
+  filters: Pick<
+    SessionBrowserFilters,
+    'q' | 'focus' | 'split' | 'sessionClass' | 'exercise' | 'from' | 'to'
+  >,
 ): boolean {
   return (
     filters.q.trim() !== '' ||
     filters.focus.trim() !== '' ||
+    filters.split.trim() !== '' ||
+    filters.sessionClass.trim() !== '' ||
     filters.exercise.trim() !== '' ||
     filters.from !== '' ||
     filters.to !== ''
