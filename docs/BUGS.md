@@ -1,6 +1,6 @@
 # FitTrack Bug Report — Active Bugs
 
-> **Updated**: 2026-09-29 | Total tracked: 98 | **Open: 5** | Fixed: 82 (archived, see `BUGS-archive.md` and git history)
+> **Updated**: 2026-10-16 | Total tracked: 99 | **Open: 6** | Fixed: 82 (archived, see `BUGS-archive.md` and git history)
 
 ## Open Bugs
 
@@ -39,3 +39,9 @@
 - **File:** `frontend/src/components/cycling/FuelPlanCard.tsx`, `backend/app/api/nutrition.py`
 - **Issue:** GET /fuel-plan/activity/{id} consistently errors. Root cause unclear from static analysis — needs live diagnosis (possible missing migration, auth edge, or serialization issue). Latent defects fixed: actuals clearing now works (empty string → null), regenerate/delete buttons added, error message now shows actual error detail, FuelPlanCard consolidated to use API helpers.
 - **Fix:** Added error logging to backend endpoint, improved frontend error display, fixed actuals clearing semantics, added regenerate/delete UI.
+
+### BUG-099: Adaptive Rest-Day Advice Carries No Apply Action
+- **Status:** OPEN (the emission is guarded; the fix needs a product call)
+- **File:** `backend/app/services/adaptive.py` (`generate_adaptive_suggestions`)
+- **Issue:** The `rest_day` suggestion's actions are attached inside `if factor is not None and upcoming:`, but `rest_day` is emitted only when recovery is below `RECOVERY_LOW`, and that same low recovery suppresses the load axis, which is the only source of an `intensity_cut` / `intensity_raise` suggestion. So `factor` is always `None` whenever a rest day is advised, and the loop that fills `actions` never runs — both cards (`AdaptiveSuggestionsCard`, `TodayAdaptiveAction`) show rest advice with no button. The action was live for one day after it landed (2026-09-08) and stopped when the load axis gained its `not recovery_low` gate (`904d267`, 2026-09-09). No test covered it, so nothing went red.
+- **Fix:** Hoist the rest loop out of the `factor` gate so rest advice carries actions, and decide there whether it offers one action or one per upcoming day (the suggestion's own detail says "the next non-rest session"). `_actions_for(force_rest=True)` already skips a date holding more than one session, which is what the apply endpoint would refuse with a 409.
