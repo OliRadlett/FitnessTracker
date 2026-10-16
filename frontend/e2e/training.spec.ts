@@ -248,4 +248,21 @@ test.describe('Training Page — week ahead (C3)', () => {
     ).toBeVisible();
     await expect(page.getByText('CTL 48 · ATL 43 · TSB +5')).toHaveCount(0);
   });
+
+  test('a failed recompute says so instead of failing silently', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.route('**/api/v1/training-plans/*/review*', (route) => {
+      if (route.request().url().includes('refresh=true')) {
+        route.fulfill({ status: 500, body: JSON.stringify({ detail: 'boom' }) });
+        return;
+      }
+      route.fallback();
+    });
+    await page.goto('/fittrack/training?mode=review');
+    await page.waitForLoadState('networkidle');
+
+    await page.getByRole('button', { name: /recompute/i }).click();
+    await expect(page.getByText("Couldn't recompute the review.")).toBeVisible();
+  });
 });

@@ -104,6 +104,10 @@ export function WeekAheadCard({ planId }: { planId: string }) {
             Not available this week: {model.unavailable.join(', ')}.
           </p>
         )}
+
+        {refresh.isError && (
+          <p className="text-xs text-warning">Couldn&apos;t recompute the review.</p>
+        )}
       </div>
     </Card>
   );
