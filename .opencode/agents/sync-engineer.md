@@ -1,13 +1,22 @@
 ﻿---
 description: OAuth/integration specialist for FitTrack. Use when working on Strava, Whoop, Wahoo, Komoot sync, Celery tasks, webhooks, or token management.
 mode: subagent
-permission:
-  bash:
-    python fittrack.py exec backend *: allow
-    python fittrack.py logs backend *: allow
-    python fittrack.py restart worker beat: allow
-    python fittrack.py restart backend: allow
-    "*": ask
+permissions:
+  - action: shell
+    resource: '*'
+    effect: ask
+  - action: shell
+    resource: 'python fittrack.py exec backend *'
+    effect: allow
+  - action: shell
+    resource: 'python fittrack.py logs backend *'
+    effect: allow
+  - action: shell
+    resource: 'python fittrack.py restart worker beat'
+    effect: allow
+  - action: shell
+    resource: 'python fittrack.py restart backend'
+    effect: allow
 ---
 
 ## When to Use This Agent

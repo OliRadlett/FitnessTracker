@@ -1,16 +1,31 @@
 ﻿---
 description: Debugger for FitTrack. Use when diagnosing errors, reading logs, tracing request flow, or investigating production issues.
 mode: subagent
-permission:
-  bash:
-    python fittrack.py logs *: allow
-    python fittrack.py exec backend *: allow
-    python fittrack.py status: allow
-    docker compose logs *: allow
-    docker compose ps: allow
-    git log *: allow
-    git diff *: allow
-    "*": ask
+permissions:
+  - action: shell
+    resource: '*'
+    effect: ask
+  - action: shell
+    resource: 'python fittrack.py logs *'
+    effect: allow
+  - action: shell
+    resource: 'python fittrack.py exec backend *'
+    effect: allow
+  - action: shell
+    resource: 'python fittrack.py status'
+    effect: allow
+  - action: shell
+    resource: 'docker compose logs *'
+    effect: allow
+  - action: shell
+    resource: 'docker compose ps'
+    effect: allow
+  - action: shell
+    resource: 'git log *'
+    effect: allow
+  - action: shell
+    resource: 'git diff *'
+    effect: allow
 ---
 
 ## When to Use This Agent

@@ -2,17 +2,37 @@
 description: Non-agentic conversational chat mode for Q&A, general questions, code explanation, and web research without modifying project files or executing commands.
 mode: primary
 color: "#3B82F6"
-permission:
-  edit: deny
-  bash: deny
-  todowrite: deny
-  task: deny
-  read: allow
-  glob: allow
-  grep: allow
-  websearch: allow
-  webfetch: allow
-  question: allow
+permissions:
+  - action: edit
+    resource: '*'
+    effect: deny
+  - action: shell
+    resource: '*'
+    effect: deny
+  - action: todowrite
+    resource: '*'
+    effect: deny
+  - action: subagent
+    resource: '*'
+    effect: deny
+  - action: read
+    resource: '*'
+    effect: allow
+  - action: glob
+    resource: '*'
+    effect: allow
+  - action: grep
+    resource: '*'
+    effect: allow
+  - action: websearch
+    resource: '*'
+    effect: allow
+  - action: webfetch
+    resource: '*'
+    effect: allow
+  - action: question
+    resource: '*'
+    effect: allow
 ---
 
 You are in **Ask Mode** — a non-agentic, conversational chat interface for OpenCode.
