@@ -32,6 +32,7 @@ from app.services.cycling import (
     get_or_create_cycling_profile,
 )
 from app.services.lifting import MAX_REPS_FOR_1RM_PR, brzycki_1rm
+from app.services.strength_insights import deload_adherence
 
 # ── Data classes ──────────────────────────────────────────────────────────────
 
@@ -2904,6 +2905,13 @@ class ChartService:
                     )
                 elif abs(vol_delta) <= 10 and abs(int_delta) <= 2:
                     insights.append("Stable: volume and intensity holding level.")
+
+        # Deload adherence — a deterministic tonnage read sharpened by the
+        # deload label (silent when the pattern is not there, or nothing in the
+        # window is classified).
+        verdict = await deload_adherence(self.db, user_id, weeks=weeks)
+        if verdict:
+            insights.append(verdict["message"])
 
         return ChartData(
             chart_type="line",
