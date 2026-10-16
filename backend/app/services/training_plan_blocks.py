@@ -33,6 +33,13 @@ async def _load_plan(
         select(TrainingPlan)
         .where(TrainingPlan.id == plan_id, TrainingPlan.user_id == user_id)
         .options(selectinload(TrainingPlan.blocks))
+        # ``populate_existing`` forces an already-loaded ``blocks`` collection to
+        # be re-read. Sessions are ``expire_on_commit=False`` (database.py), so a
+        # plan loaded before a block existed keeps its empty collection and every
+        # later read in that session would miss the new row — which reads as
+        # "create succeeded, list is empty" and makes overlap validation blind.
+        # Same reason ``_reload_plan`` sets it.
+        .execution_options(populate_existing=True)
     )
     plan = result.scalar_one_or_none()
     if plan is None:
