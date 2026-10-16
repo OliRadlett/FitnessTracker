@@ -3,7 +3,7 @@
 > **Status**: Phases 1 and 2 **built** on `feature/wahoo-zone-sync` (2026-10-16) —
 > backend (migration 100, model/schemas, client read/write, `GET/POST
 > /cycling/wahoo-zones`, `POST …/push`, `POST …/revert`, the automatic trigger from the
-> four FTP write sites, the `wahoo_zones` notification) and the card on `/cycling`
+> five FTP write sites, the `wahoo_zones` notification) and the card on `/cycling`
 > (toggle, drift table, push, revert, read-only HR section). Phase 3 (HR) is unchanged
 > and **not** built.
 > **Phase 0 (the sandbox spike) is still open.** It no longer blocks shipping — the
@@ -354,7 +354,7 @@ so the push changes the *anchor*, not the athlete's zone model.
 
 ### 6.4 Trigger wiring (as built)
 
-FTP can change in four places; two helpers keep them in step:
+FTP can change in five places; two helpers keep them in step:
 
 ```python
 # services/wahoo_zones.py
@@ -370,6 +370,7 @@ The opt-in check lives inside both, so no call site can forget it.
 | `PATCH /cycling/profile` (FTP changed **or** toggle switched on) | `commit_and_enqueue_zone_push` |
 | `POST /cycling/ftp-history` (when it updated the profile) | `commit_and_enqueue_zone_push` |
 | `POST /cycling/estimate-ftp?accept=true` (when the estimate differs) | `commit_and_enqueue_zone_push` |
+| `POST /cycling/backfill-ftp-history` (when it sets a *first* FTP) | `commit_and_enqueue_zone_push` — found late: a first-ever FTP is the case where the device has never been told anything, so failing to propagate it is the most visible version of this bug |
 | Manual "Push now" (the card) | inline `push_power_zones(force=True)` so the UI gets the answer |
 
 New task `app.tasks.scheduler.push_wahoo_zones_for_user` (per-user, `task_session()`,

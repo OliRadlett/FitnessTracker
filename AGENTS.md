@@ -257,7 +257,7 @@ into the athlete's Wahoo power zone sets so the ELEMNT colours the live zone aga
 current boundaries, and pushed structured workouts resolve their %FTP targets against a
 current FTP. Exercises `power_zones_read`/`power_zones_write`, requested since the
 planned-workout push and unused until now. **Backend landed** (migration 100
-`wahoo_zone_sets`, read/push/revert under `/cycling/wahoo-zones`, triggered from the four
+`wahoo_zone_sets`, read/push/revert under `/cycling/wahoo-zones`, triggered from the five
 FTP write sites, `wahoo_zones` notification) — boundary writes **rescale a set's own
 values by the FTP ratio** rather than imposing our zone model, so the sync moves the
 anchor and not the athlete's zone shape. **HR zones remain impossible via the API** (no

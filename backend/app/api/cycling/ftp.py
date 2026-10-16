@@ -332,6 +332,10 @@ async def backfill_ftp_history_endpoint(
         if not profile.ftp_watts:
             profile.ftp_watts = latest["ftp_watts"]
             await db.flush()
+            # A *first* FTP is the case where the head unit has never been told
+            # anything, so it is the one most worth propagating. Commits, then
+            # queues — see `commit_and_enqueue_zone_push` for why the order matters.
+            await commit_and_enqueue_zone_push(db, current_user.id, profile)
 
     return {
         "created": len(entries),
