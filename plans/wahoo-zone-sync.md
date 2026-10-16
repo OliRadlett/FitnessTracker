@@ -1,11 +1,11 @@
 # Push power / HR zones to Wahoo (auto-adjust on FTP & LTHR change)
 
-> **Status**: Phases 1 and 2 **backend landed** on `feature/wahoo-zone-sync`
-> (2026-10-16): migration 100, model/schemas, the power-zone client read/write,
-> `GET /cycling/wahoo-zones`, `POST /cycling/wahoo-zones/push`, `POST
-> /cycling/wahoo-zones/revert`, the automatic trigger from the four FTP write sites,
-> and a `wahoo_zones` notification. The card is in progress; Phase 3 (HR) is
-> unchanged and still **not** built.
+> **Status**: Phases 1 and 2 **built** on `feature/wahoo-zone-sync` (2026-10-16) —
+> backend (migration 100, model/schemas, client read/write, `GET/POST
+> /cycling/wahoo-zones`, `POST …/push`, `POST …/revert`, the automatic trigger from the
+> four FTP write sites, the `wahoo_zones` notification) and the card on `/cycling`
+> (toggle, drift table, push, revert, read-only HR section). Phase 3 (HR) is unchanged
+> and **not** built.
 > **Phase 0 (the sandbox spike) is still open.** It no longer blocks shipping — the
 > write path was built to be convention-agnostic (D2) so a wrong guess about
 > `zone_N` cannot reshape an athlete's zones — but it still decides two things:
@@ -468,13 +468,27 @@ cycling router.
 **Not testable in CI**: anything about Wahoo's actual payload semantics. That is
 Phase 0, and its result is *written into §3.1 of this doc*.
 
+**Verified at build time** (2026-10-16): 73 backend tests in `tests/test_wahoo_zones.py`;
+`ruff check app/ tests/ alembic/` clean; 7 card tests + the full frontend suite (688
+tests) green; `npm run typecheck` clean.
+
+**Pre-existing E2E failures, not caused by this feature.** `e2e/cycling.spec.ts` has 5
+failures (`profile editor shows LTHR value`, the two Recalculate-TSS tests, the two
+Estimate-FTP tests) because the spec assumes `ProfileEditor` is always rendered, while
+`cycling/page.tsx` hides it behind a `showProfile` disclosure that defaults to closed —
+and that disclosure is in `origin/main`, not on this branch. The card itself renders in
+the same run (17 of 22 pass, and the card's copy appears in the failing tests' own
+accessibility snapshots). Worth fixing in the spec, but it is a stale-spec problem that
+predates this work; CI's E2E script (`e2e/{routes,routes-organize,mutations,training}`)
+never visits `/cycling` either way.
+
 ## 10. Phasing
 
 | Phase | Deliverable | Exit criteria | State |
 |-------|-------------|---------------|-------|
 | **0 — spike** | Sandbox verification of §3.1.1–3.1.5 + the §3.2 undocumented-HR probes. Doc updated with observed statuses/payloads. | §3.1 "unverified" list answered or explicitly still unknown with a chosen fallback | **open** — no longer blocks shipping, still decides D2's simplest branch and the validity of the create path |
-| **1 — read-only** | `GET /wahoo-zones` + `WahooZonesCard` showing local zones, Wahoo sets, drift. No writes, no toggle. | Card renders real data with `power_zones_read` only | backend **built**; card in progress |
-| **2 — power push** | Migration 100, service, client writes, endpoints, toggle, `prior`/revert, task enqueue, notification. | FTP change propagates; revert restores; failures are visible and non-fatal | backend **built** (`23d001c`); card in progress |
+| **1 — read-only** | `GET /wahoo-zones` + `WahooZonesCard` showing local zones, Wahoo sets, drift. No writes, no toggle. | Card renders real data with `power_zones_read` only | **built** (`078e1b4` backend, `fcb1551` card) |
+| **2 — power push** | Migration 100, service, client writes, endpoints, toggle, `prior`/revert, task enqueue, notification. | FTP change propagates; revert restores; failures are visible and non-fatal | **built** (`23d001c` backend, `fcb1551` card) |
 | **3 — HR** | Conditional on Phase 0: real HR push if an endpoint exists, else guided-match UI. | Card tells the truth about what is and is not automatable | **not built** — the card states the limitation and shows local HR zones read-only |
 | **4 — idle** | Weight/height via `user_write` (D7), additional sports' zone sets. | Explicitly separate | not started |
 
