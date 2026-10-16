@@ -780,12 +780,23 @@ async def suggest_strength_updates(
 
 
 def _validate_days(days: list[TrainingPlanDayCreate]) -> None:
-    """Validate day payloads before persisting."""
+    """Validate day payloads before persisting.
+
+    Also rejects a payload that names one ``(day_date, sport)`` twice: the
+    upsert keys on that pair, so a duplicate would silently overwrite itself.
+    """
+    seen: set[tuple[date, str]] = set()
     for day_data in days:
         if day_data.planned_type not in VALID_DAY_TYPES:
             raise ValueError(f"Invalid planned_type: {day_data.planned_type}")
         if day_data.sport not in ("cycle", "strength", "rest"):
             raise ValueError(f"Invalid sport: {day_data.sport}")
+        key = (day_data.day_date, day_data.sport)
+        if key in seen:
+            raise ValueError(
+                f"Duplicate {day_data.sport} session on {day_data.day_date.isoformat()}"
+            )
+        seen.add(key)
 
 
 async def _get_plan_or_none(
@@ -823,12 +834,16 @@ async def save_plan_days(
     plan_id: uuid.UUID,
     days: list[TrainingPlanDayCreate],
 ) -> TrainingPlan:
-    """Upsert plan days matched by ``day_date``.
+    """Upsert plan days matched by ``(day_date, sport)``.
 
     - Existing dates: update provided fields only (completed / activity_id /
       lifting_session_id are preserved unless explicitly included in payload).
     - New dates: insert.
     - Missing dates: **delete** (so the caller must send the complete set).
+
+    A date may hold one session per sport, so the key is the pair: a payload
+    naming ``(2026-08-05, strength)`` leaves a ``(2026-08-05, cycle)`` row
+    alone, and only a missing *pair* deletes.
 
     Because omission deletes, this path is destructive — prefer the targeted
     day endpoints (``add_plan_day`` / ``update_plan_day`` / ``delete_plan_day``
@@ -840,28 +855,29 @@ async def save_plan_days(
 
     _validate_days(days)
 
-    existing_by_date = {day.day_date: day for day in plan.days}
-    incoming_dates: set[date] = set()
+    existing_by_key = {(day.day_date, day.sport): day for day in plan.days}
+    incoming_keys: set[tuple[date, str]] = set()
 
     for day_data in days:
-        incoming_dates.add(day_data.day_date)
-        row = existing_by_date.get(day_data.day_date)
+        key = (day_data.day_date, day_data.sport)
+        incoming_keys.add(key)
+        row = existing_by_key.get(key)
         if row is None:
             row = TrainingPlanDay(
                 plan_id=plan.id, **day_data.model_dump(exclude_unset=True)
             )
             db.add(row)
-            existing_by_date[row.day_date] = row
+            existing_by_key[key] = row
         else:
             # Only apply fields the caller actually sent — untouched columns
             # (completed flags, linked activity/lifting sessions) survive.
-            for key, value in day_data.model_dump(exclude_unset=True).items():
-                setattr(row, key, value)
+            for field, value in day_data.model_dump(exclude_unset=True).items():
+                setattr(row, field, value)
 
-    for day_date, row in list(existing_by_date.items()):
-        if day_date not in incoming_dates:
+    for key, row in list(existing_by_key.items()):
+        if key not in incoming_keys:
             await db.delete(row)
-            del existing_by_date[day_date]
+            del existing_by_key[key]
 
     # Auto-fill cycling fields when type changes (Feature 2)
     from app.models.cycling import CyclingProfile
@@ -873,7 +889,7 @@ async def save_plan_days(
     ftp = profile.ftp_watts if profile and profile.ftp_watts else None
 
     if ftp:
-        for day_date, row in existing_by_date.items():
+        for row in existing_by_key.values():
             if row.sport == "cycle" and row.planned_type and row.planned_type != "rest":
                 difficulty = _TYPE_TO_DIFFICULTY.get(row.planned_type)
                 if difficulty and row.planned_duration_min:
