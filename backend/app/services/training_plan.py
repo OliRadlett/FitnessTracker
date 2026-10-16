@@ -2620,7 +2620,8 @@ async def copy_plan_day(
     """Copy a plan day's exercises to a new date within the same plan.
 
     Creates a new TrainingPlanDay with the same planned_exercises, focus,
-    sport, type, and other planned fields, but on the target_date.
+    sport, type, and other planned fields, but on the target_date. The target
+    may hold a session of another sport; the same sport is refused.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2634,10 +2635,16 @@ async def copy_plan_day(
     if target_date < plan.start_date or target_date > plan.end_date:
         raise ValueError("Target date is outside the plan range")
 
-    # Check if a day already exists at the target date
-    existing = next((d for d in plan.days if d.day_date == target_date), None)
-    if existing:
-        raise ValueError("A plan day already exists at the target date")
+    # A date may hold one session per sport, so only the source's own sport (or
+    # a rest row on either side) blocks the copy.
+    if any(
+        d.day_date == target_date
+        and sports_conflict_on_date(d.sport, source.sport)
+        for d in plan.days
+    ):
+        raise ValueError(
+            f"A {source.sport} session already exists at the target date"
+        )
 
     new_day = TrainingPlanDay(
         plan_id=plan.id,
