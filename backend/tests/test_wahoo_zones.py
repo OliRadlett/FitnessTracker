@@ -81,18 +81,36 @@ class TestAnchor:
         assert wz.anchor_from_zone_set({}, "power") is None
 
 
-class TestThirdPartyOwnership:
-    def test_wahoo_app_set(self):
-        # < 1000 = created by a Wahoo application.
-        assert wz.is_third_party_zone_set({"fitness_app_id": 6}) is False
+class TestSetProvenance:
+    """Provenance is four-valued because "not the Wahoo app" is not one situation."""
 
-    def test_third_party_set(self):
-        assert wz.is_third_party_zone_set({"fitness_app_id": 1002}) is True
+    def test_wahoo_app_set_is_platform(self):
+        # <= 1000 = created by a Wahoo app: the athlete's own set, writable (D3).
+        assert wz.set_provenance({"fitness_app_id": 6}, our_app_id=3587) == "platform"
 
-    def test_unknown_is_not_false(self):
-        # "Cannot tell" must not collapse into "ours" — a write policy that
-        # conflates them overwrites sets it could not identify.
-        assert wz.is_third_party_zone_set({}) is None
+    def test_our_own_app_id_is_ours(self):
+        assert wz.set_provenance({"fitness_app_id": 3587}, our_app_id=3587) == "ours"
+
+    def test_another_app_is_third_party_only_when_we_know_ours(self):
+        assert (
+            wz.set_provenance({"fitness_app_id": 1002}, our_app_id=3587)
+            == "third_party"
+        )
+
+    def test_our_own_sets_are_not_third_party(self):
+        # The bug the probe caught: our own sets come back as 3587, above the
+        # third-party floor of 1000. A plain `> 1000` boolean called them another
+        # app's, refused them, and — because a cycling set then existed — skipped the
+        # create fallback too, so the push did nothing at all.
+        zone_set = {"fitness_app_id": 3587}
+        assert wz.set_provenance(zone_set, our_app_id=3587) != "third_party"
+        # Without our own app id we cannot tell, so it must not be treated as foreign.
+        assert wz.set_provenance(zone_set, our_app_id=None) == "unknown"
+
+    def test_missing_app_id_is_unknown_not_false(self):
+        # "Cannot tell" must stay distinct from "ours": the write policy is permissive
+        # on unknown (snapshot + revert bounds it) but a boolean would lose the case.
+        assert wz.set_provenance({}, our_app_id=3587) == "unknown"
 
 
 # ── local zone models ───────────────────────────────────────────────────────
@@ -164,16 +182,25 @@ class TestDescribeZoneSets:
                     "workout_type_family_id": 0,
                     "workout_type_location_id": 1,
                     "fitness_app_id": 1002,
-                    "originator_type": 0,
+                    "originator_type_id": 0,
                 }
-            ]
+            ],
+            our_app_id=3587,
         )
         assert len(described) == 1
         zone_set = described[0]
         assert zone_set.id == 56519
         assert zone_set.ftp == 400.0
         assert zone_set.zones == [100.0, 120.0]
-        assert zone_set.third_party is True
+        assert zone_set.provenance == "third_party"
+
+    def test_reads_the_real_originator_field_name(self):
+        # The wire field is `originator_type_id`; reading `originator_type` yielded
+        # None for every set until the probe said so (plan §3.4).
+        from_wire = wz.describe_zone_sets([{"id": 1, "originator_type_id": 1}])
+        from_wrong_name = wz.describe_zone_sets([{"id": 1, "originator_type": 1}])
+        assert from_wire[0].originator_type_id == 1
+        assert from_wrong_name[0].originator_type_id is None
 
     def test_skips_set_without_id(self):
         # An id-less set cannot be addressed, so surfacing it would invite the UI to
@@ -359,8 +386,12 @@ class TestModelTraps:
 class TestWritableSets:
     def test_zero_family_is_writable_and_indoor_default_is_not_assumed(self):
         sets = [
-            wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, third_party=False),
-            wz.WahooPowerZoneSet(id=2, workout_type_family_id=1, third_party=False),
+            wz.WahooPowerZoneSet(
+                id=1, workout_type_family_id=0, provenance="platform"
+            ),
+            wz.WahooPowerZoneSet(
+                id=2, workout_type_family_id=1, provenance="platform"
+            ),
         ]
         writable, foreign = wz.writable_cycling_sets(sets, tracked_ids=set())
         assert [s.id for s in writable] == [1]
@@ -369,18 +400,33 @@ class TestWritableSets:
     def test_unattributed_family_is_not_written(self):
         # A wrong guess on a write lands on another sport's zones — worse than
         # showing one drift figure too many, so writes are strict where drift is not.
-        sets = [wz.WahooPowerZoneSet(id=1, third_party=False)]
+        sets = [wz.WahooPowerZoneSet(id=1, provenance="platform")]
         writable, _ = wz.writable_cycling_sets(sets, tracked_ids=set())
         assert writable == []
 
-    def test_other_apps_set_is_left_alone(self):
-        sets = [wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, third_party=True)]
+    def test_another_integrations_set_is_left_alone(self):
+        sets = [
+            wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, provenance="third_party")
+        ]
         writable, foreign = wz.writable_cycling_sets(sets, tracked_ids=set())
         assert writable == []
         assert [s.id for s in foreign] == [1]
 
-    def test_our_own_third_party_set_is_writable_when_tracked(self):
-        sets = [wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, third_party=True)]
+    def test_unknown_provenance_is_writable_not_refused(self):
+        # Refusing a set we cannot identify, when it is the only cycling set, is a
+        # *silent no-op* — nothing works and nothing says so. A wrong write is at
+        # least bounded by the snapshot and the revert button.
+        sets = [wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, provenance="unknown")]
+        writable, foreign = wz.writable_cycling_sets(sets, tracked_ids=set())
+        assert [s.id for s in writable] == [1]
+        assert foreign == []
+
+    def test_a_tracked_id_proves_ownership_regardless_of_provenance(self):
+        # The id we recorded when we created the set is proof independent of
+        # `fitness_app_id`, which cannot distinguish our app from another.
+        sets = [
+            wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, provenance="third_party")
+        ]
         writable, foreign = wz.writable_cycling_sets(sets, tracked_ids={1})
         assert [s.id for s in writable] == [1]
         assert foreign == []
@@ -388,7 +434,7 @@ class TestWritableSets:
     def test_wahoo_app_set_is_writable(self):
         # The set the head unit actually colours against. Refusing to touch it would
         # make the feature a no-op for most athletes (plan D3).
-        sets = [wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, third_party=False)]
+        sets = [wz.WahooPowerZoneSet(id=1, workout_type_family_id=0, provenance="platform")]
         writable, _ = wz.writable_cycling_sets(sets, tracked_ids=set())
         assert [s.id for s in writable] == [1]
 
@@ -526,7 +572,7 @@ def push_stub(monkeypatch):
     """Patch every collaborator the write path touches, recording calls."""
 
     def _install(*, profile=None, connection=None, raw=None, rows=None, fail=None,
-                 create_returns=None):
+                 create_returns=None, our_app_id=None):
         calls = {"refresh": 0, "get": 0, "update": [], "create": [], "notify": []}
         state = {"rows": list(rows or [])}
 
@@ -563,6 +609,10 @@ def push_stub(monkeypatch):
         monkeypatch.setattr(wz, "get_wahoo_connection", _get_connection)
         monkeypatch.setattr(wz, "refresh_if_needed", _refresh)
         monkeypatch.setattr(wz, "wahoo_client", FakeWahooClient())
+        # Provenance needs our own app id; `None` is the permissive default.
+        monkeypatch.setattr(
+            wz, "settings", SimpleNamespace(wahoo_fitness_app_id=our_app_id)
+        )
         return calls, state
 
     return _install
@@ -704,6 +754,7 @@ class TestPushPowerZones:
             profile=_profile(ftp=250.0),
             connection=_connection(),
             raw=[_raw_set(set_id=7, app=1002)],
+            our_app_id=3587,
         )
         result = await wz.push_power_zones(FakeDB(), "u1")
 
@@ -712,6 +763,39 @@ class TestPushPowerZones:
         # No creating our own set on top of a deliberate delegation to another app.
         assert calls["update"] == []
         assert calls["create"] == []
+
+    async def test_our_own_untracked_set_is_updated_not_refused(self, push_stub):
+        # The probe's bug: our own sets carry fitness_app_id 3587, above the
+        # third-party floor. Classified as another app's, this set was refused *and*
+        # suppressed the create fallback, so the push did nothing at all — silently.
+        calls, _ = push_stub(
+            profile=_profile(ftp=250.0),
+            connection=_connection(),
+            raw=[_raw_set(set_id=7, app=3587)],
+            our_app_id=3587,
+        )
+        result = await wz.push_power_zones(FakeDB(), "u1")
+
+        assert result["updated"] == [7]
+        assert result["foreign"] == []
+        assert result["created"] == []
+        assert calls["update"] == [
+            (7, {"ftp": 250, "zone_1": 138, "zone_2": 188, "zone_count": 7})
+        ]
+
+    async def test_unknown_provenance_set_is_updated_rather_than_inert(self, push_stub):
+        # Unconfigured app id: we cannot tell, and refusing would be a silent no-op.
+        calls, _ = push_stub(
+            profile=_profile(ftp=250.0),
+            connection=_connection(),
+            raw=[_raw_set(set_id=7, app=3587)],
+            our_app_id=None,
+        )
+        result = await wz.push_power_zones(FakeDB(), "u1")
+
+        assert result["updated"] == [7]
+        assert result["foreign"] == []
+        assert calls["update"]
 
 
 class TestRevertWahooZones:

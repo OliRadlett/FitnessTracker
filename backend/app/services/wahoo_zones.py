@@ -43,6 +43,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
 from app.integrations.errors import PermanentAuthError, TransientSyncError
 from app.integrations.wahoo_client import (
     WAHOO_FAMILY_BIKING,
@@ -65,6 +66,8 @@ from app.services.wahoo import get_wahoo_connection, refresh_if_needed
 
 logger = logging.getLogger(__name__)
 
+settings = get_settings()
+
 ZONE_KIND_POWER = "power"
 ZONE_KIND_HEART_RATE = "heart_rate"
 
@@ -77,11 +80,21 @@ WAHOO_MAX_ZONE_SLOTS = 7
 # could not read.
 WAHOO_LOCATION_UNKNOWN = 255
 
-# Wahoo returns decimals as *strings* and marks third-party app records with
-# ``fitness_app_id > 1000`` (< 1000 = a Wahoo app). Both facts are load-bearing:
-# the first means never `float(value)` blindly, the second is the only provenance
-# signal available for deciding whose set we are looking at.
+# ``fitness_app_id`` is the only provenance signal Wahoo returns, and the 2026-10-16
+# probe (plan §3.4) showed it is weaker than it looks: a set **our own app** created
+# came back with ``fitness_app_id: 3587`` — above the floor. So "> 1000" means "a
+# third-party app", *not* "not us", and telling our sets from another integration's
+# needs our own app id (``settings.wahoo_fitness_app_id``). ``originator_type_id`` is
+# no help either: the probe saw ``1`` on a set we created while the docs' example
+# shows ``0``, and one sample is not a vocabulary.
 WAHOO_THIRD_PARTY_APP_ID_FLOOR = 1000
+
+# Provenance values. Four rather than a boolean because three different situations
+# all look like "not the Wahoo app" and want different handling.
+PROVENANCE_OURS = "ours"
+PROVENANCE_PLATFORM = "platform"  # a Wahoo app created it — the athlete's own set
+PROVENANCE_THIRD_PARTY = "third_party"  # another integration's; do not fight it
+PROVENANCE_UNKNOWN = "unknown"  # no id, or our own app id is unconfigured
 
 # The upper bound of the top zone in our models is a sentinel ("this goes on"), not
 # a real ceiling: POWER_ZONES ends at 5.0 × FTP and LTHR_HR_ZONES at 5.0 × LTHR.
@@ -156,20 +169,50 @@ def anchor_from_zone_set(zone_set: dict, zone_kind: str) -> float | None:
     return as_float(zone_set.get(key))
 
 
-def is_third_party_zone_set(zone_set: dict) -> bool | None:
-    """Whether a set was created by a third-party app.
+def set_provenance(zone_set: dict, *, our_app_id: int | None) -> str:
+    """Whose zone set is this? One of the ``PROVENANCE_*`` values.
 
-    ``None`` means "cannot tell" (no ``fitness_app_id`` in the payload) and is
-    deliberately distinct from ``False``: a policy that treats unknown as "ours"
-    would overwrite whatever it could not identify.
+    * ``ours`` — ``fitness_app_id`` is the id our own app registration gets. The only
+      value that *proves* we wrote it (a tracked id is the other proof, and is checked
+      separately because it does not depend on this field at all).
+    * ``platform`` — a Wahoo app created it (``<= 1000``). This is the athlete's own
+      set — the one the head unit colours against — and D3 says it is writable.
+    * ``third_party`` — a third-party app that is not us. Another integration is
+      syncing those numbers, so we leave them alone.
+    * ``unknown`` — no ``fitness_app_id``, **or** it is above the floor and we cannot
+      compare it because our own app id is unconfigured. Treated as writable: the
+      alternative is a *silent no-op*. Refusing a set we cannot identify, when it is
+      the only cycling set, leaves the feature doing nothing and saying nothing about
+      it — and a wrong write is bounded by the snapshot and the revert button, while a
+      no-op has nothing to bound, it simply does not work.
 
-    ``originator_type`` is ignored on purpose — its values are undocumented, and a
-    guess dressed as provenance is worse than the one signal that is documented.
+    This is the bug the probe caught: with a plain ``> 1000`` boolean, a set **we**
+    created but have no bookkeeping row for (restored backup, wiped table) was
+    reported as another app's and refused — and because a cycling set then existed,
+    the create fallback was skipped too, so the push would do nothing at all.
     """
     app_id = as_int(zone_set.get("fitness_app_id"))
     if app_id is None:
-        return None
-    return app_id > WAHOO_THIRD_PARTY_APP_ID_FLOOR
+        return PROVENANCE_UNKNOWN
+    if our_app_id is not None and app_id == our_app_id:
+        return PROVENANCE_OURS
+    if app_id > WAHOO_THIRD_PARTY_APP_ID_FLOOR:
+        return (
+            PROVENANCE_THIRD_PARTY if our_app_id is not None else PROVENANCE_UNKNOWN
+        )
+    return PROVENANCE_PLATFORM
+
+
+def our_wahoo_app_id() -> int | None:
+    """Our own ``fitness_app_id``, or ``None`` when unconfigured.
+
+    Read through one function so tests monkeypatch a single place, and so the
+    "0/absent means unset" convention has exactly one home. Unset is not fatal: it
+    costs the ability to *positively* identify another integration's set, which
+    downgrades those to ``unknown`` (writable) rather than silently inert.
+    """
+    value = getattr(settings, "wahoo_fitness_app_id", None)
+    return int(value) if value else None
 
 
 def _boundary_rows(
@@ -227,7 +270,9 @@ def compute_drift(local_anchor: float | None, wahoo_anchor: float | None) -> flo
     return round(wahoo_anchor - local_anchor, 1)
 
 
-def describe_zone_sets(sets: list[dict]) -> list[WahooPowerZoneSet]:
+def describe_zone_sets(
+    sets: list[dict], *, our_app_id: int | None = None
+) -> list[WahooPowerZoneSet]:
     """Normalise Wahoo's raw power-zone records for both display and legibility."""
     described: list[WahooPowerZoneSet] = []
     for zone_set in sets:
@@ -248,8 +293,11 @@ def describe_zone_sets(sets: list[dict]) -> list[WahooPowerZoneSet]:
                 zone_count=as_int(zone_set.get("zone_count")),
                 zones=zone_values(zone_set),
                 fitness_app_id=as_int(zone_set.get("fitness_app_id")),
-                originator_type=as_int(zone_set.get("originator_type")),
-                third_party=is_third_party_zone_set(zone_set),
+                # The wire field is `originator_type_id`, not `originator_type` —
+                # reading the latter silently yielded None for every set (caught by
+                # the probe, plan §3.4).
+                originator_type_id=as_int(zone_set.get("originator_type_id")),
+                provenance=set_provenance(zone_set, our_app_id=our_app_id),
             )
         )
     return described
@@ -268,21 +316,28 @@ def writable_cycling_sets(
     * **Not the cycling family.** A missing ``family_id`` counts as not-cycling
       here, unlike the drift rows above: a wrong guess on a *write* lands on another
       sport's zones, which is worse than showing one drift figure too many.
-    * **Another third-party app's set** (``fitness_app_id > 1000`` and not one we
-      already track): another integration is syncing those numbers, and two writers
-      disagreeing about them is a bug with no winner.
+    * **Another integration's set** — ``PROVENANCE_THIRD_PARTY``, i.e. an app id above
+      the floor that we can positively tell apart from ours, and with no bookkeeping
+      row of our own. Two writers disagreeing about the same numbers is a bug with no
+      winner. Note this needs ``settings.wahoo_fitness_app_id``: without it we cannot
+      tell our own sets from another app's, so nothing is marked foreign and the
+      push stays permissive rather than silently inert.
 
-    The athlete's *own* set — including one the Wahoo app created — is fair game.
-    It is the set the head unit colours against, and while the plan's first draft
-    said "never touch it", refusing to would make the feature do nothing in the
-    common case. Opt-in + snapshot + revert is what makes touching it safe (D3).
+    The athlete's *own* set — including one the Wahoo app created — is fair game. It is
+    the set the head unit colours against, and while the plan's first draft said "never
+    touch it", refusing to would make the feature do nothing in the common case.
+    Opt-in + snapshot + revert is what makes touching it safe (D3).
     """
     writable: list[WahooPowerZoneSet] = []
     foreign: list[WahooPowerZoneSet] = []
     for zone_set in sets:
         if zone_set.workout_type_family_id != WAHOO_FAMILY_BIKING:
             continue
-        if zone_set.third_party is True and zone_set.id not in tracked_ids:
+        # A tracked id is proof we wrote it, independent of `fitness_app_id`.
+        if zone_set.id in tracked_ids:
+            writable.append(zone_set)
+            continue
+        if zone_set.provenance == PROVENANCE_THIRD_PARTY:
             foreign.append(zone_set)
             continue
         writable.append(zone_set)
@@ -539,7 +594,7 @@ async def read_wahoo_zones(db: AsyncSession, user_id: uuid.UUID) -> WahooZonesSt
         logger.warning("Wahoo power zone read failed: %s", exc)
         return status
 
-    status.wahoo_sets = describe_zone_sets(raw)
+    status.wahoo_sets = describe_zone_sets(raw, our_app_id=our_wahoo_app_id())
     status.tracked = await _load_tracked(db, user_id)
     status.drift = _drift_rows(state, status.wahoo_sets)
     status.can_write = bool(
@@ -808,7 +863,7 @@ async def push_power_zones(
     except httpx.HTTPStatusError as exc:
         raise _translate_http_error(exc, "read") from exc
 
-    sets = describe_zone_sets(raw)
+    sets = describe_zone_sets(raw, our_app_id=our_wahoo_app_id())
     cycling_sets = [
         zone_set
         for zone_set in sets
@@ -845,10 +900,12 @@ async def push_power_zones(
             continue
         result["updated"].append(zone_set.id)
 
-    if allow_create and not cycling_sets:
-        # Only when GET found no cycling set at all. If it found sets we declined to
-        # write (another app owns them), adding our own would be noise on top of a
-        # deliberate delegation — report it and leave the athlete's setup alone.
+    if allow_create and not writable and not foreign:
+        # Every cycling set we can see is either writable (handled above) or another
+        # integration's (reported in `foreign`). Creating one when sets exist but we
+        # declined them all would be noise on top of a deliberate delegation, so this
+        # fires only when the athlete genuinely has no cycling zone set — verified by
+        # the probe to return an empty list, not a 404.
         result["created"].append(
             await _create_set(db, connection.access_token, user_id, rows, ftp=ftp)
         )

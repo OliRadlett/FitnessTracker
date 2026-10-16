@@ -248,6 +248,40 @@ which the sync is fully automatic; or (b) ask Wahoo for a Plans-style entitlemen
 covers the athlete's own zone sets. Option (a) is a manual action, not a broken feature,
 but it must be *stated* rather than discovered by an athlete whose colours never change.
 
+### 3.4.2 Write probe (2026-10-16, reversible, operator-approved)
+
+`POST` one set → `GET` → `PUT` (`ftp` only) → `GET` → `DELETE` → `GET`. Baseline was
+`[]` and returned to `[]`; the only id written was the one the probe's own `POST`
+returned.
+
+| Result | Reading |
+|--------|---------|
+| `POST /v1/power_zones` → 200 + the full record | create works; the record carries `id`, `fitness_app_id: 3587`, `originator_type_id: 1`, both `workout_type_*` as sent, `critical_power: null` |
+| `zone_1`…`zone_7` came back **exactly as sent** (100…400) | boundaries are stored **verbatim** — not fractions, not normalised against `ftp`. So the `zone_N` *convention* (lower/upper/centre) is still unknown, but irrelevant: rescaling a set's own values by the FTP ratio preserves the shape under any convention (D2) |
+| `PUT /v1/power_zones/{id}` with **only** `ftp` → 200, boundaries unchanged | **`ftp` alone does not recompute boundaries.** §3.1.2 is answered, and rescaling is *required*, not merely safe — an FTP-only push would leave the zones consistent with the *previous* anchor, the "looks fine on the card, wrong on the device" failure §6.2 already skips on purpose |
+| `PUT` worked first time | §3.1.5 confirmed: the docs' `POST` for updates is a documentation error; its own curl and the OpenAPI mirror are right |
+| `updated_at` unchanged even though `ftp` moved | Wahoo's timestamp cannot tell us "we last wrote this" — which is why the service keeps its own `pushed_at` |
+| `DELETE /v1/power_zones/{id}` → 200 `{"success":"Power Zone has been deleted"}` | cleanup is one call, so revert-by-delete is available if ever needed |
+| `workout_type_id` came back `null` | create does **not** populate it from family/location — relevant to §11.7 (which set the head unit actually uses) |
+
+**Two bugs in the shipped code, both found here and both fixed:**
+
+1. The wire field is `originator_type_id`. `describe_zone_sets` read
+   `originator_type`, so that field was `None` for **every** set — silently.
+2. `fitness_app_id > 1000` cannot mean "another app's": **our own sets carry 3587**.
+   Under the original boolean, a set we created but have no bookkeeping row for
+   (restored backup, wiped table) was classified as a foreign integration's — and
+   because a cycling set then existed, the create fallback was skipped too, so the
+   push did **nothing at all, and said nothing**. Provenance is now four-valued
+   (`ours` / `platform` / `third_party` / `unknown`), discriminated by
+   `WAHOO_FITNESS_APP_ID`, and `unknown` is *writable* — because a wrong write is
+   bounded by the snapshot and the revert button, while a silent no-op has nothing to
+   bound, it just does not work.
+
+**Still open:** §3.1.3 — app-scoping. The post-create list held only our own set,
+which is equally consistent with "nothing else existed". The operator's own look at
+the Wahoo app is the deciding evidence (§3.4.1).
+
 ## 4. Pre-implementation state
 
 | Need | Exists? | Where |
@@ -459,7 +493,7 @@ already fire `connection_reauth` for a 401.
 | # | Decision | Rationale |
 |---|----------|-----------|
 | **D1** | Opt-in (`push_wahoo_zones`, default off) governs the **automatic** path only. Pressing "Push now" is itself consent, so it does not require the toggle. | Writing into someone else's account unprompted is not acceptable; mirrors `auto_estimate_ftp`, which is also opt-in. But requiring someone to enable *automation* before they may perform the same write by hand is friction with no safety benefit — the manual button is also the path that repairs drift when the automatic push was skipped. |
-| **D2** | **Rescale the existing Wahoo set; do not impose our boundaries.** Write `ftp` **plus** boundaries derived from the set's *own* current proportions. Offer Coggan-mode only as an explicit choice. **As built**: `rescaled_boundaries()` multiplies the set's own values by `new_ftp / old_ftp` (monotonicity enforced after rounding); a set with boundaries but no readable anchor is *skipped* rather than half-updated; `critical_power` is never sent; a **created** set gets the anchor and identity only, no invented boundaries. | Our `POWER_ZONES` are Coggan (55/75/90/105/120/150 %FTP); Wahoo's blog model is ~(55/75/91/100/110/135)% with a 4a/4b split. Pushing Coggan boundaries would silently reshape zones the athlete may have tuned — the feature is about the *anchor*, not the model. If §11 spike shows Wahoo recomputes from `ftp`, even simpler: write `ftp` alone. Holds doubly for HR, where our 80/89/95/105 %LTHR bands differ from Wahoo's ~70/80/87–95/95/105 %LT bands (§3.3). The ratio approach is what made shipping ahead of the spike safe: a wrong guess about `zone_N`'s meaning leaves zones uniformly wrong (visible as drift on the card) instead of reshaped. |
+| **D2** | **Rescale the existing Wahoo set; do not impose our boundaries.** Write `ftp` **plus** boundaries derived from the set's *own* current proportions. Offer Coggan-mode only as an explicit choice. **As built**: `rescaled_boundaries()` multiplies the set's own values by `new_ftp / old_ftp` (monotonicity enforced after rounding); a set with boundaries but no readable anchor is *skipped* rather than half-updated; `critical_power` is never sent; a **created** set gets the anchor and identity only, no invented boundaries. | Our `POWER_ZONES` are Coggan (55/75/90/105/120/150 %FTP); Wahoo's blog model is ~(55/75/91/100/110/135)% with a 4a/4b split. Pushing Coggan boundaries would silently reshape zones the athlete may have tuned — the feature is about the *anchor*, not the model. Holds doubly for HR, where our 80/89/95/105 %LTHR bands differ from Wahoo's ~70/80/87–95/95/105 %LT bands (§3.3). **The probe settled the branch that was open here**: `ftp` alone does *not* recompute boundaries (§3.4.2), so rescaling is **required** — there is no "just write the anchor" fallback. |
 | **D3** | Own the athlete's cycling set(s) — **including the set the Wahoo app created** — but never touch a set attributable to *another third-party app*, and never delete a set. A new set is created **only when `GET` returns no cycling set at all**. | **Revised while building.** The first draft of this rule was "never write to a `fitness_app_id < 1000` set", reasoning that it is the athlete's own customisation. That is backwards: the Wahoo-app set is the one the head unit actually colours against, so refusing to touch it would make the feature do nothing in the common case. The real hazard is a *different* third-party app also syncing zones (`fitness_app_id > 1000`, and not one of our tracked ids) — there we would be fighting another integration. What makes writing the athlete's own set safe is opt-in + snapshot + revert, not provenance. The create path exists only because `GET` may be app-scoped (the docs do not say, unlike routes and plans); creating a set alongside sets we merely *declined* to touch would be noise on top of a deliberate delegation, so it does not happen. **Unproven assumption:** this rule presumes the athlete's set is *readable* at all. The 2026-10-16 probe returned an empty list (§3.4.1), so if `GET` turns out to be app-scoped, the rule cannot execute — the set is invisible and unwritable — and the feature degrades to maintaining a FitTrack-created set plus a one-time manual "assign this set to your cycling profile" step. |
 | **D4** | Snapshot + explicit revert instead of `UndoLog`. | `UndoLog` has no HTTP surface and no registered production kind, and `RouteMergeLog` was deliberately **not** migrated onto it exactly because a 30-day expiry would be imposed on a working undo (`AGENTS.md`, Active Planning). A `prior` JSONB column plus a revert endpoint is honest and non-expiring. |
 | **D5** | Automatic pushes are **queued from the endpoint sites** (`commit_and_enqueue_zone_push` commits the FTP change *before* enqueueing) and queued from the weekly task after its own commit. Manual push is inline, because the athlete is waiting for the answer. **Not** inline for automatic pushes. | **Revised while building.** The first draft said "inline for user actions, queued for passive changes" — right in spirit, but the obvious implementation (inline at every FTP write site) would put a Wahoo round trip inside a profile save, and `retry_request` retries 3× with 1/2/4 s backoff around 30 s timeouts, so a Wahoo outage could hang an unrelated request for the better part of two minutes. The queued path has one hazard — a worker that reads the profile before the request commits sees the *previous* FTP and pushes a stale anchor — and that failure is indistinguishable from a successful no-op, so it would never be noticed. Hence commit-then-enqueue, in that order, with a test asserting the order. |
@@ -527,9 +561,10 @@ cycling router.
 **Not testable in CI**: anything about Wahoo's actual payload semantics. That is
 Phase 0, and its result is *written into §3.1 of this doc*.
 
-**Verified at build time** (2026-10-16): 73 backend tests in `tests/test_wahoo_zones.py`;
-`ruff check app/ tests/ alembic/` clean; 7 card tests + the full frontend suite (688
-tests) green; `npm run typecheck` clean.
+**Verified at build time** (2026-10-16): **79** backend tests in `tests/test_wahoo_zones.py`
+(incl. regressions for both bugs the production probe found); `ruff check app/ tests/
+alembic/` clean; 7 card tests + the full frontend suite green; `npm run typecheck` clean;
+`alembic heads` → `103` after rebasing onto current `main`.
 
 **Pre-existing E2E failures, not caused by this feature.** `e2e/cycling.spec.ts` has 5
 failures (`profile editor shows LTHR value`, the two Recalculate-TSS tests, the two
@@ -556,12 +591,13 @@ Wahoo account — it also makes the drift visible, which is the feature's whole 
 
 ## 11. Spike checklist (Phase 0)
 
-> **Status after the 2026-10-16 production run (§3.4):** item 6 **closed** (HR — no
-> endpoint exists). Items 1 and 4 **partial** — the route is reachable and the scopes are
-> granted, but the list was empty, so nothing about the payload or about app-scoping is
-> settled. Items 2, 3, 5 and the write half of 6 **still need a write**, and the only
-> remaining blocker for those is a deliberate, reversible experiment rather than access.
-> Item 7 still needs a head unit.
+> **Status after the two 2026-10-16 production runs (§3.4, §3.4.2):** item 6 **closed**
+> (HR — no endpoint exists). Items 2, 3 and 5 **answered by the write probe**: `ftp`
+> alone does not recompute boundaries, `PUT` is the update method, and boundaries are
+> stored verbatim. Item 1 is **partly** answered (the payload shape is known; the
+> `zone_N` *convention* still needs a head unit). Item 4 is **still open** — app-scoping
+> is not settled, and it is now the only thing standing between this feature and a
+> confident claim. Item 7 needs a head unit.
 
 1. Sandbox app, authorised user, `power_zones_*` scopes → `GET /v1/power_zones`,
    record the raw payload including `zone_count`, `originator_type`,

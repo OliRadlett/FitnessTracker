@@ -57,7 +57,7 @@ function status(over: Record<string, unknown> = {}) {
       },
     ],
     wahoo_sets: [
-      { id: 77, workout_type_location_id: 0, ftp: 232, zones: [], third_party: false },
+      { id: 77, workout_type_location_id: 0, ftp: 232, zones: [], provenance: 'platform' },
     ],
     tracked: [],
     drift: [],

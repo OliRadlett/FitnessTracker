@@ -47,10 +47,16 @@ class WahooPowerZoneSet(BaseModel):
     zone_count: int | None = None
     zones: list[float] = []
     fitness_app_id: int | None = None
-    originator_type: int | None = None
-    # None = we cannot tell who owns it (no fitness_app_id). `False` and `None`
-    # must stay distinct: the write path must not treat "unknown" as "ours".
-    third_party: bool | None = None
+    # The wire field is `originator_type_id` — reading `originator_type` silently
+    # yielded None for every set, which the probe caught (plans/wahoo-zone-sync.md
+    # §3.4). Surfaced for display only; policy never reads it, because the probe's
+    # single sample (1 on a set we created, against the docs' 0) is not a vocabulary.
+    originator_type_id: int | None = None
+    # "ours" | "platform" | "third_party" | "unknown" — see `set_provenance` in
+    # services/wahoo_zones.py. Four values rather than a boolean because "not the
+    # Wahoo app" covers three situations that want different handling, and our own
+    # app's sets sit above the third-party floor too (fitness_app_id 3587).
+    provenance: str | None = None
     updated_at: datetime | None = None
 
 

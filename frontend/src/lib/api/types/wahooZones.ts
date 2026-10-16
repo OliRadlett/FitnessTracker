@@ -32,8 +32,9 @@ export interface LocalZoneSet {
 
 /**
  * A power zone set as Wahoo returns it — deliberately faithful, not tidied.
- * `third_party` keeps `false` and `null` distinct: `null` means "we cannot tell
- * who owns it" (no `fitness_app_id`), which the write path must not read as "ours".
+ * `provenance` keeps four cases distinct where a `third_party` boolean could not:
+ * "not the Wahoo app" covers our own app's sets, another integration's, and sets we
+ * cannot identify at all — and our own sets sit above the third-party floor too.
  */
 export interface WahooPowerZoneSet {
   id: number;
@@ -43,8 +44,14 @@ export interface WahooPowerZoneSet {
   zone_count: number | null;
   zones: number[];
   fitness_app_id: number | null;
-  originator_type: number | null;
-  third_party: boolean | null;
+  /** Wire field is `originator_type_id`; display only, never read for policy. */
+  originator_type_id: number | null;
+  /**
+   * `ours` | `platform` | `third_party` | `unknown`. Not a boolean: "not the Wahoo
+   * app" covers three situations, and our own app's sets sit above the third-party
+   * floor too — so `fitness_app_id > 1000` alone cannot mean "someone else's".
+   */
+  provenance: string | null;
   updated_at: string | null;
 }
 
