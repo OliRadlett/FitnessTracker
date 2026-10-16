@@ -68,4 +68,8 @@ state above; no account identifiers, streams or health metrics are sent.
 
 Nothing is sent, `decide()` returns `None`, and all deterministic behaviour is
 unchanged. Tagging is best-effort: it never blocks a write and never raises. A
-weekly backfill (`backfill_free_text_tags`) tags missed rows when enabled.
+weekly backfill (`backfill_free_text_tags`) tags missed rows when enabled. The
+backfill and the session-classification backfill bypass the shared per-user AI
+budget guard (`use_budget_guard=False`) — that guard's 5/min cap is for
+user-triggered generations and would otherwise stall a bulk backfill after five
+rows.

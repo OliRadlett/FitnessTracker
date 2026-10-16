@@ -248,3 +248,49 @@ class TestRuleLabels:
             _session(test_user.id, sets=[("Leg Press", 80, 20, 7)])
         )["session_class"] == "accessory_conditioning"
         assert jev_classification.rule_labels(_session(test_user.id))["session_class"] is None
+
+
+class TestBackfillBudget:
+    async def test_backfill_bypasses_budget_guard(
+        self, db_session, test_user, monkeypatch
+    ):
+        """A bulk backfill must not be capped by the per-user 5/min budget.
+
+        Regression: in production the shared guard stalled a backfill after
+        five rows — ``sessions_classified: 0``. The backfill passes
+        ``use_budget_guard=False`` so the guard is bypassed entirely.
+        """
+        from contextlib import asynccontextmanager
+
+        from fastapi import HTTPException
+
+        monkeypatch.setattr(jev_client, "is_configured", lambda: True)
+
+        @asynccontextmanager
+        async def raising_guard(user_id, kind, target=""):
+            raise HTTPException(status_code=429, detail="budget exceeded")
+            yield  # pragma: no cover
+
+        # The guard always 429s, as when the budget is exhausted.
+        monkeypatch.setattr("app.services.llm_base.ai_generation_guard", raising_guard)
+
+        async def fake_call(state, questions, model, timeout):
+            return _result()
+
+        # Patch the low-level SDK call, NOT decide(), so the guard path runs.
+        monkeypatch.setattr(jev_client, "_call", fake_call)
+
+        for i in range(6):  # more than the 5/minute cap
+            db_session.add(
+                _session(
+                    test_user.id,
+                    focus=f"squat-{i}",
+                    sets=[("Back Squat", 140.0 + i, 3, 8.0)],
+                )
+            )
+        await db_session.flush()
+
+        classified = await jev_classification.backfill_session_classifications(
+            db_session, test_user.id
+        )
+        assert classified == 6
