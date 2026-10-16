@@ -762,3 +762,47 @@ class UnplannedActualsResponse(BaseModel):
     days: int = 14
     activities: list[UnplannedActivity] = []
     lifting_sessions: list[UnplannedLiftingSession] = []
+
+
+class TrainingPlanBlockBase(BaseModel):
+    """Shared fields of a stored plan block (C1 -- the block/phase model)."""
+
+    name: str = Field(min_length=1, max_length=100)
+    # Free-form: base/build/peak/taper/recovery/race are suggestions, not a
+    # constraint, so a block can be called whatever its owner calls it.
+    focus: str | None = Field(default=None, max_length=30)
+    start_date: date
+    end_date: date
+    target_tss_per_week: float | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class TrainingPlanBlockCreate(TrainingPlanBlockBase):
+    """A new block.
+
+    Date containment (inside the plan) and non-overlap (against the plan's other
+    blocks) are checked in the service, because both need the plan loaded and
+    neither can be expressed on these fields alone.
+    """
+
+
+class TrainingPlanBlockUpdate(BaseModel):
+    """A partial block edit.
+
+    ``exclude_unset`` is what makes this a PATCH: an omitted field is left alone,
+    an explicit ``null`` clears it.
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    focus: str | None = Field(default=None, max_length=30)
+    start_date: date | None = None
+    end_date: date | None = None
+    target_tss_per_week: float | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class TrainingPlanBlockRead(TrainingPlanBlockBase):
+    id: uuid.UUID
+    plan_id: uuid.UUID
+
+    model_config = {"from_attributes": True}
