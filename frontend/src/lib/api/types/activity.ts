@@ -43,6 +43,8 @@ export interface Activity {
   ride_context?: RideMetrics | null;
   /** Jev purpose tag from the activity name: training|endurance|commute|recovery|race|social. */
   purpose?: string | null;
+  /** Deterministic energy-system type from the ride IF: recovery|endurance|tempo|threshold|vo2max. */
+  ride_type?: string | null;
   has_streams?: boolean;
   sources?: ActivitySource[];
   synced_at: string;
