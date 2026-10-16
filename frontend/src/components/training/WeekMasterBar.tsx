@@ -15,8 +15,9 @@
 
 import React from 'react';
 import { getActiveLocale } from '@/lib/utils';
-import type { Goal, PlanSport, TrainingWeekDay } from '@/lib/api';
+import type { Goal, TrainingWeekDay } from '@/lib/api';
 import { goalsForPlanDate, goalShortLabel } from '@/components/goals/goalPlanLinks';
+import type { AddableSport } from '@/lib/training/sessionGroups';
 import { DayCell } from './DayCell';
 
 export interface WeekMasterBarProps {
@@ -35,7 +36,7 @@ export interface WeekMasterBarProps {
   /** Opens the missed-day quick actions for the given day id. */
   onOpenMissed: (dayId: string) => void;
   /** Adds a session of `sport` on `date` (409 when that sport is taken). */
-  onAddSession?: (date: string, sport: PlanSport) => void;
+  onAddSession?: (date: string, sport: AddableSport) => void;
   busy: boolean;
   /** Desktop drag-and-drop: called with (sourceDayId, targetDate) on drop. */
   onDropSession?: (sourceDayId: string, targetDate: string) => void;

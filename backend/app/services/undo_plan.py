@@ -88,18 +88,13 @@ async def restore_plan_day_delete(
     # *not* of ``plan.days`` — a long-lived session can hold a collection loaded
     # before the delete, and reading it here would report a day that no longer
     # exists (and so refuse every restore).
-    occupied_sports = (
-        (
-            await db.execute(
-                select(TrainingPlanDay.sport).where(
-                    TrainingPlanDay.plan_id == plan_id,
-                    TrainingPlanDay.day_date == snap["day_date"],
-                )
-            )
+    occupied = await db.execute(
+        select(TrainingPlanDay.sport).where(
+            TrainingPlanDay.plan_id == plan_id,
+            TrainingPlanDay.day_date == snap["day_date"],
         )
-        .scalars()
-        .all()
     )
+    occupied_sports = occupied.scalars()
     if any(
         sports_conflict_on_date(sport, snap["sport"]) for sport in occupied_sports
     ):

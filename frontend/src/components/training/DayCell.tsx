@@ -16,7 +16,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { MapPin, Check, Target, AlertTriangle, CalendarClock, Plus } from 'lucide-react';
-import type { PlanSport, TrainingWeekDay } from '@/lib/api';
+import type { TrainingWeekDay } from '@/lib/api';
 import { formatDuration, weatherEmoji } from '@/lib/utils';
 import { ConformityBadge } from './ConformityBadge';
 import {
@@ -30,7 +30,7 @@ import {
   fmtKg,
   type DayStatus,
 } from './dayCellShared';
-import { addableSports, visibleSessions } from '@/lib/training/sessionGroups';
+import { addableSports, visibleSessions, type AddableSport } from '@/lib/training/sessionGroups';
 
 /** Status dot on a session chip. */
 const CHIP_DOT: Record<DayStatus, string> = {
@@ -63,7 +63,7 @@ export interface DayCellProps {
   /** Opens the missed-day quick actions (only shown when a session is missed). */
   onOpenMissed?: (dayId: string) => void;
   /** Adds a session of `sport` on this date (409 when that sport is taken). */
-  onAddSession?: (date: string, sport: PlanSport) => void;
+  onAddSession?: (date: string, sport: AddableSport) => void;
   busy: boolean;
   /** Desktop drag-and-drop: drag a day card onto another to swap or move it. */
   draggable?: boolean;

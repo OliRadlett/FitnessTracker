@@ -18,7 +18,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Check, Flag, X } from 'lucide-react';
 import type {
   TrainingPlan,
-  PlanSport,
   PlanDayType,
   RefreshTargetsResponse,
   Event,
@@ -40,6 +39,7 @@ import {
   groupSessionsByDate,
   indexSessionsById,
   newSessionPayload,
+  type AddableSport,
 } from '@/lib/training/sessionGroups';
 import { useToast } from '@/components/ui/Toast';
 import { WeekMasterBar } from './WeekMasterBar';
@@ -272,7 +272,7 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
     setExpandedDayId((prev) => (prev === dayId ? null : dayId));
 
   /** Add the missing sport on an occupied date; 409 means that sport is taken. */
-  const handleAddSession = (date: string, sport: PlanSport) => {
+  const handleAddSession = (date: string, sport: AddableSport) => {
     ops.addDay.mutate(newSessionPayload(date, sport), {
       onError: (err: Error) => toastError(err.message || 'Could not add that session'),
     });
@@ -360,28 +360,26 @@ export function WeeklyView({ plan, events, highlightDate }: WeeklyViewProps) {
 
   // All-weeks overview: per-week planned load + sport mix, from the plan's days.
   // A date may hold several sessions, so every session counts towards the week.
-  const weekSummaries = useMemo(
-    () =>
-      Array.from({ length: totalWeeks }, (_, wi) => {
-        const dates = Array.from({ length: 7 }, (_, i) =>
-          addDays(getWeek1Start(plan.start_date), wi * 7 + i),
-        );
-        const sessionsOn = (d: string) =>
-          plan.days.filter((pd) => pd.day_date.slice(0, 10) === d);
-        const days = dates.flatMap(sessionsOn);
-        return {
-          weekIndex: wi,
-          totalTss: Math.round(days.reduce((s, d) => s + (d.planned_tss || 0), 0)),
-          rides: days.filter((d) => d.sport === 'cycle').length,
-          strength: days.filter((d) => d.sport === 'strength').length,
-          rest: dates.filter((d) => {
-            const sessions = sessionsOn(d);
-            return sessions.length === 0 || sessions.every((s) => s.sport === 'rest');
-          }).length,
-        };
-      }),
-    [totalWeeks, plan.start_date, plan.days],
-  );
+  const weekSummaries = useMemo(() => {
+    const sessionsOn = (d: string) =>
+      plan.days.filter((pd) => pd.day_date.slice(0, 10) === d);
+    return Array.from({ length: totalWeeks }, (_, wi) => {
+      const dates = Array.from({ length: 7 }, (_, i) =>
+        addDays(getWeek1Start(plan.start_date), wi * 7 + i),
+      );
+      const days = dates.flatMap(sessionsOn);
+      return {
+        weekIndex: wi,
+        totalTss: Math.round(days.reduce((s, d) => s + (d.planned_tss || 0), 0)),
+        rides: days.filter((d) => d.sport === 'cycle').length,
+        strength: days.filter((d) => d.sport === 'strength').length,
+        rest: dates.filter((d) => {
+          const sessions = sessionsOn(d);
+          return sessions.length === 0 || sessions.every((s) => s.sport === 'rest');
+        }).length,
+      };
+    });
+  }, [totalWeeks, plan.start_date, plan.days]);
 
   const readiness = weekData?.readiness ?? null;
 

@@ -12,10 +12,13 @@
  * choices can be unit tested directly.
  */
 
-import type { CreateTrainingPlanDayPayload, PlanSport, TrainingWeekDay } from '@/lib/api';
+import type { CreateTrainingPlanDayPayload, TrainingWeekDay } from '@/lib/api';
 
 /** Sports a second session can be added in. `rest` is never one of them. */
-export const ADDABLE_SPORTS: PlanSport[] = ['cycle', 'strength'];
+export const ADDABLE_SPORTS = ['cycle', 'strength'] as const;
+
+/** A sport a date can still take a session in. */
+export type AddableSport = (typeof ADDABLE_SPORTS)[number];
 
 /** Chips a day cell shows before the "+N" overflow indicator. */
 export const SESSION_CHIP_CAP = 2;
@@ -58,7 +61,7 @@ export function visibleSessions(
  * Empty when the date is a rest day (rest is exclusive) or already holds every
  * addable sport.
  */
-export function addableSports(sessions: TrainingWeekDay[]): PlanSport[] {
+export function addableSports(sessions: TrainingWeekDay[]): AddableSport[] {
   if (sessions.some((s) => s.sport === 'rest')) return [];
   return ADDABLE_SPORTS.filter((sport) => !sessions.some((s) => s.sport === sport));
 }
@@ -66,11 +69,8 @@ export function addableSports(sessions: TrainingWeekDay[]): PlanSport[] {
 /** Payload for a new session of `sport` on `date`, with the editor's defaults. */
 export function newSessionPayload(
   date: string,
-  sport: PlanSport,
+  sport: AddableSport,
 ): CreateTrainingPlanDayPayload {
-  if (sport === 'rest') {
-    return { day_date: date, sport, planned_type: 'rest' };
-  }
   if (sport === 'strength') {
     return { day_date: date, sport, planned_type: 'moderate', planned_focus: 'squat' };
   }
