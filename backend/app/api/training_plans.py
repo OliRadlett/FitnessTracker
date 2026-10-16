@@ -432,9 +432,10 @@ async def reschedule_plan_day(
 ):
     """Move an uncompleted (missed/pending) day to ``target_date`` (FL2).
 
-    All planned fields travel with the day. Returns 409 when another
-    uncompleted non-rest day already occupies the target date, 400 when the
-    day is completed or the target falls outside the plan range.
+    All planned fields travel with the day. Returns 409 when an uncompleted
+    session of the same sport already occupies the target date (a ride may move
+    onto a lift day, but not onto another ride), 400 when the day is completed
+    or the target falls outside the plan range.
     """
     try:
         day = await plan_service.reschedule_plan_day(
@@ -535,7 +536,11 @@ async def add_plan_day(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Add one day to a plan. 409 when the date already holds a day."""
+    """Add one day to a plan. 409 when that sport is already on the date.
+
+    A date may hold one session per sport, so adding a ride to a date that holds
+    a lift is legal; a second ride, or a rest row on either side, is a 409.
+    """
     try:
         day = await plan_service.add_plan_day(db, current_user.id, plan_id, data)
     except plan_service.PlanDayConflictError as e:

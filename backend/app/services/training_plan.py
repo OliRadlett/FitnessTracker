@@ -779,6 +779,22 @@ async def suggest_strength_updates(
 # ── Internal helpers ─────────────────────────────────────────────────────
 
 
+def sports_conflict_on_date(existing_sport: str, arriving_sport: str) -> bool:
+    """Whether a session of ``arriving_sport`` may not share a date with ``existing_sport``.
+
+    A date holds one session per sport (a morning ride plus an evening lift is
+    the point of the model), and ``rest`` is exclusive — a date that holds a
+    session is not a rest day. Completion is the caller's business: a completed
+    session blocks a *new* row on its date but not a *move* onto it, because a
+    missed session may be moved onto a day that was already ridden.
+    """
+    return (
+        existing_sport == "rest"
+        or arriving_sport == "rest"
+        or existing_sport == arriving_sport
+    )
+
+
 def _validate_days(days: list[TrainingPlanDayCreate]) -> None:
     """Validate day payloads before persisting.
 
@@ -2663,9 +2679,10 @@ async def reschedule_plan_day(
     """Move an uncompleted (missed/pending) day to ``target_date`` (FL2).
 
     All planned fields travel with the day; linked actuals (if any) stay
-    attached. Raises ``PlanDayConflictError`` when another uncompleted
-    non-rest day already occupies the target date, ``ValueError`` for
-    unknown plans/days, completed days, or out-of-range targets.
+    attached. Raises ``PlanDayConflictError`` when an uncompleted session of
+    the *same sport* already occupies the target date — a ride may move onto a
+    lift day (they share the date) but not onto another ride. ``ValueError``
+    for unknown plans/days, completed days, or out-of-range targets.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2680,21 +2697,24 @@ async def reschedule_plan_day(
     if target_date < plan.start_date or target_date > plan.end_date:
         raise ValueError("Target date is outside the plan range")
 
+    # A completed session does not block the move — a missed ride may land on a
+    # day that was already ridden — but a rest row always does, whatever its
+    # completion state: a date that holds a session is not a rest day.
     occupant = next(
         (
             d
             for d in plan.days
             if d.id != day.id
             and d.day_date == target_date
-            and d.sport != "rest"
-            and not d.completed
+            and (d.sport == "rest" or not d.completed)
+            and sports_conflict_on_date(d.sport, day.sport)
         ),
         None,
     )
     if occupant is not None:
         raise PlanDayConflictError(
-            f"Target date {target_date.isoformat()} already holds an "
-            "uncompleted session"
+            f"Target date {target_date.isoformat()} already holds a "
+            f"{day.sport} session"
         )
 
     day.day_date = target_date
@@ -2769,11 +2789,14 @@ async def add_plan_day(
     plan_id: uuid.UUID,
     data: TrainingPlanDayCreate,
 ) -> TrainingPlanDay:
-    """Add a single day to a plan (409 when the date is already used).
+    """Add a single day to a plan (409 when that sport is already on the date).
 
     The targeted counterpart to ``save_plan_days``: it never deletes anything,
     so the editor can add one session without rewriting the plan's day set.
-    Completed/linked-actual columns are server-managed and never set here.
+    A date may hold one session per sport, so a second session of a *different*
+    sport on the same date is legal; the same sport, or a rest row on either
+    side, is a 409. Completed/linked-actual columns are server-managed and
+    never set here.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -2784,9 +2807,12 @@ async def add_plan_day(
     if data.day_date < plan.start_date or data.day_date > plan.end_date:
         raise ValueError("Day date is outside the plan range")
 
-    if any(d.day_date == data.day_date for d in plan.days):
+    if any(
+        d.day_date == data.day_date and sports_conflict_on_date(d.sport, data.sport)
+        for d in plan.days
+    ):
         raise PlanDayConflictError(
-            f"A day already exists on {data.day_date.isoformat()}"
+            f"A {data.sport} session already exists on {data.day_date.isoformat()}"
         )
 
     day = TrainingPlanDay(plan_id=plan.id, **data.model_dump(exclude_none=True))
