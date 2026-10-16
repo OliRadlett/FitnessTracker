@@ -377,6 +377,44 @@ async def materialise_strength_progression(
     return MaterialiseResponse.model_validate(result)
 
 
+# ── C3: weekly plan review ──────────────────────────────────────────────
+
+
+@router.get("/{plan_id}/review")
+async def get_plan_review(
+    plan_id: uuid.UUID,
+    refresh: bool = False,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The latest weekly review snapshot (C3).
+
+    Returns the persisted snapshot for the most recent week. When none exists
+    (or ``?refresh=true``), the review is computed on demand; only ``refresh``
+    persists it — the beat task owns scheduled writes.
+    """
+    from app.services import plan_review as review_service
+
+    try:
+        if refresh:
+            payload = await review_service.compute_plan_review(
+                db, current_user.id, plan_id
+            )
+            await review_service.persist_plan_review(
+                db, current_user.id, plan_id, payload
+            )
+            return payload
+
+        latest = await review_service.get_latest_review(db, current_user.id, plan_id)
+        if latest is not None:
+            return latest
+        return await review_service.compute_plan_review(db, current_user.id, plan_id)
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+
+
 # ── FL2: missed-session reconciliation ──────────────────────────────────
 
 

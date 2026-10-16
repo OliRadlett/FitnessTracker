@@ -90,6 +90,7 @@ FOCUS_GROUPS: dict[str, set[str]] = {
     "full_body": {"push", "pull", "legs"},
     "upper": {"push", "pull"},
     "accessories": {"push", "pull", "legs"},
+    "accessory": {"push", "pull", "legs"},  # Jev session_lift value
 }
 
 
@@ -466,13 +467,23 @@ def build_strength_conformity(
         )
     )
 
-    # Focus — substring match either direction, case-insensitive
+    # Focus — prefer the Jev session labels when present. Group-based matching
+    # means a planned "bench" day matches a session Jev called "push", and a
+    # label fills the gap when the user left ``focus`` blank. With no Jev label
+    # the original substring rule runs, so an unconfigured deployment is
+    # unchanged. The label never invents an actual: it is only compared.
     planned_focus = planned.get("planned_focus")
-    actual_focus = lifting_session.focus
+    jev_focus = lifting_session.session_lift or lifting_session.session_split
     focus_score = None
-    if planned_focus and actual_focus:
-        pf, af = planned_focus.lower(), actual_focus.lower()
+    if jev_focus:
+        planned_groups = _focus_groups(planned_focus)
+        actual_groups = _focus_groups(jev_focus)
+        if planned_groups is not None and actual_groups is not None:
+            focus_score = 1.0 if (planned_groups & actual_groups) else 0.0
+    if focus_score is None and planned_focus and lifting_session.focus:
+        pf, af = planned_focus.lower(), lifting_session.focus.lower()
         focus_score = 1.0 if (pf in af or af in pf) else 0.0
+    if focus_score is not None:
         components.append(
             _component(
                 "focus",
