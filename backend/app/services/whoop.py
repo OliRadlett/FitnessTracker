@@ -71,6 +71,17 @@ def _local_date_from_utc(utc_str: str | None, tz_offset: str | None) -> date | N
         return None
 
 
+def _weigh_in_date(now_utc: datetime, tz_offset: str | None) -> date:
+    """The local calendar day a weigh-in belongs to.
+
+    Whoop's body measurement payload carries no timestamp, so a weigh-in is
+    dated by the moment it was read. That moment is the user's local day, not
+    the server's, which is what the previous ``date.today()`` gave. The offset
+    falls back to UTC when the account has no cycle to read it from.
+    """
+    return _local_date_from_utc(now_utc.isoformat(), tz_offset) or now_utc.date()
+
+
 # ── Sport type mapping ──────────────────────────────────────────────────────
 
 _WHOOP_SPORT_MAP: dict[str, str] = {
@@ -1292,7 +1303,19 @@ async def sync_whoop_weight(
     if not weight_kg:
         return None
 
-    today = date.today()
+    # The body measurement payload carries no timestamp, so the weigh-in is
+    # dated by the user's local day at sync time. The most recent cycle carries
+    # the account's timezone_offset, which is the only offset Whoop exposes.
+    tz_offset: str | None = None
+    try:
+        cycle_page = await whoop_client.get_cycles(connection.access_token, limit=1)
+        cycle_records = cycle_page.get("records") or []
+        if cycle_records:
+            tz_offset = cycle_records[0].get("timezone_offset")
+    except Exception as e:
+        logger.warning(f"Could not read Whoop timezone offset for user {user_id}: {e}")
+
+    today = _weigh_in_date(datetime.now(UTC), tz_offset)
 
     stmt = (
         pg_insert(WeightLog)
