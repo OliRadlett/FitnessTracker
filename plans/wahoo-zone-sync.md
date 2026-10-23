@@ -85,11 +85,13 @@ On the **Cycling** page, under `ProfileEditor`, a new **Wahoo Zones** card:
 Verified against <https://cloud-api.wahooligan.com/> (fetched 2026-10-15) and the
 OpenAPI mirrors at <https://apis.io/apis/wahoo/wahoo-power-zones-api>.
 
-### 3.1 Power zones — documented and scoped; payload semantics still unverified
+### 3.1 Power zones — documented and scoped; payload semantics now verified (§3.4, §3.4.2)
 
-> **Partially answered by the 2026-10-16 probe (§3.4):** the route is reachable and the
-> scopes are granted (no 403), but the account's list came back **empty**, so items 1–2
-> and 4–5 below remain open and every one of them needs a write.
+> **Answered by the 2026-10-16 probe (§3.4, §3.4.2):** items 2, 3 and 5
+> below are closed — boundaries are stored verbatim, `ftp` alone does not
+> recompute them, and `PUT` is the update method. Item 1 (the `zone_N`
+> convention) needs a head unit, not a write; item 4 (app-scoping) is
+> closed by §3.4.1; item 6 is closed (§3.4.1).
 
 | Op | Endpoint | Scope |
 |----|----------|-------|
