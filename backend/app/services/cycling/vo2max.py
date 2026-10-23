@@ -390,12 +390,18 @@ def compute_decoupling_from_streams(
 ) -> dict | None:
     """Compute HR vs power decoupling from stream data.
 
-    Splits the ride into two halves and computes power:HR ratio for each.
+    Splits the ride in half and compares each half's efficiency factor, which is
+    normalised power over mean HR. TrainingPeaks uses normalised power for this
+    ratio, not arithmetic mean power, so a variable half reads higher than its
+    mean suggests.
+
     Decoupling % = ((ratio_1st - ratio_2nd) / ratio_1st) × 100
 
-    Both arrays must be the same length and contain valid data.
-    Returns None if insufficient data.
+    Both arrays must be the same length. Returns None if either half lacks
+    enough valid samples.
     """
+    from app.services.cycling.tss import compute_normalized_power
+
     if not power_data or not hr_data:
         return None
 
@@ -406,39 +412,31 @@ def compute_decoupling_from_streams(
 
     power_data = power_data[:min_len]
     hr_data = hr_data[:min_len]
+    mid = min_len // 2
 
-    # Filter to valid pairs (both power > 0 and HR > 0, finite)
-    valid_pairs = [
-        (p, h)
-        for p, h in zip(power_data, hr_data)
-        if p is not None
-        and h is not None
-        and math.isfinite(float(p))
-        and math.isfinite(float(h))
-        and float(p) > 0
-        and float(h) > 0
-    ]
+    def _efficiency_factor(
+        power: list[float], hr: list[float]
+    ) -> float | None:
+        """Normalised power over mean HR for one half."""
+        clean_power = [
+            float(p) for p in power if p is not None and math.isfinite(float(p))
+        ]
+        clean_hr = [
+            float(h)
+            for h in hr
+            if h is not None and math.isfinite(float(h)) and float(h) > 0
+        ]
+        if len(clean_hr) < 30:
+            return None
+        normalised = compute_normalized_power(clean_power)
+        if normalised is None or normalised <= 0:
+            return None
+        return normalised / (sum(clean_hr) / len(clean_hr))
 
-    if len(valid_pairs) < 60:
+    ratio_1 = _efficiency_factor(power_data[:mid], hr_data[:mid])
+    ratio_2 = _efficiency_factor(power_data[mid:], hr_data[mid:])
+    if not ratio_1 or not ratio_2 or ratio_1 <= 0:
         return None
-
-    # Split into two halves
-    mid = len(valid_pairs) // 2
-    first_half = valid_pairs[:mid]
-    second_half = valid_pairs[mid:]
-
-    if len(first_half) < 30 or len(second_half) < 30:
-        return None
-
-    # Pw:HR ratio per half from the ratio of averages (TrainingPeaks
-    # convention): mean power over mean HR — not the mean of per-sample
-    # ratios, which is a different, noisier statistic.
-    ratio_1 = (sum(p for p, _ in first_half) / len(first_half)) / (
-        sum(h for _, h in first_half) / len(first_half)
-    )
-    ratio_2 = (sum(p for p, _ in second_half) / len(second_half)) / (
-        sum(h for _, h in second_half) / len(second_half)
-    )
 
     if ratio_1 <= 0:
         return None
