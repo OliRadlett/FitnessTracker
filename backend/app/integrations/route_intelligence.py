@@ -296,25 +296,26 @@ def _classify_terrain(
 
 
 def _climb_category(gain_m: float, avg_gradient_pct: float) -> str:
-    """Categorise a climb by elevation gain and gradient (Strava-style bands).
+    """Categorise a climb by elevation gain and gradient (Strava bands).
 
     Mirrors ``services.segments.climb_category`` exactly; duplicated here
     (returning "uncategorised" instead of None) because Modal workers import
     stdlib only and cannot import app.services (pitfall 16). Keep the two in
-    sync — see tests/test_route_intelligence.py::test_climb_category_matches_canonical.
+    sync, see tests/test_route_intelligence.py::test_climb_category_matches_canonical.
     """
-    if avg_gradient_pct >= 7.5 and gain_m >= 900:
-        return "HC"
-    elif avg_gradient_pct >= 5.0 and gain_m >= 450:
-        return "1"
-    elif avg_gradient_pct >= 5.0 and gain_m >= 150:
-        return "2"
-    elif avg_gradient_pct >= 4.0 and gain_m >= 100:
-        return "3"
-    elif avg_gradient_pct >= 3.0 and gain_m >= 30:
-        return "4"
-    else:
+    if avg_gradient_pct < 3.0:
         return "uncategorised"
+    if gain_m >= 800:
+        return "HC"
+    if gain_m >= 640:
+        return "1"
+    if gain_m >= 320:
+        return "2"
+    if gain_m >= 160:
+        return "3"
+    if gain_m >= 80:
+        return "4"
+    return "uncategorised"
 
 
 # ── Modal remote worker (module scope — Modal rejects closures) ───────────────

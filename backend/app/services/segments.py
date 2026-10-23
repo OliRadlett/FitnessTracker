@@ -140,18 +140,31 @@ def _interp_elevations_by_dist(dists: list[float], eles: list):
     return lookup
 
 
+# Strava's climb score is length in metres times grade in whole percent, which
+# is exactly 100 times the elevation gain in metres. The published score bands
+# therefore reduce to gain thresholds, and the only global gate is a 3 percent
+# average gradient.
+CLIMB_GAIN_BANDS: tuple[tuple[float, str], ...] = (
+    (800.0, "HC"),
+    (640.0, "1"),
+    (320.0, "2"),
+    (160.0, "3"),
+    (80.0, "4"),
+)
+
+
 def climb_category(gain_m: float, avg_gradient_pct: float) -> str | None:
-    """Strava-style climb categorisation from gain + average gradient."""
-    if avg_gradient_pct >= 7.5 and gain_m >= 900:
-        return "HC"
-    if avg_gradient_pct >= 5.0 and gain_m >= 450:
-        return "1"
-    if avg_gradient_pct >= 5.0 and gain_m >= 150:
-        return "2"
-    if avg_gradient_pct >= 4.0 and gain_m >= 100:
-        return "3"
-    if avg_gradient_pct >= 3.0 and gain_m >= 30:
-        return "4"
+    """Categorise a climb the way Strava does.
+
+    Strava multiplies length by grade, so a climb's score is 100 times its
+    gain. A climb must average at least 3 percent to be categorised at all,
+    and then the highest band whose gain threshold it reaches applies.
+    """
+    if avg_gradient_pct < 3.0:
+        return None
+    for min_gain_m, category in CLIMB_GAIN_BANDS:
+        if gain_m >= min_gain_m:
+            return category
     return None
 
 

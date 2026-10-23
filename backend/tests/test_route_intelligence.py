@@ -184,6 +184,10 @@ def test_climb_category_matches_canonical():
         (1000, 8.0), (950, 8.0), (500, 6.0), (200, 6.0), (160, 8.0),
         (120, 4.5), (120, 2.0), (50, 3.5), (50, 2.0), (20, 8.0),
         (300, 4.0), (450, 5.0), (100, 4.0), (30, 3.0), (29, 3.0),
+        # Exact band boundaries, so a divergence at any threshold is caught.
+        (800, 5.0), (640, 5.0), (320, 5.0), (160, 5.0), (80, 5.0),
+        (799.9, 5.0), (639.9, 5.0), (319.9, 5.0), (159.9, 5.0), (79.9, 5.0),
+        (1000, 2.99), (1000, 3.0),
     ]
     for gain, grad in cases:
         expected = canonical(gain, grad) or "uncategorised"
