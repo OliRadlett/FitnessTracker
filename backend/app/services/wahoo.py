@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.wahoo_client import wahoo_client
 from app.models.activity import Activity, ActivitySource
+from app.models.route import RouteSource
 from app.models.user import OAuthConnection
 from app.services.polyline_utils import (
     extract_elevation_profile_from_wahoo_points,
@@ -405,6 +406,19 @@ async def sync_wahoo_activities(
 # ── Route sync ───────────────────────────────────────────────────────────────
 
 
+def _count_already_known(
+    processed_route_ids: list[str], existing_route_ids: set[str]
+) -> int:
+    """How many of the routes just processed we had already stored.
+
+    Mirrors Komoot, where this counter means "a provider route we already had",
+    not "a geometric merge onto a different route". Counting is derived from
+    the prefetched source ids rather than incremented inside the loop, so a
+    create cannot be mistaken for a merge.
+    """
+    return sum(1 for route_id in processed_route_ids if route_id in existing_route_ids)
+
+
 async def sync_wahoo_routes(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -424,7 +438,14 @@ async def sync_wahoo_routes(
     connection = await refresh_if_needed(db, connection)
 
     synced_count = 0
-    merged_count = 0
+    processed_route_ids: list[str] = []
+    existing = await db.execute(
+        select(RouteSource.provider_route_id).where(
+            RouteSource.provider == "wahoo",
+            RouteSource.user_id == user_id,
+        )
+    )
+    existing_route_ids = {row[0] for row in existing.all()}
     page = 1
 
     while synced_count < limit:
@@ -539,11 +560,13 @@ async def sync_wahoo_routes(
                 raw_data=route_data,
             )
             synced_count += 1
+            processed_route_ids.append(route_id)
 
         page += 1
         if len(routes) < 50:
             break
 
+    merged_count = _count_already_known(processed_route_ids, existing_route_ids)
     logger.info(
         f"Wahoo route sync complete for user {user_id}: {synced_count} synced, {merged_count} merged"
     )
