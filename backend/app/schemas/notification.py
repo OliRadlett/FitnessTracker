@@ -37,6 +37,11 @@ class NotificationPreferences(BaseModel):
     ftp_stale: bool
     event_result: bool
     race_day: bool
+    # NOTE: this DTO covers a subset of DEFAULT_PREFERENCES — video_processed,
+    # plan_review, weekly_summary, streak_milestone and deload_started already
+    # predate it. Adding a new type here is the documented fourth sync point
+    # (plans/future-enhancements.md:212); the wider drift is pre-existing.
+    wahoo_zones: bool
 
 
 class NotificationPreferencesUpdate(BaseModel):
@@ -48,3 +53,4 @@ class NotificationPreferencesUpdate(BaseModel):
     ftp_stale: bool | None = None
     event_result: bool | None = None
     race_day: bool | None = None
+    wahoo_zones: bool | None = None

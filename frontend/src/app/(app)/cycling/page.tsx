@@ -37,6 +37,7 @@ import {
   deriveStaleProviders,
 } from '@/lib/athlete';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
+import { WahooZonesCard } from '@/components/cycling/WahooZonesCard';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
 import { NextSessionCardAuto } from '@/components/training/NextSessionCard';
 import { ChartBody } from '@/components/charts/Chart';
@@ -498,6 +499,9 @@ function CyclingPageInner() {
       queryClient.invalidateQueries({ queryKey: ['chart-power-zones'] });
       queryClient.invalidateQueries({ queryKey: ['ftp-history'] });
       queryClient.invalidateQueries({ queryKey: ['chart-ftp-history'] });
+      // A new FTP is what the Wahoo zone sync follows — the status card's drift
+      // table and push gate are stale the moment this save lands.
+      queryClient.invalidateQueries({ queryKey: ['wahoo-zones'] });
       setSaveMessage('Profile saved!');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
@@ -531,6 +535,8 @@ function CyclingPageInner() {
       queryClient.invalidateQueries({ queryKey: ['lifetime-pbs'] });
       queryClient.invalidateQueries({ queryKey: ['ftp-history'] });
       queryClient.invalidateQueries({ queryKey: ['chart-ftp-history'] });
+      // Accepting an estimate writes FTP, so the Wahoo zone status follows too.
+      queryClient.invalidateQueries({ queryKey: ['wahoo-zones'] });
       setSaveMessage('FTP estimated and saved!');
       saveTimeoutRef.current.push(setTimeout(() => setSaveMessage(null), 3000));
     },
@@ -700,6 +706,10 @@ function CyclingPageInner() {
           </div>
         )}
       </Card>
+
+      {/* Wahoo zone sync — the opt-in toggle lives here (not in ProfileEditor),
+          so there is one surface for it. Reads its own status query. */}
+      <WahooZonesCard />
 
        {/* Shared load header — V2 LoadSummary (card+sparkline, single source). */}
        <div id="load-summary" className="scroll-mt-4">

@@ -124,6 +124,24 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   }],
 
   // Cycling
+  // Cycling — Wahoo zone sync. Unregistered, this request falls through to
+  // `route.continue()` and leaves the real network, so the card would render its
+  // error state in every E2E run.
+  ['api/v1/cycling/wahoo-zones', (route) => {
+    const url = route.request().url();
+    if (route.request().method() === 'POST') {
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify(
+          url.endsWith('/revert')
+            ? { anchor_value: 250, reverted: [771], missing: [] }
+            : { ftp: 260, updated: [771], created: [], skipped: [], foreign: [], reason: null },
+        ),
+      });
+      return;
+    }
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockWahooZones) });
+  }],
   ['api/v1/cycling/profile', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCyclingProfile) });
   }],

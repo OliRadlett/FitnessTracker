@@ -3037,6 +3037,15 @@ def auto_estimate_ftp_weekly() -> dict:
                     estimated_count += 1
                     await db.commit()
 
+                    # FTP moved — keep the head unit in step if the athlete opted
+                    # in. After the commit on purpose: the worker reads the profile,
+                    # so it must see this FTP and not the previous one.
+                    from app.services.wahoo_zones import (
+                        enqueue_zone_push_if_opted_in,
+                    )
+
+                    enqueue_zone_push_if_opted_in(profile.user_id, profile)
+
                 except Exception as e:
                     logger.error(
                         f"Failed to auto-estimate FTP for user {profile.user_id}: {e}",
@@ -3046,6 +3055,84 @@ def auto_estimate_ftp_weekly() -> dict:
             return {
                 "users_checked": len(profiles),
                 "ftp_estimated": estimated_count,
+            }
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.push_wahoo_zones_for_user")
+def push_wahoo_zones_for_user(user_id: str) -> dict:
+    """Push FitTrack's FTP into one athlete's Wahoo power zone sets.
+
+    **Enqueued, not scheduled.** The trigger is an FTP change, so a beat entry would
+    push on a timetable unrelated to the thing it exists to propagate.
+
+    ``require_opt_in`` is re-checked here rather than only at the enqueue site: a job
+    queued moments before the athlete switched the toggle off must not still write
+    to their Wahoo account.
+    """
+    import asyncio
+    import uuid as _uuid
+
+    from app.database import task_session
+    from app.services.notifications import notify
+    from app.services.wahoo_zones import WahooZoneError, push_power_zones
+
+    async def _run() -> dict:
+        async with task_session() as db:
+            uid = _uuid.UUID(user_id)
+            try:
+                result = await push_power_zones(db, uid, require_opt_in=True)
+            except WahooZoneError as exc:
+                # Expected conditions (no FTP, revoked, missing scope) — a warning,
+                # not a stack trace. The UI shows the state on the cycling page.
+                logger.warning("Wahoo zone push skipped for %s: %s", uid, exc)
+                await db.rollback()
+                return {"user_id": user_id, "pushed": False, "reason": exc.code}
+            except Exception as exc:
+                logger.error(
+                    "Wahoo zone push failed for %s: %s", uid, exc, exc_info=True
+                )
+                await db.rollback()
+                return {"user_id": user_id, "pushed": False, "reason": "error"}
+
+            await db.commit()
+
+            ftp = result.get("ftp")
+            wrote = bool(result["updated"] or result["created"])
+            if wrote and ftp:
+                # The change is in the athlete's device settings now, so silence
+                # would be the wrong default — the entire complaint this feature
+                # answers is that FTP moved without them knowing.
+                await notify(
+                    db,
+                    uid,
+                    type="wahoo_zones",
+                    title="Wahoo power zones updated",
+                    body=(
+                        f"Your Wahoo zone sets now use FTP {int(round(ftp))} W, so the "
+                        "head unit colours the live zone against your current "
+                        "threshold."
+                    ),
+                    severity="info",
+                    link="/cycling",
+                    # One per FTP value: a re-run must not re-announce the same move.
+                    dedup_key=f"wahoo-zones:{int(round(ftp))}",
+                    metadata={
+                        "ftp": ftp,
+                        "updated": result["updated"],
+                        "created": result["created"],
+                    },
+                )
+                await db.commit()
+
+            return {
+                "user_id": user_id,
+                "pushed": wrote,
+                "updated": len(result["updated"]),
+                "created": len(result["created"]),
+                "skipped": len(result["skipped"]),
+                "foreign": len(result["foreign"]),
             }
 
     return asyncio.run(_run())

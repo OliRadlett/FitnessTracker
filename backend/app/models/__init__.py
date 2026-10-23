@@ -41,6 +41,7 @@ from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanBlock, TrainingPlanDay
 from app.models.undo import UndoLog
 from app.models.user import OAuthConnection, User
+from app.models.wahoo_zones import WahooZoneSet
 from app.models.weather import CachedWeather
 from app.models.webhook_event import StravaWebhookEvent
 from app.models.weight import WeightLog
@@ -92,6 +93,7 @@ __all__ = [
     "TrainingPlanDay",
     "UndoLog",
     "User",
+    "WahooZoneSet",
     "WarmupTemplate",
     "WarmupTemplateStep",
     "WeightLog",
