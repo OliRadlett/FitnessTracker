@@ -4,7 +4,7 @@ import math
 import uuid
 from datetime import date, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -120,19 +120,32 @@ async def get_daily_tss(
     user_id: uuid.UUID,
     start_date: date,
     end_date: date,
+    *,
+    training_only: bool = False,
 ) -> dict[date, float]:
     """Aggregate daily TSS from all activities for a user."""
+    conditions = [
+        Activity.user_id == user_id,
+        Activity.tss.isnot(None),
+        Activity.start_date >= start_date,
+        Activity.start_date <= end_date,
+    ]
+    if training_only:
+        # Exclude commutes (purpose="commute") so a commute-heavy week doesn't
+        # look like a consistent training week. Activities Jev has not reached
+        # (purpose None) are kept - safe default for unconfigured deployments.
+        conditions.append(
+            or_(
+                Activity.context["tags"]["purpose"].astext.is_(None),
+                Activity.context["tags"]["purpose"].astext != "commute",
+            )
+        )
     result = await db.execute(
         select(
             func.date(Activity.start_date).label("day"),
             func.coalesce(func.sum(Activity.tss), 0.0).label("total_tss"),
         )
-        .where(
-            Activity.user_id == user_id,
-            Activity.tss.isnot(None),
-            Activity.start_date >= start_date,
-            Activity.start_date <= end_date,
-        )
+        .where(*conditions)
         .group_by(func.date(Activity.start_date))
     )
     rows = result.all()

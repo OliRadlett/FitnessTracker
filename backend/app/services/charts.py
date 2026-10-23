@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from statistics import mean
 from typing import ClassVar
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -146,6 +146,7 @@ _LIFT_COLORS = {
     "deadlift": "#f59e0b",
     "overhead_press": "#22c55e",
     "accessory": "#a855f7",
+    "unlabelled": "#64748b",
 }
 _RIDE_COLORS = {
     "recovery": "#14b8a6",
@@ -171,6 +172,20 @@ def _weekly_label_counts(
             if week in table:
                 table[week][label] += 1
     return weeks, {label: [table[w][label] for w in weeks] for label in labels}
+
+
+def _monthly_label_counts(
+    rows: list[tuple[date, str | None]], labels: tuple[str, ...]
+) -> tuple[list[str], dict[str, list[int]]]:
+    """ISO-month × label counts, zero-filled across the observed span."""
+    months = sorted({(day.replace(day=1)).isoformat() for day, _ in rows})
+    table = {m: dict.fromkeys(labels, 0) for m in months}
+    for day, label in rows:
+        if label in labels:
+            m = (day.replace(day=1)).isoformat()
+            if m in table:
+                table[m][label] += 1
+    return months, {label: [table[m][label] for m in months] for label in labels}
 
 
 # ── Chart Service ─────────────────────────────────────────────────────────────
@@ -533,20 +548,31 @@ class ChartService:
 
     # ── Weekly TSS ─────────────────────────────────────────────────────────────
 
-    async def weekly_tss(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
+    async def weekly_tss(
+        self, user_id: uuid.UUID, weeks: int = 16, *, training_only: bool = False
+    ) -> ChartData:
         cutoff = date.today() - timedelta(weeks=weeks)
         week_start = func.date_trunc("week", Activity.start_date).label("week_start")
+
+        conditions = [
+            Activity.user_id == user_id,
+            Activity.tss.isnot(None),
+            Activity.start_date >= cutoff,
+        ]
+        if training_only:
+            conditions.append(
+                or_(
+                    Activity.context["tags"]["purpose"].astext.is_(None),
+                    Activity.context["tags"]["purpose"].astext != "commute",
+                )
+            )
 
         result = await self.db.execute(
             select(
                 week_start,
                 func.sum(Activity.tss).label("total_tss"),
             )
-            .where(
-                Activity.user_id == user_id,
-                Activity.tss.isnot(None),
-                Activity.start_date >= cutoff,
-            )
+            .where(*conditions)
             .group_by(week_start)
             .order_by(week_start)
         )
@@ -2457,14 +2483,16 @@ class ChartService:
     # ── Consistency heatmap (daily TSS calendar) ────────────────────────────────
 
     async def consistency_heatmap(
-        self, user_id: uuid.UUID, days: int = 182
+        self, user_id: uuid.UUID, days: int = 182, *, training_only: bool = False
     ) -> ChartData:
         """Daily TSS over the trailing window, rendered as a calendar heatmap."""
         days = min(days, 365)
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
 
-        daily = await get_daily_tss(self.db, user_id, start_date, end_date)
+        daily = await get_daily_tss(
+            self.db, user_id, start_date, end_date, training_only=training_only
+        )
 
         labels: list[str] = []
         data: list[float] = []
@@ -3081,6 +3109,61 @@ class ChartService:
                 "No lift-labelled sessions in range — Jev unset, or the weekly "
                 "backfill has not run."
             ),
+        )
+
+    async def lift_pr_cadence(self, user_id: uuid.UUID, months: int = 12) -> ChartData:
+        """Monthly PR count per competition lift (via the Jev ``session_lift`` label).
+
+        The exposure counterpart to ``big_3_total``: a lift whose PRs cluster
+        right after its training frequency rises shows the training translating.
+        PRs without a classified session land in an ``unlabelled`` bucket.
+        """
+        from app.models.lifting import PersonalRecord
+
+        cutoff = date.today() - timedelta(days=months * 30)
+        rows = (
+            await self.db.execute(
+                select(PersonalRecord.achieved_date, LiftingSession.session_lift)
+                .outerjoin(
+                    LiftingSession, LiftingSession.id == PersonalRecord.session_id
+                )
+                .where(
+                    PersonalRecord.user_id == user_id,
+                    PersonalRecord.record_type == "1rm",
+                    PersonalRecord.achieved_date >= cutoff,
+                )
+            )
+        ).all()
+
+        lifts = tuple(label for label in LIFT_LABELS if label != "none") + ("unlabelled",)
+        month_keys, counts = _monthly_label_counts(
+            [(day, lift if lift in lifts else "unlabelled") for day, lift in rows],
+            lifts,
+        )
+        series = [
+            ChartSeries(
+                name=label, data=counts[label], color=_LIFT_COLORS.get(label),
+            )
+            for label in lifts
+            if any(counts[label])
+        ]
+        if not month_keys or not series:
+            return ChartData(
+                chart_type="bar",
+                title="PR cadence by lift",
+                labels=[],
+                series=[],
+                x_label="Month",
+                y_label="PRs",
+                insights=["No PRs in range."],
+            )
+        return ChartData(
+            chart_type="bar",
+            title="PR cadence by lift",
+            labels=month_keys,
+            series=series,
+            x_label="Month",
+            y_label="PRs",
         )
 
     # ── Ride labels ───────────────────────────────────────────────────────────

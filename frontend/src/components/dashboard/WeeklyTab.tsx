@@ -126,6 +126,7 @@ export function WeeklyTab({
      `_week_bounds` (see PeriodNav). ─────────────────────────────────────── */
   const [weeksBack, setWeeksBack] = React.useState(0);
   const viewedMondayStr = toDateStr(mondayOfOffset(weeksBack));
+  const [trainingOnly, setTrainingOnly] = React.useState(false);
 
   const {
     data: weeklyReport,
@@ -140,8 +141,13 @@ export function WeeklyTab({
   });
 
   const { data: weeklyTss, isLoading: tssLoading } = useQuery<ChartData>({
-    queryKey: ['chart-weekly-tss', chartWeeks],
-    queryFn: () => authFetch<ChartData>(`/api/v1/charts/weekly_tss?weeks=${chartWeeks}`),
+    queryKey: ['chart-weekly-tss', chartWeeks, trainingOnly],
+    queryFn: () =>
+      authFetch<ChartData>(
+        `/api/v1/charts/weekly_tss?weeks=${chartWeeks}${
+          trainingOnly ? '&training_only=true' : ''
+        }`,
+      ),
     staleTime: 300_000,
     refetchOnWindowFocus: true,
     enabled: !!token,
@@ -447,6 +453,15 @@ export function WeeklyTab({
             <h2 className="text-sm font-medium text-muted uppercase tracking-wider">Training Load</h2>
             <span className="text-xs text-muted tabular-nums">Shared range · {rangePreset}</span>
           </div>
+          <label className="inline-flex items-center gap-2 text-xs text-muted mb-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={trainingOnly}
+              onChange={(e) => setTrainingOnly(e.target.checked)}
+              className="accent-accent"
+            />
+            Exclude commutes
+          </label>
           <Card>
             <ChartBody
               isLoading={tssLoading}
