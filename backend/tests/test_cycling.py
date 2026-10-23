@@ -164,6 +164,20 @@ class TestDecoupling:
         assert r["second_half_ratio"] == pytest.approx(1.8)
         assert r["classification"] == "Aerobic Deficiency"
 
+    def test_uses_normalized_power_not_mean(self):
+        """A spikey first half must read as decoupled even at equal means.
+
+        Both halves average 200 W, so a mean-based ratio reports 0%. The first
+        half holds 400 W for twenty seconds then 100 W, so its normalised power
+        is higher and the ride is genuinely decoupled.
+        """
+        power = [400.0] * 20 + [100.0] * 40 + [200.0] * 60
+        r = compute_decoupling_from_streams(power, [100.0] * 120)
+        np_first = compute_normalized_power(power[:60])
+        expected = (np_first - 200.0) / np_first * 100
+        assert r["decoupling_pct"] == pytest.approx(round(expected, 1))
+        assert r["decoupling_pct"] > 0
+
     def test_insufficient_data(self):
         assert compute_decoupling_from_streams([200.0] * 30, [100.0] * 30) is None
         assert compute_decoupling_from_streams([], []) is None
