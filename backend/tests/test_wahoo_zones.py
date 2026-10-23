@@ -743,11 +743,23 @@ class TestPushPowerZones:
         assert calls["create"] == [
             {
                 "ftp": 250,
+                "zone_1": 138,
+                "zone_2": 188,
+                "zone_3": 228,
+                "zone_4": 250,
+                "zone_5": 275,
+                "zone_6": 338,
+                "zone_count": 7,
                 "workout_type_family_id": wz.WAHOO_FAMILY_BIKING,
                 "workout_type_location_id": 0,
             }
         ]
         assert state["rows"][0].anchor_value == 250.0
+        assert state["rows"][0].boundaries == {
+            "ftp": 250,
+            "zones": [138, 188, 228, 250, 275, 338],
+            "zone_count": 7,
+        }
 
     async def test_other_apps_set_is_reported_not_written(self, push_stub):
         calls, _ = push_stub(

@@ -75,6 +75,19 @@ ZONE_KIND_HEART_RATE = "heart_rate"
 # reference), so seven is the most boundaries a set can carry.
 WAHOO_MAX_ZONE_SLOTS = 7
 
+# Wahoo's published power-zone bands (% of FTP), from the Wahoo Fitness blog
+# ("By the Numbers: Power"). Used **only on the create path**, where there is no
+# existing shape to preserve: the API is app-scoped (see §3.4.1), so we can never
+# read the athlete's own set to rescale it, and `ftp` alone does not recompute
+# boundaries (§3.4.2), so an anchor without boundaries would leave the head unit
+# with no zones at all.
+#
+# Seven lower bounds (the API's zone_count=7 ceiling): 0, 55, 75, 91, 100, 110, 135.
+# The app's "auto calculate" may use slightly different cutpoints (90 vs 91, 105 vs
+# 110); verify against the app's own auto-derived output and adjust here if needed.
+# `zone_1` is the implicit 0, so the factors below are for zones 2..7.
+WAHOO_POWER_ZONE_FACTORS = (0.55, 0.75, 0.91, 1.00, 1.10, 1.35)
+
 # Wahoo's Workout Type Locations: 0 indoor, 1 outdoor, 255 unknown. We only ever
 # *write* 0 or 1, but our own bookkeeping row has to key a set whose location we
 # could not read.
@@ -762,19 +775,26 @@ async def _create_set(
 ) -> int:
     """Create a set when the athlete has none we may write to.
 
-    Minimal by design: anchor plus cycling identity, no boundaries. There is no
-    existing shape to preserve, and synthesising one from our Coggan model is
-    precisely the "impose our zones" behaviour the plan rejects (D2). Letting Wahoo
-    derive its own boundaries from the anchor is the honest default.
+    Boundaries are auto-derived from FTP using Wahoo's published power-zone bands
+    (``WAHOO_POWER_ZONE_FACTORS``) — the only option available to us, because the
+    API is app-scoped (see §3.4.1): we can never read the athlete's own set to
+    preserve its shape, and the probe settled that ``ftp`` alone does not
+    recompute boundaries (§3.4.2), so an anchor without boundaries would leave
+    the head unit with no zones at all.
 
-    This path exists because ``GET /v1/power_zones`` may return only *our* app's
-    sets (the docs do not say, unlike routes and plans, whose app-scoping is
-    explicit). If so, a fresh connection sees nothing to update and would otherwise
-    do nothing at all — the card reports what was found so the athlete can spot it.
+    This is a deliberate departure from D2's "never impose our model" rule, and
+    the only place it happens: on the *create* path there is no existing shape to
+    preserve. The set starts unassigned to any workout profile, so the athlete
+    must assign it in the Wahoo app before the head unit uses it — that step is
+    stated in the card, not discovered. Revert cannot delete (D4), so the
+    athlete removes an unwanted set in the Wahoo app; the snapshot is still
+    recorded for the rows we track.
     """
+    boundaries = [round(ftp * factor) for factor in WAHOO_POWER_ZONE_FACTORS]
     payload = power_zone_payload(
         ftp=ftp,
-        boundaries=[],
+        boundaries=boundaries,
+        zone_count=len(WAHOO_POWER_ZONE_FACTORS) + 1,
         include_identity=True,
         location_id=WAHOO_LOCATION_INDOOR,
     )
@@ -800,7 +820,11 @@ async def _create_set(
     rows.append(row)
     row.anchor_value = ftp
     row.boundaries = json_safe(
-        {"ftp": int(round(ftp)), "zones": [], "zone_count": None},
+        {
+            "ftp": int(round(ftp)),
+            "zones": boundaries,
+            "zone_count": len(WAHOO_POWER_ZONE_FACTORS) + 1,
+        },
         label="Wahoo zone boundaries",
     )
     row.pushed_at = datetime.now(UTC)

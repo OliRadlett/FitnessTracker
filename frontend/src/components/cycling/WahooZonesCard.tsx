@@ -461,6 +461,12 @@ export function WahooZonesCard() {
                   </li>
                 ))}
               </ul>
+              <p className="text-xs text-muted mt-2">
+                For your head unit to use these boundaries, assign the set to your
+                cycling profile in the Wahoo app (Zones → Assign workout profiles).
+                FitTrack can't do that for you, because the API only sees its own
+                sets.
+              </p>
             </div>
           )}
 
