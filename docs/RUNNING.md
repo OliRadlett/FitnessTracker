@@ -113,7 +113,7 @@ OpenCode auto-formats `.py` files with ruff on save (configured in `opencode.jso
 
 ## Database Migrations
 
-⚠️ Revisions run from `"001"` but the numbers are not contiguous. `003` and `073` were never used, and filenames do not always match revision ids (see AGENTS.md pitfall 6), so trust the `revision` and `down_revision` headers. Current head is `102`, and [`backend/tests/test_doc_claims.py`](../backend/tests/test_doc_claims.py) fails if this line goes stale.
+⚠️ Revisions run from `"001"` but the numbers are not contiguous. `003` and `073` were never used, and filenames do not always match revision ids (see AGENTS.md pitfall 6), so trust the `revision` and `down_revision` headers. Current head is `103`, and [`backend/tests/test_doc_claims.py`](../backend/tests/test_doc_claims.py) fails if this line goes stale.
 
 ```bash
 # Generate
