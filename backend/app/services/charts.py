@@ -146,6 +146,7 @@ _LIFT_COLORS = {
     "deadlift": "#f59e0b",
     "overhead_press": "#22c55e",
     "accessory": "#a855f7",
+    "unlabelled": "#64748b",
 }
 _RIDE_COLORS = {
     "recovery": "#14b8a6",
@@ -171,6 +172,20 @@ def _weekly_label_counts(
             if week in table:
                 table[week][label] += 1
     return weeks, {label: [table[w][label] for w in weeks] for label in labels}
+
+
+def _monthly_label_counts(
+    rows: list[tuple[date, str | None]], labels: tuple[str, ...]
+) -> tuple[list[str], dict[str, list[int]]]:
+    """ISO-month × label counts, zero-filled across the observed span."""
+    months = sorted({(day.replace(day=1)).isoformat() for day, _ in rows})
+    table = {m: dict.fromkeys(labels, 0) for m in months}
+    for day, label in rows:
+        if label in labels:
+            m = (day.replace(day=1)).isoformat()
+            if m in table:
+                table[m][label] += 1
+    return months, {label: [table[m][label] for m in months] for label in labels}
 
 
 # ── Chart Service ─────────────────────────────────────────────────────────────
@@ -3081,6 +3096,61 @@ class ChartService:
                 "No lift-labelled sessions in range — Jev unset, or the weekly "
                 "backfill has not run."
             ),
+        )
+
+    async def lift_pr_cadence(self, user_id: uuid.UUID, months: int = 12) -> ChartData:
+        """Monthly PR count per competition lift (via the Jev ``session_lift`` label).
+
+        The exposure counterpart to ``big_3_total``: a lift whose PRs cluster
+        right after its training frequency rises shows the training translating.
+        PRs without a classified session land in an ``unlabelled`` bucket.
+        """
+        from app.models.lifting import PersonalRecord
+
+        cutoff = date.today() - timedelta(days=months * 30)
+        rows = (
+            await self.db.execute(
+                select(PersonalRecord.achieved_date, LiftingSession.session_lift)
+                .outerjoin(
+                    LiftingSession, LiftingSession.id == PersonalRecord.session_id
+                )
+                .where(
+                    PersonalRecord.user_id == user_id,
+                    PersonalRecord.record_type == "1rm",
+                    PersonalRecord.achieved_date >= cutoff,
+                )
+            )
+        ).all()
+
+        lifts = tuple(label for label in LIFT_LABELS if label != "none") + ("unlabelled",)
+        month_keys, counts = _monthly_label_counts(
+            [(day, lift if lift in lifts else "unlabelled") for day, lift in rows],
+            lifts,
+        )
+        series = [
+            ChartSeries(
+                name=label, data=counts[label], color=_LIFT_COLORS.get(label),
+            )
+            for label in lifts
+            if any(counts[label])
+        ]
+        if not month_keys or not series:
+            return ChartData(
+                chart_type="bar",
+                title="PR cadence by lift",
+                labels=[],
+                series=[],
+                x_label="Month",
+                y_label="PRs",
+                insights=["No PRs in range."],
+            )
+        return ChartData(
+            chart_type="bar",
+            title="PR cadence by lift",
+            labels=month_keys,
+            series=series,
+            x_label="Month",
+            y_label="PRs",
         )
 
     # ── Ride labels ───────────────────────────────────────────────────────────
