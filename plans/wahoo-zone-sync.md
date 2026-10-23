@@ -66,6 +66,14 @@ On the **Cycling** page, under `ProfileEditor`, a new **Wahoo Zones** card:
 - The toggle is **opt-in, default off** (we are writing to a third-party account).
 - The card shows a **fit/drift diff** so the user can see what a push would change
   *before* it happens; "Push now" performs it.
+- Because `GET /v1/power_zones` is app-scoped (§3.4.1), the drift table only ever
+  contains sets *we* created — zero on a fresh connection, one after the first push.
+  It is honest about that, but it is **not** the comparison the name implies, and it
+  cannot be the athlete's own set. The feature's value therefore rests on the
+  one-time manual action stated under "Sets FitTrack has written to": assign the
+  FitTrack-created set to the cycling profile in the Wahoo app (Zones → Assign
+  workout profiles). After that, the automatic sync works for the lifetime of the
+  connection.
 - After an automatic push, a notification ("Your Wahoo power zones were updated to
   268 W") so the change is never silent.
 - **Revert** restores the snapshot taken before our first write.
