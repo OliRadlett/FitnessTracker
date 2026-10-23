@@ -8,7 +8,7 @@ from datetime import date, datetime, timedelta
 from statistics import mean
 from typing import ClassVar
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -533,20 +533,31 @@ class ChartService:
 
     # ── Weekly TSS ─────────────────────────────────────────────────────────────
 
-    async def weekly_tss(self, user_id: uuid.UUID, weeks: int = 16) -> ChartData:
+    async def weekly_tss(
+        self, user_id: uuid.UUID, weeks: int = 16, *, training_only: bool = False
+    ) -> ChartData:
         cutoff = date.today() - timedelta(weeks=weeks)
         week_start = func.date_trunc("week", Activity.start_date).label("week_start")
+
+        conditions = [
+            Activity.user_id == user_id,
+            Activity.tss.isnot(None),
+            Activity.start_date >= cutoff,
+        ]
+        if training_only:
+            conditions.append(
+                or_(
+                    Activity.context["tags"]["purpose"].astext.is_(None),
+                    Activity.context["tags"]["purpose"].astext != "commute",
+                )
+            )
 
         result = await self.db.execute(
             select(
                 week_start,
                 func.sum(Activity.tss).label("total_tss"),
             )
-            .where(
-                Activity.user_id == user_id,
-                Activity.tss.isnot(None),
-                Activity.start_date >= cutoff,
-            )
+            .where(*conditions)
             .group_by(week_start)
             .order_by(week_start)
         )
@@ -2457,14 +2468,16 @@ class ChartService:
     # ── Consistency heatmap (daily TSS calendar) ────────────────────────────────
 
     async def consistency_heatmap(
-        self, user_id: uuid.UUID, days: int = 182
+        self, user_id: uuid.UUID, days: int = 182, *, training_only: bool = False
     ) -> ChartData:
         """Daily TSS over the trailing window, rendered as a calendar heatmap."""
         days = min(days, 365)
         end_date = date.today()
         start_date = end_date - timedelta(days=days)
 
-        daily = await get_daily_tss(self.db, user_id, start_date, end_date)
+        daily = await get_daily_tss(
+            self.db, user_id, start_date, end_date, training_only=training_only
+        )
 
         labels: list[str] = []
         data: list[float] = []

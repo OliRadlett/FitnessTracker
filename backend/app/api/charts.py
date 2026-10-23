@@ -39,7 +39,7 @@ CHART_CACHE_TTL = 300  # seconds
 # recovery_vs_strain) were removed — use stream_power_curve, ftp_history,
 # hrv_trend_detailed and strain_vs_recovery instead.
 CHART_REGISTRY: dict[str, dict[str, Any]] = {
-    "weekly_tss": {"method": "weekly_tss", "params": ["weeks"]},
+    "weekly_tss": {"method": "weekly_tss", "params": ["weeks", "training_only"]},
     "estimated_1rm_history": {
         "method": "estimated_1rm_history",
         "params": ["exercise_name"],
@@ -91,7 +91,7 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
         "method": "power_duration_percentile",
         "params": ["days"],
     },
-    "consistency_heatmap": {"method": "consistency_heatmap", "params": ["days"]},
+    "consistency_heatmap": {"method": "consistency_heatmap", "params": ["days", "training_only"]},
     "sleep_consistency": {"method": "sleep_consistency", "params": ["days"]},
     "strength_balance": {"method": "strength_balance", "params": []},
     "session_class_mix": {"method": "session_class_mix", "params": ["weeks"]},
@@ -196,6 +196,10 @@ async def get_chart(
     days_b: int | None = Query(
         None, ge=1, le=365, description="Second period in days (for comparison charts)"
     ),
+    training_only: bool | None = Query(
+        None,
+        description="Exclude rides tagged as commutes from load views (Jev purpose)",
+    ),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -214,6 +218,7 @@ async def get_chart(
         "months": months,
         "exercise_name": exercise_name,
         "days_b": days_b,
+        "training_only": training_only,
     }
     missing_required = [
         p for p in chart_info.get("required", []) if provided.get(p) is None
