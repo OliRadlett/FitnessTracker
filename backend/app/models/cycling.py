@@ -42,6 +42,12 @@ class CyclingProfile(Base):
     auto_estimate_ftp: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
+    # Keep the athlete's Wahoo zone sets in step with FitTrack's FTP. Opt-in and
+    # off by default: this writes to a third-party account, so it needs consent
+    # rather than a default-on convenience.
+    push_wahoo_zones: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     # Personalized power model fields (fitted by Modal weekly task)
     critical_power: Mapped[float | None] = mapped_column(Float, nullable=True)
     w_prime: Mapped[float | None] = mapped_column(Float, nullable=True)

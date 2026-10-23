@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     # Wahoo OAuth
     wahoo_client_id: str = ""
     wahoo_client_secret: str = ""
+    # FitTrack's own Wahoo app registration id (`fitness_app_id`). Wahoo's zone
+    # payload carries it on every set, and it is the only way to tell a set *we*
+    # created from another integration's: the 2026-10-16 probe
+    # (plans/wahoo-zone-sync.md §3.4) showed our own sets come back as 3587, well
+    # above the "third-party" floor of 1000. Unset is safe but permissive — an
+    # unidentified set is treated as writable (snapshot + revert bounds a wrong
+    # write) rather than skipped, which would be a silent no-op.
+    wahoo_fitness_app_id: int | None = None
 
     # Withings OAuth (body composition scales)
     withings_client_id: str = ""

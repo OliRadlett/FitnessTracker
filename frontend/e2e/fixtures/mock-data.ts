@@ -464,8 +464,93 @@ export const mockCyclingProfile = {
   weight_kg: 78,
   lactate_threshold_hr: 172,
   auto_estimate_ftp: true,
+  push_wahoo_zones: true,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-08-01T00:00:00Z',
+};
+
+// Wahoo power-zone sync (plans/wahoo-zone-sync.md). The indoor set is 10 W behind
+// FitTrack's FTP, which is the drift state the card exists to make visible; the
+// tracked row carries a snapshot so the revert control is exercised too.
+export const mockWahooZones = {
+  connected: true,
+  connection_status: 'active',
+  opt_in: true,
+  can_write: true,
+  hr_write_supported: false,
+  hr_note:
+    'Wahoo does not expose heart rate zones through its Cloud API — there is no ' +
+    'heart_rate_zones endpoint and no matching OAuth scope, and user_write can only ' +
+    'carry profile fields. Your HR zones are set from a Threshold Heart Rate in the ' +
+    'Wahoo app; keep the THR values in step manually.',
+  local_sets: [
+    {
+      zone_kind: 'power',
+      anchor_kind: 'ftp',
+      anchor_value: 260,
+      zones: [
+        { zone: 'Z1', zone_name: 'Active Recovery', lower: 0, upper: 143 },
+        { zone: 'Z2', zone_name: 'Endurance', lower: 143, upper: 195 },
+        { zone: 'Z3', zone_name: 'Tempo', lower: 195, upper: 234 },
+        { zone: 'Z4', zone_name: 'Threshold', lower: 234, upper: 273 },
+        { zone: 'Z5', zone_name: 'VO2max', lower: 273, upper: 312 },
+        { zone: 'Z6', zone_name: 'Anaerobic', lower: 312, upper: 390 },
+        { zone: 'Z7', zone_name: 'Neuromuscular', lower: 390, upper: null },
+      ],
+    },
+    {
+      zone_kind: 'heart_rate',
+      anchor_kind: 'lthr',
+      anchor_value: 172,
+      zones: [
+        { zone: 'Z1', zone_name: 'Recovery', lower: 0, upper: 138 },
+        { zone: 'Z2', zone_name: 'Aerobic', lower: 138, upper: 153 },
+        { zone: 'Z3', zone_name: 'Tempo', lower: 153, upper: 163 },
+        { zone: 'Z4', zone_name: 'Threshold', lower: 163, upper: 181 },
+        { zone: 'Z5', zone_name: 'VO2max', lower: 181, upper: null },
+      ],
+    },
+  ],
+  wahoo_sets: [
+    {
+      id: 771,
+      workout_type_family_id: 0,
+      workout_type_location_id: 1,
+      ftp: 250,
+      zone_count: 7,
+      zones: [138, 188, 225, 263, 300, 375],
+      fitness_app_id: 6,
+      originator_type_id: 0,
+      provenance: 'platform',
+      updated_at: '2026-08-01T00:00:00Z',
+    },
+  ],
+  tracked: [
+    {
+      id: 'wz-1',
+      zone_kind: 'power',
+      workout_type_family_id: 0,
+      workout_type_location_id: 1,
+      wahoo_zone_set_id: 771,
+      anchor_value: 260,
+      boundaries: { ftp: 260, zones: [143, 195, 234, 273, 312, 390], zone_count: 7 },
+      has_prior: true,
+      pushed_at: '2026-08-01T09:00:00Z',
+      last_error: null,
+    },
+  ],
+  drift: [
+    {
+      zone_kind: 'power',
+      workout_type_location_id: 1,
+      wahoo_zone_set_id: 771,
+      local_anchor: 260,
+      wahoo_anchor: 250,
+      delta: -10,
+    },
+  ],
+  error_code: null,
+  error: null,
 };
 
 export const mockCyclingMetrics = {
