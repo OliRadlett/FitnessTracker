@@ -96,6 +96,7 @@ CHART_REGISTRY: dict[str, dict[str, Any]] = {
     "strength_balance": {"method": "strength_balance", "params": []},
     "session_class_mix": {"method": "session_class_mix", "params": ["weeks"]},
     "lift_frequency": {"method": "lift_frequency", "params": ["weeks"]},
+    "pr_cadence_by_lift": {"method": "lift_pr_cadence", "params": ["months"]},
     "ride_mix": {"method": "ride_mix", "params": ["weeks"]},
     "big_3_total": {"method": "big_3_total", "params": []},
     "rep_range_distribution": {
