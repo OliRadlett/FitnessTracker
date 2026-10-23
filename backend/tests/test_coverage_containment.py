@@ -115,3 +115,16 @@ class TestToleranceIsTightEnoughToNotBridgeAGap:
             "comparable to the sample spacing"
         )
         assert math.isfinite(coverage(a, b, TOL_M))
+
+
+def test_coverage_finds_a_neighbour_at_high_latitude():
+    """A 90 m east-west gap at 65 N is inside tolerance and must be covered.
+
+    A single 110 km-per-degree cell width is only about 47 km per degree of
+    longitude at 65 N, so the target lands two buckets away and the old grid
+    missed it even though the true distance is inside the tolerance.
+    """
+    lat = 65.0
+    query = [(lat, 0.0)]
+    target = [(lat, 0.001913)]
+    assert coverage(query, target, 100.0) == 1.0
