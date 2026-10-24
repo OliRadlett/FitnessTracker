@@ -15,7 +15,11 @@ from app.services.geo_clusters import geo_cluster_segments
 from app.tasks.beat import beat_schedule
 from app.tasks.celery_app import celery_app
 from app.tasks.common import _run_task_guarded
-from app.tasks.maintenance import cleanup_old_data
+from app.tasks.maintenance import (
+    cleanup_old_data,
+    prune_expired_undo_logs,
+    quarantine_orphaned_routes_weekly,
+)
 from app.tasks.videos import aggregate_video_analyses_weekly
 
 logger = logging.getLogger(__name__)
@@ -328,61 +332,7 @@ def process_strava_webhook_events() -> dict:
     return asyncio.run(_run_task_guarded("process_strava_webhook_events", _run))
 
 
-@celery_app.task(name="app.tasks.scheduler.quarantine_orphaned_routes_weekly")
-def quarantine_orphaned_routes_weekly() -> dict:
-    """Stamp routes with no linked activities so the review queue has entries.
 
-    The quarantine review UI and its /orphans endpoints shipped, but nothing
-    produced the quarantined set, so the queue could never fill. Weekly is
-    enough, because a route becomes an orphan only when its last activity link
-    is removed, and a re-run skips rows already stamped.
-    """
-    import asyncio
-
-    from sqlalchemy import select
-
-    from app.database import task_session
-    from app.models.user import User
-    from app.services.route_quarantine import quarantine_orphaned_routes
-
-    async def _run():
-        async with task_session() as db:
-            user_ids = (await db.execute(select(User.id))).scalars().all()
-            quarantined = 0
-            for user_id in user_ids:
-                result = await quarantine_orphaned_routes(db, user_id, dry_run=False)
-                quarantined += result["quarantined_now"]
-            await db.commit()
-            return {"users": len(user_ids), "quarantined": quarantined}
-
-    return asyncio.run(_run_task_guarded("quarantine_orphaned_routes_weekly", _run))
-
-
-@celery_app.task(name="app.tasks.scheduler.prune_expired_undo_logs")
-def prune_expired_undo_logs() -> dict:
-    """Drop undo claims past their retention window (plan §8, §2.4).
-
-    Past ``expires_at`` an operation can no longer be reversed, so the row is
-    audit data only and keeping it serves nothing but growth. Kept as a task
-    rather than a request-path delete so a read never has to clean up after
-    itself.
-
-    Claims that have been *undone* are deliberately kept until they also expire:
-    "this happened and was reversed" is more informative than deleting it, and
-    it is the only trace that the operation was compensated at all.
-    """
-    import asyncio
-
-    from app.database import task_session
-    from app.services.undo import prune_expired
-
-    async def _run():
-        async with task_session() as db:
-            removed = await prune_expired(db)
-            await db.commit()
-            return removed
-
-    return asyncio.run(_run_task_guarded("prune_expired_undo_logs", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.reconcile_strava_activities")
