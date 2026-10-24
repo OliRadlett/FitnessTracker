@@ -77,15 +77,22 @@ async def sync_user(
             detail="This account is not allowed to access FitTrack.",
         )
 
-    # Find existing user by email
-    result = await db.execute(select(User).where(User.email == body.email))
+    # Normalize email to lowercase. is_email_allowed() lowercases for the
+    # allowlist check, but the user lookup and storage must do the same: the
+    # allowlist is case-insensitive while the UNIQUE constraint on users.email
+    # and the lookup are case-sensitive, so a mixed-case email on first login
+    # silently creates a second user row and splits that person's fitness data.
+    email = body.email.strip().lower()
+
+    # Find existing user by normalized email
+    result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
     if user is None:
         # Create new user
         user = User(
             id=uuid.uuid4(),
-            email=body.email,
+            email=email,
             name=body.name,
             avatar_url=body.avatar_url,
         )

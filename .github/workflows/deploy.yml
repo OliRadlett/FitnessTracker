@@ -204,14 +204,21 @@ jobs:
             # Read domain from .env so Caddy routes to the correct site block.
             # Uses -k for self-signed/local certs, -L to follow HTTPS redirect.
             DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
+            HEALTHY=0
             for i in $(seq 1 60); do
               HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k -L -H "Host: ${DEPLOY_DOMAIN}" "https://localhost/health" || true)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "  ✓ Backend healthy after ${i}s"
+                HEALTHY=1
                 break
               fi
               sleep 2
             done
+
+            if [ "$HEALTHY" -ne 1 ]; then
+              echo "::error::Backend did not become healthy within 120 seconds"
+              exit 1
+            fi
 
             echo "▸ Deploy complete ✓"
 

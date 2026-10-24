@@ -1,0 +1,240 @@
+---
+name: finalise
+description: Use when finishing a feature or set of changes — runs the full pre-commit, commit, push, PR, and deploy workflow for FitTrack. Covers lint, typecheck, tests, migration verification, git discipline, squash merge guidance, CI monitoring, and pre-PR code review.
+---
+
+# Finalise — Commit, Push, PR, Deploy
+
+The end-of-work checklist: verify, do a pre-PR review, commit, push, create a PR,
+and (when ready) deploy to production. Load this skill via the DSH `skill`
+tool (`skill({ name: "finalise" })`) after finishing code changes and follow it
+phase by phase.
+
+> **DSH usage notes** (OpenCode → DSH):
+> - Run all shell commands with the DSH `pwsh` tool (Windows PowerShell).
+>   The `bash`/`sh` equivalents from the OpenCode original do not apply.
+> - Inspect files with `read`/`grep`/`glob`; modify with `edit` — never shell
+>   in-place edits (AGENTS.md Rule #13).
+> - There are no separate Superpowers review skills in DSH — the condensed
+>   pre-PR checklist in Phase 2 and the verification gates in Phase 2b below
+>   replace them.
+> - `@production ...` mentions from the OpenCode original mean: load the
+>   `ssh-production-debugger` skill via the `skill` tool and ask it to verify.
+> - Git discipline follows `AGENTS.md`: stage only files from this session
+>   (`git add` specific files, never `git add .`), and stop all git operations
+>   immediately if the index looks like another session is using it.
+
+## Git Model (quick recap)
+
+- **`main`** is the trunk — all feature work lands here via PR.
+- **`prod`** is the release branch — auto-deploys via GitHub Actions when CI
+  passes on a push to `prod`.
+- **Deploy = merge `main` into `prod` and push.**  Never commit directly to
+  `prod`; never merge a feature branch into `prod` bypassing `main`.
+- All changes must go through a feature branch to PR into `main` to (later)
+  `main` to `prod` release merge.
+
+## Phase 1 — Pre-Commit Checks
+
+Before touching git at all, verify the change is clean:
+
+```powershell
+# 1. Lint + format (backend)
+ruff check backend/ --fix
+ruff format backend/
+
+# 2. Lint + typecheck (frontend)
+cd frontend
+npx tsc --noEmit
+npm run lint
+
+# 3. Unit tests (use host pytest — AGENTS.md pitfall #23)
+cd ..
+$env:TEST_DATABASE_URL = "postgresql+asyncpg://fittrack:fittrack_dev@localhost:5432/fittrack_test"
+python -m pytest backend/tests/test_conformity.py backend/tests/test_* -x -q
+
+# 4. Integration tests
+python -m pytest backend/tests/integration/ -x -q
+```
+
+### Migrations
+
+If you changed models, create and verify the migration **before committing**:
+
+```powershell
+python fittrack.py exec backend alembic revision --autogenerate -m "describe change"
+python fittrack.py exec backend alembic downgrade -1
+python fittrack.py exec backend alembic upgrade head
+```
+
+Review the generated migration file.  Only commit the migration if the schema
+change is intended for this release.
+
+### Check for concurrent git usage (AGENTS.md Rule #2)
+
+```powershell
+git status
+git log --oneline -5
+```
+
+If files you didn't stage appear staged, or your staged files disappear,
+**another session is manipulating git** — stop all git operations immediately
+and ask the user to confirm the other session is done.
+
+## Phase 2 — Pre-PR Code Review
+
+Before staging, run this structured review against the plan (condensed from the
+Superpowers `requesting-code-review` checklist — there is no separate review
+skill in DSH):
+
+**Severity tiers:**
+- **Critical** (blocks merge): security regressions, data-loss paths, broken
+  migrations, auth bypass, race conditions across git sessions (AGENTS.md Rule #2)
+- **Warning** (defer or address): missing edge-case handling, test gaps, stale
+  docs (AGENTS.md Rule #9), TODO comments left in code
+- **Info** (nice to have): naming suggestions, minor refactors
+
+**Checklist:**
+1. Does the change follow the 3-layer architecture (API to Services to Models)?
+2. Are new models registered in `app/models/__init__.py` (AGENTS.md pitfall #14)?
+3. Are FastAPI routes ordered with static before dynamic (AGENTS.md pitfall #13)?
+4. Did AGENTS.md / CODEMAP.md / docs get updated in the same commit (Rule #9)?
+5. Are Celery tasks using `task_session()` if new (AGENTS.md, Conventions > Backend)?
+6. Are modal workers importing only stdlib at module scope (AGENTS.md pitfall #16)?
+
+Critical issues block. Warnings can be carried as TODOs in the PR description.
+
+## Phase 2b — Verify Before Completion
+
+Before claiming work is done, run the verification commands and confirm output:
+
+```powershell
+# Backend: lint + typecheck + tests
+ruff check backend/; ruff format --check backend/
+python -m pytest backend/tests/ -x -q --tb=short
+
+# Frontend: typecheck + lint + build
+cd frontend
+npx tsc --noEmit
+npm run lint
+npm run build
+
+# Migrations (if models changed)
+cd ..
+python fittrack.py exec backend alembic current
+```
+
+Only proceed to commit if the commands exit 0 and the output matches expectations.
+
+## Phase 3 — Review, Stage & Commit
+
+```powershell
+git status           # see what changed
+git diff --stat      # review scope
+```
+
+Stage **only files from this session**:
+
+```powershell
+git add <specific files>
+# Do NOT use `git add .` if other sessions may have uncommitted changes
+```
+
+Write a concise commit message matching repo style:
+
+```
+feat(conformity): sport-aware deviation text for strength sessions
+
+- _deviation_text now accepts sport param; "You rode" became "Session was" for
+  strength duration deviations
+- RPE deviation shows absolute points instead of misleading percentage
+- Exercises metric no longer displays counts as percentages
+```
+
+If the change touches docs (AGENTS.md, CODEMAP, etc.), update those **in the
+same commit** (Rule #9).
+
+## Phase 4 — Push & PR
+
+```powershell
+# Push the feature branch (create it if needed)
+git checkout main
+git pull origin main
+git checkout -b feature/your-short-name
+git add <files>
+git commit -m "type(scope): concise message
+
+Optional body."
+git push origin feature/your-short-name
+```
+
+Open a PR:
+
+```powershell
+gh pr create --fill
+```
+
+Monitor CI:
+
+```powershell
+gh pr checks
+gh run watch <run_id>
+```
+
+**Wait for all checks to pass.**  GitHub Actions may queue for 50+ minutes
+during runner shortages — monitor, don't force.
+
+Merge the PR (squash preferred):
+
+```powershell
+# GitHub won't let you approve your own PR, so merge directly with --admin
+gh pr merge --squash --admin
+```
+
+The PR lands on `main`.  Verify with `gh pr checks` that post-merge CI is green.
+
+## Phase 5 — Release & Deploy
+
+Once the PR is merged into `main`:
+
+```powershell
+# 1. Sync main locally
+git checkout main
+git pull origin main
+
+# 2. Check the delta before merging into prod
+git log --oneline origin/main..origin/prod
+git diff --stat origin/main origin/prod
+
+# 3. Fast-forward prod to main and push (triggers Deploy workflow)
+git checkout prod
+git merge main
+git push origin prod
+```
+
+### CI Monitoring
+
+The Deploy workflow builds GHCR images and redeploys the Droplet.  Monitor:
+
+```powershell
+gh run watch
+# or check GitHub Actions tab in browser
+```
+
+If CI on `prod` is stuck `queued` (GitHub Actions runner availability), the
+deploy is blocked — do **not** force it; monitor `gh run watch <id>`.
+
+### Verify Production
+
+Load the `ssh-production-debugger` skill via the `skill` tool and ask it to
+verify the deployment succeeded — check backend logs, container health, and
+recent activity sync.
+
+## Pitfalls
+
+1. **`docker compose exec` doesn't work** — use `python fittrack.py exec <service> <command>`.
+2. **Backend tests run host-side, not via `exec`** — the `backend` service has no volume mount for `tests/`, so `exec backend pytest tests/...` runs stale tests after editing them. Run pytest from the host with `TEST_DATABASE_URL` (AGENTS.md pitfall #23).
+3. **CI on `prod` push may queue for 50+ minutes** during GitHub Actions runner shortages — monitor, don't force.
+4. **Only commit files from this session** — never stage files modified by another session.
+5. **Never commit directly to `prod`** — all changes go through `main` first.
+6. **`main` and `prod` should be content-identical between releases** — if they drift, reconcile before the next release.

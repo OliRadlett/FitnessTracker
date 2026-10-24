@@ -134,6 +134,20 @@ python fittrack.py exec backend alembic upgrade head
 2. After sync/service/Celery changes: check logs — `python fittrack.py logs backend --tail 30`.
 3. Before finishing any code change: run relevant tests + `ruff check` (backend) or `tsc --noEmit` (frontend).
 
+### Agent verification
+
+Use `python scripts/verify.py` for source-tree checks. It selects backend and
+frontend checks from changed files. Use `python scripts/verify.py --all` for the
+full local suite. The command runs against the host working tree, not a stale
+container image. Backend checks apply the documented local test defaults when
+those environment variables are not already set. A missing tool is reported as
+unverified. A failing command remains a failure.
+
+Changes under `backend/alembic/` also require the fresh-database migration
+contract in CI. The historical chain contains intentional irreversible
+migrations, so the CI contract upgrades from empty and round-trips the newest
+migration rather than downgrading the whole chain to `base`.
+
 ## Video Pipeline Local Runs
 
 The lift-video pipeline (Modal) can run end-to-end on a dev machine in

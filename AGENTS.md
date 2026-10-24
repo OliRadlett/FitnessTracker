@@ -284,6 +284,14 @@ Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlo
 
 ## Quick Reference
 
+### Agent verification foundation
+
+- `.agent/project.yaml` is the machine-readable map of domains, ownership, and verification commands.
+- `python scripts/check_agent_map.py` checks that the manifest and required CODEMAP anchors still exist.
+- `python scripts/verify.py` runs host-side checks selected from changed files. Use `--all` for the full local suite.
+- CI is the authority for fresh-database migration checks, API contract checks, and blocking E2E checks.
+- Generated API types must be regenerated from the backend OpenAPI schema. Do not hand-edit generated output.
+
 ```bash
 python fittrack.py up --migrate    # Start all services (dev mode)
 python fittrack.py --prod up       # Start with production overrides

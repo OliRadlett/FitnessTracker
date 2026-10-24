@@ -205,9 +205,16 @@ All commands are in `.opencode/commands/`. Type `/commandname` in the TUI.
 ### `/test`
 **Purpose**: Run backend and frontend test suites.
 **What it does**:
-1. `pytest backend/tests/`
-2. `npm run test -- --run`
-3. Reports pass/fail counts
+1. Runs `python scripts/verify.py --all` against the host working tree.
+2. Runs backend lint and tests.
+3. Runs frontend tests and typecheck.
+4. Reports the exact checks and any skipped migration contract.
+
+### Agent foundation files
+
+- `.agent/project.yaml` is the machine-readable domain and verification map.
+- `scripts/verify.py` is the source-tree verification entrypoint.
+- `docs/RUNNING.md` remains the command reference for disposable databases and services.
 
 ---
 

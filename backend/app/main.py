@@ -42,12 +42,14 @@ async def lifespan(app: FastAPI):
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
         if proc.returncode != 0:
             logger.error("Alembic migration failed: %s", stderr.decode())
+            raise RuntimeError("Alembic migration failed; refusing to start the API")
         else:
             logger.info("Alembic migrations applied successfully")
             if stdout.strip():
                 logger.info("Alembic output: %s", stdout.decode().strip())
     except Exception as e:
         logger.error("Failed to run Alembic migrations: %s", e)
+        raise
 
     yield
     await engine.dispose()
