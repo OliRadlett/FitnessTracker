@@ -3021,6 +3021,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/cycling/wahoo-zones": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Wahoo Zones
+         * @description FitTrack's zones, the athlete's Wahoo sets, and the difference between them.
+         *
+         *     Degrades rather than failing: a Wahoo-side problem comes back as
+         *     ``error_code``/``error`` alongside the local zones, so the card still renders
+         *     something true instead of the page erroring because a third party is down.
+         */
+        get: operations["get_wahoo_zones_api_v1_cycling_wahoo_zones_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cycling/wahoo-zones/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push Wahoo Zone Sets
+         * @description Write FitTrack's FTP into the athlete's Wahoo power zone sets.
+         *
+         *     Forced, so it writes even when our records say the set is already current — the
+         *     athlete pressed a button, and they may have changed the zones in the Wahoo app
+         *     since we last looked.
+         *
+         *     Returns 409 without a Wahoo connection, 403 when the connection lacks
+         *     ``power_zones_write``, 422 without an FTP. Per-set failures are reported in
+         *     ``skipped`` rather than failing the whole call.
+         */
+        post: operations["push_wahoo_zone_sets_api_v1_cycling_wahoo_zones_push_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/cycling/wahoo-zones/revert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revert Wahoo Zone Sets
+         * @description Restore each set to the state captured before our first write to it.
+         */
+        post: operations["revert_wahoo_zone_sets_api_v1_cycling_wahoo_zones_revert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/segments": {
         parameters: {
             query?: never;
@@ -6031,6 +6103,11 @@ export interface components {
              */
             auto_estimate_ftp: boolean;
             /**
+             * Push Wahoo Zones
+             * @default false
+             */
+            push_wahoo_zones: boolean;
+            /**
              * Home Lat
              * @description Home latitude for weather lookups
              */
@@ -6155,6 +6232,11 @@ export interface components {
              * @description Enable/disable weekly automatic FTP estimation
              */
             auto_estimate_ftp?: boolean | null;
+            /**
+             * Push Wahoo Zones
+             * @description Keep the athlete's Wahoo power zone sets in step with FitTrack FTP
+             */
+            push_wahoo_zones?: boolean | null;
             /**
              * Home Lat
              * @description Home latitude for weather lookups
@@ -7740,6 +7822,37 @@ export interface components {
             tsb?: number | null;
         };
         /**
+         * LocalZoneBoundary
+         * @description One zone of a FitTrack zone model, in its own units (W or bpm).
+         */
+        LocalZoneBoundary: {
+            /** Zone */
+            zone: string;
+            /** Zone Name */
+            zone_name: string;
+            /** Lower */
+            lower: number;
+            /** Upper */
+            upper?: number | null;
+        };
+        /**
+         * LocalZoneSet
+         * @description What FitTrack currently believes, for one zone kind.
+         */
+        LocalZoneSet: {
+            /** Zone Kind */
+            zone_kind: string;
+            /** Anchor Kind */
+            anchor_kind: string;
+            /** Anchor Value */
+            anchor_value?: number | null;
+            /**
+             * Zones
+             * @default []
+             */
+            zones: components["schemas"]["LocalZoneBoundary"][];
+        };
+        /**
          * MaterialiseRequest
          * @description Fill per-week cells from the plan's rules (S1 §3.2).
          *
@@ -8068,6 +8181,8 @@ export interface components {
             event_result: boolean;
             /** Race Day */
             race_day: boolean;
+            /** Wahoo Zones */
+            wahoo_zones: boolean;
         };
         /** NotificationPreferencesUpdate */
         NotificationPreferencesUpdate: {
@@ -8087,6 +8202,8 @@ export interface components {
             event_result?: boolean | null;
             /** Race Day */
             race_day?: boolean | null;
+            /** Wahoo Zones */
+            wahoo_zones?: boolean | null;
         };
         /** NotificationRead */
         NotificationRead: {
@@ -11257,6 +11374,8 @@ export interface components {
             current_vo2max?: number | null;
             /** Current Classification */
             current_classification?: string | null;
+            /** Current Classification Scope */
+            current_classification_scope?: string | null;
         };
         /**
          * Vo2maxResponse
@@ -11271,6 +11390,8 @@ export interface components {
             method: string;
             /** Classification */
             classification: string;
+            /** Classification Scope */
+            classification_scope: string;
             /** All Estimates */
             all_estimates: components["schemas"]["Vo2maxDetail"][];
             /** Vo2Max Ci Low */
@@ -11296,6 +11417,35 @@ export interface components {
             exercise_name?: string | null;
             /** Data */
             data: components["schemas"]["VolumeTrendPoint"][];
+        };
+        /**
+         * WahooPowerZoneSet
+         * @description A power zone set as Wahoo returns it. Deliberately faithful, not tidied.
+         */
+        WahooPowerZoneSet: {
+            /** Id */
+            id: number;
+            /** Workout Type Family Id */
+            workout_type_family_id?: number | null;
+            /** Workout Type Location Id */
+            workout_type_location_id?: number | null;
+            /** Ftp */
+            ftp?: number | null;
+            /** Zone Count */
+            zone_count?: number | null;
+            /**
+             * Zones
+             * @default []
+             */
+            zones: number[];
+            /** Fitness App Id */
+            fitness_app_id?: number | null;
+            /** Originator Type Id */
+            originator_type_id?: number | null;
+            /** Provenance */
+            provenance?: string | null;
+            /** Updated At */
+            updated_at?: string | null;
         };
         /**
          * WahooPushRequest
@@ -11336,6 +11486,146 @@ export interface components {
             wahoo_workout_id?: number | null;
             /** Wahoo Route Id */
             wahoo_route_id?: number | null;
+        };
+        /**
+         * WahooZoneSetTracked
+         * @description Our bookkeeping row for a set we have written to.
+         */
+        WahooZoneSetTracked: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Zone Kind */
+            zone_kind: string;
+            /** Workout Type Family Id */
+            workout_type_family_id: number;
+            /** Workout Type Location Id */
+            workout_type_location_id: number;
+            /** Wahoo Zone Set Id */
+            wahoo_zone_set_id?: number | null;
+            /** Anchor Value */
+            anchor_value?: number | null;
+            /** Boundaries */
+            boundaries?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Has Prior
+             * @default false
+             */
+            has_prior: boolean;
+            /** Pushed At */
+            pushed_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
+        };
+        /**
+         * WahooZoneSkipped
+         * @description A set we deliberately did not write to, and why.
+         */
+        WahooZoneSkipped: {
+            /** Id */
+            id: number;
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * WahooZonesPushResult
+         * @description Outcome of a push. Reports silences, not just successes.
+         */
+        WahooZonesPushResult: {
+            /** Ftp */
+            ftp?: number | null;
+            /**
+             * Updated
+             * @default []
+             */
+            updated: number[];
+            /**
+             * Created
+             * @default []
+             */
+            created: number[];
+            /**
+             * Skipped
+             * @default []
+             */
+            skipped: components["schemas"]["WahooZoneSkipped"][];
+            /**
+             * Foreign
+             * @default []
+             */
+            foreign: number[];
+            /** Reason */
+            reason?: string | null;
+        };
+        /** WahooZonesRevertResult */
+        WahooZonesRevertResult: {
+            /** Anchor Value */
+            anchor_value?: number | null;
+            /**
+             * Reverted
+             * @default []
+             */
+            reverted: number[];
+            /**
+             * Missing
+             * @default []
+             */
+            missing: number[];
+        };
+        /** WahooZonesStatus */
+        WahooZonesStatus: {
+            /** Connected */
+            connected: boolean;
+            /** Connection Status */
+            connection_status?: string | null;
+            /**
+             * Opt In
+             * @default false
+             */
+            opt_in: boolean;
+            /**
+             * Can Write
+             * @default false
+             */
+            can_write: boolean;
+            /**
+             * Hr Write Supported
+             * @default false
+             */
+            hr_write_supported: boolean;
+            /**
+             * Hr Note
+             * @default Wahoo does not expose heart rate zones through its Cloud API — there is no heart_rate_zones endpoint and no matching OAuth scope, and user_write can only carry profile fields. Your HR zones are set from a Threshold Heart Rate in the Wahoo app; keep the THR values in step manually.
+             */
+            hr_note: string;
+            /**
+             * Local Sets
+             * @default []
+             */
+            local_sets: components["schemas"]["LocalZoneSet"][];
+            /**
+             * Wahoo Sets
+             * @default []
+             */
+            wahoo_sets: components["schemas"]["WahooPowerZoneSet"][];
+            /**
+             * Tracked
+             * @default []
+             */
+            tracked: components["schemas"]["WahooZoneSetTracked"][];
+            /**
+             * Drift
+             * @default []
+             */
+            drift: components["schemas"]["ZoneDrift"][];
+            /** Error Code */
+            error_code?: string | null;
+            /** Error */
+            error?: string | null;
         };
         /** WarmupStepRead */
         WarmupStepRead: {
@@ -11813,6 +12103,24 @@ export interface components {
              */
             highlights: components["schemas"]["YearlyHighlights"];
             year_over_year?: components["schemas"]["YearOverYearComparison"] | null;
+        };
+        /**
+         * ZoneDrift
+         * @description Local vs Wahoo anchor for one set. ``delta`` is ``wahoo - local``.
+         */
+        ZoneDrift: {
+            /** Zone Kind */
+            zone_kind: string;
+            /** Workout Type Location Id */
+            workout_type_location_id?: number | null;
+            /** Wahoo Zone Set Id */
+            wahoo_zone_set_id?: number | null;
+            /** Local Anchor */
+            local_anchor?: number | null;
+            /** Wahoo Anchor */
+            wahoo_anchor?: number | null;
+            /** Delta */
+            delta?: number | null;
         };
         /** PowerZoneDistribution */
         app__schemas__activity__PowerZoneDistribution: {
@@ -16745,6 +17053,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_wahoo_zones_api_v1_cycling_wahoo_zones_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WahooZonesStatus"];
+                };
+            };
+        };
+    };
+    push_wahoo_zone_sets_api_v1_cycling_wahoo_zones_push_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WahooZonesPushResult"];
+                };
+            };
+        };
+    };
+    revert_wahoo_zone_sets_api_v1_cycling_wahoo_zones_revert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WahooZonesRevertResult"];
                 };
             };
         };
