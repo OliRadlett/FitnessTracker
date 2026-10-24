@@ -8,12 +8,12 @@ import uuid
 from datetime import UTC, datetime
 
 import httpx
-from celery import Celery
 
 from app.config import get_settings
 from app.integrations.resilience import ModalCircuitBreaker
 from app.services.geo_clusters import geo_cluster_segments
 from app.tasks.beat import beat_schedule
+from app.tasks.celery_app import celery_app
 from app.tasks.common import _run_task_guarded
 
 logger = logging.getLogger(__name__)
@@ -28,24 +28,8 @@ _MODAL_BREAKER = ModalCircuitBreaker(
 )
 
 # ── Celery app ────────────────────────────────────────────────────────────────
-
-celery_app = Celery(
-    "fittrack",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
-)
-
-celery_app.conf.update(
-    task_serializer="json",
-    accept_content=["json"],
-    result_serializer="json",
-    timezone="UTC",
-    enable_utc=True,
-    task_track_started=True,
-    task_acks_late=True,
-    worker_prefetch_multiplier=1,
-    result_expires=3600,
-)
+# Constructed in app/tasks/celery_app.py and imported above, so task modules can
+# register without importing this one.
 
 
 # ── Concurrency guards ────────────────────────────────────────────────────────
