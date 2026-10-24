@@ -25,6 +25,7 @@ from app.services.cycling import (
     compute_vo2max_history,
     estimate_vo2max,
 )
+from app.services.cycling.vo2max import VO2_CLASS_SCOPE
 
 router = APIRouter()
 
@@ -55,6 +56,7 @@ async def get_vo2max_estimate(
         confidence=result.confidence,
         method=result.method,
         classification=_classify_vo2max(result.vo2max),
+        classification_scope=VO2_CLASS_SCOPE,
         all_estimates=[Vo2maxDetail(**e) for e in result.all_estimates],
         vo2max_ci_low=result.ci_low,
         vo2max_ci_high=result.ci_high,
@@ -84,6 +86,7 @@ async def get_vo2max_history(
         data=data,
         current_vo2max=current_vo2max,
         current_classification=current_classification,
+        current_classification_scope=VO2_CLASS_SCOPE if current_classification else None,
     )
 
 

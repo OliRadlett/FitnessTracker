@@ -305,6 +305,14 @@ celery_app.conf.beat_schedule = {
         "schedule": crontab(hour=7, minute=30, day_of_week=0),
         "options": {"expires": 3600},
     },
+    # Weekly orphan-route quarantine (Sunday 6:30 AM UTC). The review queue and
+    # its /orphans endpoints shipped before anything produced the quarantined
+    # set, so the queue could never fill.
+    "quarantine-orphaned-routes-weekly": {
+        "task": "app.tasks.scheduler.quarantine_orphaned_routes_weekly",
+        "schedule": crontab(hour=6, minute=30, day_of_week=0),
+        "options": {"expires": 3600},
+    },
     # Refresh weather forecast caches daily at 5 AM UTC
     "refresh-weather-forecasts": {
         "task": "app.tasks.scheduler.refresh_weather_forecasts",
@@ -607,6 +615,36 @@ def process_strava_webhook_events() -> dict:
             return await process_pending_strava_events(db)
 
     return asyncio.run(_run_task_guarded("process_strava_webhook_events", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.quarantine_orphaned_routes_weekly")
+def quarantine_orphaned_routes_weekly() -> dict:
+    """Stamp routes with no linked activities so the review queue has entries.
+
+    The quarantine review UI and its /orphans endpoints shipped, but nothing
+    produced the quarantined set, so the queue could never fill. Weekly is
+    enough, because a route becomes an orphan only when its last activity link
+    is removed, and a re-run skips rows already stamped.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.user import User
+    from app.services.route_quarantine import quarantine_orphaned_routes
+
+    async def _run():
+        async with task_session() as db:
+            user_ids = (await db.execute(select(User.id))).scalars().all()
+            quarantined = 0
+            for user_id in user_ids:
+                result = await quarantine_orphaned_routes(db, user_id, dry_run=False)
+                quarantined += result["quarantined_now"]
+            await db.commit()
+            return {"users": len(user_ids), "quarantined": quarantined}
+
+    return asyncio.run(_run_task_guarded("quarantine_orphaned_routes_weekly", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.prune_expired_undo_logs")
