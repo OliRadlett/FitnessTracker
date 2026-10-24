@@ -39,6 +39,11 @@ const TOGGLES: { key: keyof NotificationPreferences; label: string; description:
     description: 'Weekly suggestion to re-test your FTP when recent power data diverges',
   },
   {
+    key: 'wahoo_zones',
+    label: 'Wahoo zone sync',
+    description: 'When your Wahoo power zone sets are updated with a new FTP',
+  },
+  {
     key: 'event_result',
     label: 'Race results',
     description: 'Confirmation when you log a race result',

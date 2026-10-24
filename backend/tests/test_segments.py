@@ -68,12 +68,16 @@ def test_sharp_descent_splits_climbs():
 
 
 def test_climb_category_bands():
+    # Strava score bands are 8000 / 16000 / 32000 / 64000 / 80000, which reduce
+    # to gain bands of 80 / 160 / 320 / 640 / 800 m above a 3 percent floor.
     assert climb_category(1000, 8.0) == "HC"
-    assert climb_category(500, 6.0) == "1"
-    assert climb_category(200, 6.0) == "2"
-    assert climb_category(120, 4.5) == "3"
-    assert climb_category(50, 3.5) == "4"
-    assert climb_category(50, 2.0) is None
+    assert climb_category(800, 5.0) == "HC"
+    assert climb_category(700, 5.0) == "1"
+    assert climb_category(400, 5.0) == "2"
+    assert climb_category(200, 5.0) == "3"
+    assert climb_category(100, 3.5) == "4"
+    assert climb_category(79, 8.0) is None
+    assert climb_category(1000, 2.9) is None
 
 
 # ── Effort windowing ─────────────────────────────────────────────────────

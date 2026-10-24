@@ -21,6 +21,7 @@ class CyclingProfileRead(BaseModel):
     weight_kg: float | None = None
     lactate_threshold_hr: float | None = None
     auto_estimate_ftp: bool = False
+    push_wahoo_zones: bool = False
     home_lat: float | None = Field(
         None, ge=-90, le=90, description="Home latitude for weather lookups"
     )
@@ -98,6 +99,10 @@ class CyclingProfileUpdate(BaseModel):
     )
     auto_estimate_ftp: bool | None = Field(
         None, description="Enable/disable weekly automatic FTP estimation"
+    )
+    push_wahoo_zones: bool | None = Field(
+        None,
+        description="Keep the athlete's Wahoo power zone sets in step with FitTrack FTP",
     )
     home_lat: float | None = Field(
         None, ge=-90, le=90, description="Home latitude for weather lookups"
@@ -433,6 +438,10 @@ class Vo2maxResponse(BaseModel):
     confidence: float
     method: str
     classification: str  # Poor, Below Average, Average, Good, Excellent, Superior
+    # The population the bands come from. Displayed next to the label, because
+    # the bands are not age or sex adjusted and a bare word like "Average"
+    # reads as a claim about the athlete.
+    classification_scope: str
     all_estimates: list[Vo2maxDetail]
     # F9: approximate 95% cross-method interval (None with a single method).
     vo2max_ci_low: float | None = None
@@ -453,6 +462,7 @@ class Vo2maxHistoryResponse(BaseModel):
     data: list[Vo2maxHistoryPoint]
     current_vo2max: float | None = None
     current_classification: str | None = None
+    current_classification_scope: str | None = None
 
 
 # ── Decoupling Analysis ───────────────────────────────────────────────────

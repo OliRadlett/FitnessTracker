@@ -23,6 +23,7 @@ NOTIFICATION_TYPES = (
     "taper_start",
     "ride_weather",
     "plan_review",
+    "wahoo_zones",
 )
 
 

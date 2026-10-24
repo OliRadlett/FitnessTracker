@@ -14,6 +14,7 @@ from app.schemas.cycling import (
 )
 from app.services.auth import get_current_user
 from app.services.cycling import get_or_create_cycling_profile
+from app.services.wahoo_zones import commit_and_enqueue_zone_push
 
 router = APIRouter()
 
@@ -41,7 +42,11 @@ async def update_cycling_profile(
     """Update the current user's cycling profile. If FTP changes, also records history."""
     profile = await get_or_create_cycling_profile(db, current_user.id)
 
-    if payload.ftp_watts is not None and payload.ftp_watts != profile.ftp_watts:
+    ftp_changed = payload.ftp_watts is not None and payload.ftp_watts != profile.ftp_watts
+    toggled_on = (
+        payload.push_wahoo_zones is True and not profile.push_wahoo_zones
+    )
+    if ftp_changed:
         # Record FTP history
         ftp_entry = FtpHistory(
             user_id=current_user.id,
@@ -61,6 +66,9 @@ async def update_cycling_profile(
     if payload.auto_estimate_ftp is not None:
         profile.auto_estimate_ftp = payload.auto_estimate_ftp
 
+    if payload.push_wahoo_zones is not None:
+        profile.push_wahoo_zones = payload.push_wahoo_zones
+
     if payload.home_lat is not None:
         profile.home_lat = payload.home_lat
 
@@ -69,6 +77,13 @@ async def update_cycling_profile(
 
     await db.flush()
     await db.refresh(profile)
+
+    if ftp_changed or toggled_on:
+        # A new FTP (or switching the sync on) is exactly when the head unit needs
+        # telling. Commits first, then queues — see the helper's docstring for why
+        # the order is load-bearing.
+        await commit_and_enqueue_zone_push(db, current_user.id, profile)
+
     return CyclingProfileRead.model_validate(profile)
 
 
@@ -78,9 +93,11 @@ from app.api.cycling.power import router as power_router
 from app.api.cycling.prs import router as prs_router
 from app.api.cycling.training_load import router as training_load_router
 from app.api.cycling.vo2max import router as vo2max_router
+from app.api.cycling.zones import router as zones_router
 
 router.include_router(training_load_router)
 router.include_router(power_router)
 router.include_router(vo2max_router)
 router.include_router(ftp_router)
 router.include_router(prs_router)
+router.include_router(zones_router)

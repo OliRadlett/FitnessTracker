@@ -35,6 +35,11 @@ DEFAULT_PREFERENCES: dict[str, bool] = {
     "weekly_summary": True,
     "streak_milestone": True,
     "deload_started": True,
+    # Confirmation that an automatic sync moved the athlete's Wahoo zone sets.
+    # The toggle that enables the sync is on the cycling profile, so this is
+    # *informational* — but the whole complaint the feature answers is that FTP
+    # moved without them knowing, so it defaults on.
+    "wahoo_zones": True,
 }
 
 

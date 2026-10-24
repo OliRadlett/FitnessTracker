@@ -44,8 +44,8 @@ ones are recorded here as candidate feature hooks.
 | `routes_read` | ✅ | Route sync (`sync_wahoo_routes`). |
 | `routes_write` | ✅ | Push FIT courses (`POST /v1/routes`). |
 | `offline_data` | ❌ | Wahoo's refresh-token scope. Requested but not yet consumed — the natural basis for unattended/background push (phase 4 auto-push), and required if Wahoo enforces refresh rotation. |
-| `power_zones_read` | ❌ | Read the athlete's Wahoo power zones. Candidate: reconcile with FitTrack FTP / `WORKOUT_ZONES` so pushed workouts match the device's own zone model, and detect FTP drift. |
-| `power_zones_write` | ❌ | Write power zones (`PUT /v1/power_zones`). Candidate: push FTP to Wahoo automatically when the weekly auto-estimate or an FL1 test changes it, so the head unit and FitTrack agree without manual entry. |
+| `power_zones_read` | ✅ | `GET /v1/power_zones` — backs the drift view on `/cycling` (`GET /cycling/wahoo-zones`): FitTrack's FTP vs each Wahoo power zone set. See [`wahoo-zone-sync.md`](wahoo-zone-sync.md). |
+| `power_zones_write` | ✅ | `PUT /v1/power_zones/{id}` — `push_power_zones()` keeps the head unit's cycling zone sets on the athlete's current FTP, triggered from the weekly auto-estimate and the FTP write endpoints. Boundaries are **rescaled from the set's own values**, never replaced with our Coggan model. See [`wahoo-zone-sync.md`](wahoo-zone-sync.md). |
 | `user_write` | ❌ | Update the Wahoo user profile. Candidate: sync weight / body metrics or home location so the Wahoo app's own calculations (calories, W/kg) match FitTrack. |
 | `email` | ❌ | Email address on the Wahoo profile. Candidate: account-linking guard — assert the connected Wahoo account is the intended one during reconnect. |
 

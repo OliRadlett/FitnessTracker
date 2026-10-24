@@ -236,12 +236,38 @@ def _discrete_frechet(
     return prev[m - 1]
 
 
+_METRES_PER_DEGREE = 110_000.0
+
+
+def _cell_widths(
+    points: list[tuple[float, float]], tol_m: float
+) -> tuple[float, float]:
+    """Grid cell sizes in degrees for latitude and longitude.
+
+    Latitude is a fixed metres per degree. A longitude degree shrinks with
+    ``cos(lat)``, so sizing it from the largest absolute latitude in the data
+    keeps every cell at least ``tol_m`` wide on the ground. One shared width is
+    too narrow above the equator and misses genuine neighbours, which is what a
+    single ``tol_m / 110_000`` did north of about 60 degrees.
+    """
+    if not points:
+        return tol_m / _METRES_PER_DEGREE, tol_m / _METRES_PER_DEGREE
+    max_abs_lat = max(abs(p[0]) for p in points)
+    cos_lat = max(math.cos(math.radians(max_abs_lat)), 0.01)
+    return tol_m / _METRES_PER_DEGREE, tol_m / (_METRES_PER_DEGREE * cos_lat)
+
+
 def _grid(
-    points: list[tuple[float, float]], cell_deg: float
+    points: list[tuple[float, float]],
+    cell_lat_deg: float,
+    cell_lng_deg: float,
 ) -> dict[tuple[int, int], list[tuple[float, float]]]:
     g: dict[tuple[int, int], list[tuple[float, float]]] = {}
     for p in points:
-        key = (int(math.floor(p[0] / cell_deg)), int(math.floor(p[1] / cell_deg)))
+        key = (
+            int(math.floor(p[0] / cell_lat_deg)),
+            int(math.floor(p[1] / cell_lng_deg)),
+        )
         g.setdefault(key, []).append(p)
     return g
 
@@ -257,12 +283,12 @@ def coverage(
     """
     if not query or not target:
         return 0.0
-    cell_deg = tol_m / 110_000.0
-    grid = _grid(target, cell_deg)
+    cell_lat_deg, cell_lng_deg = _cell_widths(query + target, tol_m)
+    grid = _grid(target, cell_lat_deg, cell_lng_deg)
     covered = 0
     for q in query:
-        cy = int(math.floor(q[0] / cell_deg))
-        cx = int(math.floor(q[1] / cell_deg))
+        cy = int(math.floor(q[0] / cell_lat_deg))
+        cx = int(math.floor(q[1] / cell_lng_deg))
         found = False
         for dy in (-1, 0, 1):
             for dx in (-1, 0, 1):
@@ -335,12 +361,12 @@ def longest_uncovered_run_m(
     """
     if not ride or not course:
         return 0.0
-    cell_deg = tol_m / 110_000.0
-    grid = _grid(course, cell_deg)
+    cell_lat_deg, cell_lng_deg = _cell_widths(ride + course, tol_m)
+    grid = _grid(course, cell_lat_deg, cell_lng_deg)
 
     def near(p: tuple[float, float]) -> bool:
-        cy = int(math.floor(p[0] / cell_deg))
-        cx = int(math.floor(p[1] / cell_deg))
+        cy = int(math.floor(p[0] / cell_lat_deg))
+        cx = int(math.floor(p[1] / cell_lng_deg))
         for dy in (-1, 0, 1):
             for dx in (-1, 0, 1):
                 for q in grid.get((cy + dy, cx + dx), ()):
