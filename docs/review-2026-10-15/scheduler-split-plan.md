@@ -1,0 +1,86 @@
+# Splitting `backend/app/tasks/scheduler.py`
+
+> **Status**: plan, not started. Written 2026-10-24 at `ea3767e`.
+> **Scope**: separate the beat schedule from the task definitions, then split the
+> 4,641-line module by domain. No task is renamed and no schedule key changes.
+
+## Why this needs a plan
+
+`scheduler.py` holds the Celery beat schedule as a 240-line dict at the top, then
+41 task definitions below it, plus shared helpers. That shape is why two separate
+audits asked whether a task was scheduled and got different answers. It is also
+why the orphan-quarantine producer could sit uncalled for weeks without anything
+noticing.
+
+The safety net already exists. `backend/tests/test_beat_schedule.py` asserts two
+things that between them cover both ways a task silently stops running.
+
+- Every `beat_schedule` entry names the task it was actually registered under.
+- Every registered `app.tasks.scheduler.*` task is scheduled or on the explicit
+  on-demand allowlist.
+
+Any split must keep both green, and must not change a single `beat_schedule` key
+or a single `name=` string.
+
+## The one hard constraint
+
+Celery task names are strings, and the beat config references them. Workers may
+already have them queued across a deploy. So the `name="app.tasks.scheduler.…"`
+value on every task is frozen, even when the function moves to another module.
+Moving a function is safe precisely because the name is explicit rather than
+derived from the module path.
+
+The second constraint is that `beat_schedule` is assigned to
+`celery_app.conf` at import time. Whatever module owns it must be imported when
+the Celery app loads, or the schedule silently empties.
+
+## Proposed shape
+
+| Module | Holds |
+|--------|-------|
+| `app/tasks/beat.py` | `beat_schedule` and its assignment to `celery_app.conf`, nothing else |
+| `app/tasks/common.py` | `_run_task_guarded` and the small helpers tasks share |
+| `app/tasks/sync.py` | provider sync tasks (Strava, Wahoo, Komoot, Whoop, Withings) |
+| `app/tasks/analytics.py` | insights, training load, power models, terrain, segments, weather |
+| `app/tasks/videos.py` | lift-video processing and the weekly video aggregation |
+| `app/tasks/maintenance.py` | prune, cleanup, reconcile, quarantine |
+| `app/tasks/notifications.py` | notification fan-out tasks |
+| `app/tasks/scheduler.py` | re-exports every task by its current attribute name |
+
+The re-export layer is not ceremony. `celery_app` registers by name, the beat dict
+refers to names, and the tests resolve tasks by attribute on this module. Keeping
+the attributes means no caller, test, or beat entry has to change.
+
+## Slices, each independently shippable
+
+1. **Extract the schedule.** Move the dict verbatim into `beat.py`, assign it
+   there, and import the module from `scheduler.py` so registration still happens.
+   This is the highest-value slice and the only one that touches the schedule.
+2. **Extract the guard helper.** Move `_run_task_guarded` to `common.py` and
+   import it everywhere. Behaviour identical.
+3. **Extract one domain, verify, repeat.** Start with `maintenance.py` because it
+   has the fewest cross-imports. Then `videos.py`, then `notifications.py`, then
+   `sync.py`, then `analytics.py`, which is the largest.
+4. **Delete the re-export layer** only once nothing resolves through it. That is
+   optional and can wait indefinitely.
+
+## Verification per slice
+
+- `python -m pytest backend/tests/test_beat_schedule.py -q` stays green. This is
+  the gate, not a nicety.
+- Compare `celery_app.conf.beat_schedule` before and after: same keys, same task
+  strings, same schedules. A one-off script that prints the sorted keys and
+  `repr` of each schedule is enough, kept in the PR description.
+- Compare the registered task set: `set(celery_app.tasks)` filtered to the
+  `app.tasks.scheduler.` prefix must be identical before and after.
+- Restart a worker after each slice and confirm `celery inspect registered` lists
+  the same count. No task logic changes, so no behavioural test is added.
+
+## What not to do
+
+- Do not rename task names, even to tidy them. Queued messages and beat entries
+  carry the string.
+- Do not let the split change the beat cadence. A moved task with a subtly
+  different `crontab` is the failure this plan exists to avoid.
+- Do not split by line count. Split by domain, because the cross-imports are what
+  make the file hard to change, not the length alone.
