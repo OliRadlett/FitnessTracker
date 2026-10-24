@@ -3736,6 +3736,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Undos
+         * @description This user's live undo claims, newest first.
+         */
+        get: operations["list_undos_api_v1_undo_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/undo/{log_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Perform Undo
+         * @description Perform an undo. 409 when unavailable (gone, expired, or already undone).
+         */
+        post: operations["perform_undo_api_v1_undo__log_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/goals/metrics": {
         parameters: {
             query?: never;
@@ -4087,9 +4127,10 @@ export interface paths {
          * Update Plan
          * @description Update a training plan.
          *
-         *     Days, when provided, are saved non-destructively: dates are matched
-         *     against existing days and updated in place (preserving completed flags
-         *     and linked activities), new dates are inserted, removed dates deleted.
+         *     Days, when provided, are upserted by ``(day_date, sport)``: a matching pair
+         *     is updated in place (preserving completed flags and linked activities), a
+         *     new pair is inserted, and a pair missing from the payload is deleted — so
+         *     omission is destructive and the caller must send the complete set.
          */
         patch: operations["update_plan_api_v1_training_plans__plan_id__patch"];
         trace?: never;
@@ -4129,7 +4170,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete Plan Day
+         * @description Delete one plan day. Completed days are refused (400).
+         */
+        delete: operations["delete_plan_day_api_v1_training_plans__plan_id__days__day_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -4137,7 +4182,8 @@ export interface paths {
          * @description Targeted single-day update (e.g. assign a planned route).
          *
          *     Only provided fields change; ``completed`` flags and linked
-         *     activity/lifting sessions are preserved.
+         *     activity/lifting sessions are preserved. A ``sport`` change that clashes
+         *     with the date's other session fails with 409.
          */
         patch: operations["update_plan_day_api_v1_training_plans__plan_id__days__day_id__patch"];
         trace?: never;
@@ -4194,6 +4240,104 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/training-plans/{plan_id}/strength-progression/suggest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Suggest Strength Progression
+         * @description Propose a working weight per planned exercise (S1) — writes nothing.
+         *
+         *     Anchored on the current e1RM (84-day window) and progressed by the week's
+         *     RPE or the previous week's load, per the plan's ``strength_progression``
+         *     rules. Entries set by hand are skipped unless ``force=true``; each skipped
+         *     entry says why under ``skipped_reason``.
+         */
+        post: operations["suggest_strength_progression_api_v1_training_plans__plan_id__strength_progression_suggest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/strength-progression/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Strength Progression
+         * @description Write accepted suggestions into day entries (S1), one transaction.
+         *
+         *     Each target addresses an entry by ``(day_id, exercise_index)``; written
+         *     entries become ``weight_source='suggested'`` with the ``pct_1rm`` basis so
+         *     ``refresh-targets`` can re-solve them later. Hand-set entries are skipped
+         *     unless ``force=true``.
+         */
+        post: operations["apply_strength_progression_api_v1_training_plans__plan_id__strength_progression_apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/strength-progression/materialise": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Materialise Strength Progression
+         * @description Fill per-week sets/reps/RPE cells from the plan's progression rules (S1).
+         *
+         *     ``mode='fill-empty'`` (default) writes only fields the entry has no value
+         *     for; ``'replace'`` overwrites them. Supplying ``rules`` persists them on
+         *     the plan first. Weights are not written here — use suggest + apply.
+         */
+        post: operations["materialise_strength_progression_api_v1_training_plans__plan_id__strength_progression_materialise_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Plan Review
+         * @description The latest weekly review snapshot (C3).
+         *
+         *     Returns the persisted snapshot for the most recent week. When none exists
+         *     (or ``?refresh=true``), the review is computed on demand; only ``refresh``
+         *     persists it — the beat task owns scheduled writes.
+         */
+        get: operations["get_plan_review_api_v1_training_plans__plan_id__review_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/training-plans/{plan_id}/days/{day_id}/reschedule": {
         parameters: {
             query?: never;
@@ -4207,9 +4351,10 @@ export interface paths {
          * Reschedule Plan Day
          * @description Move an uncompleted (missed/pending) day to ``target_date`` (FL2).
          *
-         *     All planned fields travel with the day. Returns 409 when another
-         *     uncompleted non-rest day already occupies the target date, 400 when the
-         *     day is completed or the target falls outside the plan range.
+         *     All planned fields travel with the day. Returns 409 when an uncompleted
+         *     session of the same sport, or a rest row, is already on the target date (a
+         *     ride may move onto a lift day), 400 when the day is completed or the target
+         *     falls outside the plan range.
          */
         post: operations["reschedule_plan_day_api_v1_training_plans__plan_id__days__day_id__reschedule_post"];
         delete?: never;
@@ -4232,7 +4377,8 @@ export interface paths {
          * @description Convert a missed day into an alternate session on the same date (FL2).
          *
          *     E.g. a missed threshold ride becomes an endurance spin; the conversion
-         *     is recorded in ``notes``. Unknown sport/type values fail with 422.
+         *     is recorded in ``notes``. Unknown sport/type values fail with 422; a sport
+         *     that cannot share the day's date fails with 409.
          */
         post: operations["substitute_plan_day_api_v1_training_plans__plan_id__days__day_id__substitute_post"];
         delete?: never;
@@ -4259,6 +4405,49 @@ export interface paths {
         get: operations["get_unplanned_actuals_api_v1_training_plans__plan_id__unplanned_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/days": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Plan Day
+         * @description Add one day to a plan. 409 when that sport is already on the date.
+         */
+        post: operations["add_plan_day_api_v1_training_plans__plan_id__days_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/days/{day_id}/swap": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Swap Plan Days
+         * @description Atomically exchange two days' dates. Returns both days.
+         *
+         *     A swap that would land either day beside a session it cannot share fails
+         *     with 409; completed days and self-swaps are refused with 400.
+         */
+        post: operations["swap_plan_days_api_v1_training_plans__plan_id__days__day_id__swap_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4442,7 +4631,10 @@ export interface paths {
          * @description Copy a plan day's exercises to a new date within the same plan.
          *
          *     Creates a new day at the target date with the same planned fields
-         *     (exercises, focus, sport, type, warmup template, session type, etc.).
+         *     (exercises, focus, sport, type, warmup template, session type, etc.). 409
+         *     when the target date already holds a session that cannot share it — the
+         *     same sport, or ``rest`` on either side. Another sport's session may share
+         *     the date.
          */
         post: operations["copy_day_to_date_api_v1_training_plans__plan_id__days__source_day_id__copy_to_date__target_date__post"];
         delete?: never;
@@ -4472,6 +4664,57 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/blocks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plan Blocks
+         * @description This plan's blocks, in date order.
+         */
+        get: operations["list_plan_blocks_api_v1_training_plans__plan_id__blocks_get"];
+        put?: never;
+        /**
+         * Create Plan Block
+         * @description Add a block. 409 when it would overlap a sibling.
+         */
+        post: operations["create_plan_block_api_v1_training_plans__plan_id__blocks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/training-plans/{plan_id}/blocks/{block_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete Plan Block
+         * @description Remove a block.
+         *
+         *     Days are untouched: a block *labels* a date range, it does not own the days
+         *     inside it, so deleting one must not delete training.
+         */
+        delete: operations["delete_plan_block_api_v1_training_plans__plan_id__blocks__block_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Plan Block
+         * @description Edit a block. Only the fields sent are changed.
+         */
+        patch: operations["update_plan_block_api_v1_training_plans__plan_id__blocks__block_id__patch"];
         trace?: never;
     };
     "/api/v1/events": {
@@ -5027,6 +5270,10 @@ export interface components {
             ride_context?: {
                 [key: string]: unknown;
             } | null;
+            /** Purpose */
+            purpose?: string | null;
+            /** Ride Type */
+            ride_type?: string | null;
             /**
              * Has Streams
              * @default false
@@ -5197,6 +5444,10 @@ export interface components {
             ride_context?: {
                 [key: string]: unknown;
             } | null;
+            /** Purpose */
+            purpose?: string | null;
+            /** Ride Type */
+            ride_type?: string | null;
             /**
              * Has Streams
              * @default false
@@ -6396,6 +6647,33 @@ export interface components {
             } | null;
         };
         /**
+         * ExerciseRule
+         * @description One exercise's multi-week progression rule (S1).
+         *
+         *     ``mode='rpe'`` (default) re-solves the load from the current e1RM and the
+         *     week's RPE, so a moving e1RM self-corrects the prescription.
+         *     ``mode='load'`` chains off the previous week's prescribed weight instead —
+         *     for coaches who want explicit weekly brackets.
+         */
+        ExerciseRule: {
+            /** Exercise */
+            exercise: string;
+            /**
+             * Mode
+             * @default rpe
+             * @enum {string}
+             */
+            mode: "rpe" | "load";
+            start?: components["schemas"]["ProgressionStart"] | null;
+            weekly?: components["schemas"]["ProgressionWeekly"] | null;
+            /** Deload Every */
+            deload_every?: number | null;
+            /** Deload Factor */
+            deload_factor?: number | null;
+            /** Training Max Pct */
+            training_max_pct?: number | null;
+        };
+        /**
          * ExerciseSuggestion
          * @description One exercise with a suggested new weight.
          */
@@ -7205,6 +7483,16 @@ export interface components {
             ai_tags?: {
                 [key: string]: unknown;
             } | null;
+            /** Session Split */
+            session_split?: string | null;
+            /** Session Lift */
+            session_lift?: string | null;
+            /** Session Class */
+            session_class?: string | null;
+            /** Ai Classification */
+            ai_classification?: {
+                [key: string]: unknown;
+            } | null;
             /**
              * Sets
              * @default []
@@ -7450,6 +7738,93 @@ export interface components {
             ctl?: number | null;
             /** Tsb */
             tsb?: number | null;
+        };
+        /**
+         * MaterialiseRequest
+         * @description Fill per-week cells from the plan's rules (S1 §3.2).
+         *
+         *     ``fill-empty`` writes only where the entry has no value for the field yet;
+         *     ``replace`` overwrites the rule's fields on every matching entry. Weights
+         *     are never touched here — they come from ``suggest`` + ``apply``.
+         */
+        MaterialiseRequest: {
+            /** Rules */
+            rules?: components["schemas"]["ExerciseRule"][] | null;
+            /** Weeks */
+            weeks?: number[] | null;
+            /**
+             * Mode
+             * @default fill-empty
+             * @enum {string}
+             */
+            mode: "replace" | "fill-empty";
+        };
+        /** MaterialiseResponse */
+        MaterialiseResponse: {
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /**
+             * Rules Saved
+             * @default 0
+             */
+            rules_saved: number;
+            /**
+             * Days Updated
+             * @default 0
+             */
+            days_updated: number;
+            /**
+             * Entries Updated
+             * @default []
+             */
+            entries_updated: components["schemas"]["MaterialisedEntry"][];
+            /**
+             * Skipped
+             * @default []
+             */
+            skipped: components["schemas"]["MaterialiseSkip"][];
+        };
+        /** MaterialiseSkip */
+        MaterialiseSkip: {
+            /** Week */
+            week: number;
+            /** Exercise */
+            exercise: string;
+            /** Reason */
+            reason: string;
+        };
+        /** MaterialisedEntry */
+        MaterialisedEntry: {
+            /**
+             * Day Id
+             * Format: uuid
+             */
+            day_id: string;
+            /**
+             * Day Date
+             * Format: date
+             */
+            day_date: string;
+            /** Week */
+            week: number;
+            /** Exercise Index */
+            exercise_index: number;
+            /** Exercise */
+            exercise: string;
+            /** Sets */
+            sets?: number | null;
+            /** Reps */
+            reps?: number | null;
+            /** Rpe */
+            rpe?: number | null;
+            /**
+             * Is Deload
+             * @default false
+             */
+            is_deload: boolean;
         };
         /**
          * MergeManyRequest
@@ -8099,6 +8474,133 @@ export interface components {
             pr_1rm: number;
             /** Proximity Pct */
             proximity_pct: number;
+        };
+        /** ProgressionApplyResult */
+        ProgressionApplyResult: {
+            /**
+             * Day Id
+             * Format: uuid
+             */
+            day_id: string;
+            /** Exercise Index */
+            exercise_index: number;
+            /** Exercise */
+            exercise: string;
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Pct 1Rm */
+            pct_1rm?: number | null;
+            /** Previous Weight Kg */
+            previous_weight_kg?: number | null;
+            /** Previous Weight Source */
+            previous_weight_source?: string | null;
+            /**
+             * Applied
+             * @default false
+             */
+            applied: boolean;
+            /** Skipped Reason */
+            skipped_reason?: string | null;
+        };
+        /**
+         * ProgressionApplyTarget
+         * @description One accepted suggestion, addressed by (day, index in that day's list).
+         */
+        ProgressionApplyTarget: {
+            /**
+             * Day Id
+             * Format: uuid
+             */
+            day_id: string;
+            /** Exercise Index */
+            exercise_index: number;
+            /** Weight Kg */
+            weight_kg: number;
+            /** Pct 1Rm */
+            pct_1rm?: number | null;
+        };
+        /**
+         * ProgressionStart
+         * @description Week-1 targets for an exercise ramp.
+         */
+        ProgressionStart: {
+            /** Sets */
+            sets?: number | null;
+            /** Reps */
+            reps?: number | null;
+            /** Rpe */
+            rpe?: number | null;
+        };
+        /**
+         * ProgressionTarget
+         * @description One proposed weight, with everything needed to justify it (S1 §4.2).
+         */
+        ProgressionTarget: {
+            /**
+             * Day Id
+             * Format: uuid
+             */
+            day_id: string;
+            /**
+             * Day Date
+             * Format: date
+             */
+            day_date: string;
+            /** Week */
+            week?: number | null;
+            /** Exercise Index */
+            exercise_index: number;
+            /** Exercise */
+            exercise: string;
+            /** Sets */
+            sets?: number | null;
+            /** Reps */
+            reps?: number | null;
+            /** Rpe */
+            rpe?: number | null;
+            /** Weight Kg */
+            weight_kg?: number | null;
+            /** Pct 1Rm */
+            pct_1rm?: number | null;
+            /** Basis 1Rm Kg */
+            basis_1rm_kg?: number | null;
+            /** Basis Source */
+            basis_source?: ("pr" | "recent_sets" | "none") | null;
+            /** Basis Date */
+            basis_date?: string | null;
+            /** Training Max Pct */
+            training_max_pct?: number | null;
+            /** Prev Week Kg */
+            prev_week_kg?: number | null;
+            /** Delta Kg */
+            delta_kg?: number | null;
+            /** Mode */
+            mode?: ("rpe" | "load") | null;
+            /**
+             * Is Deload
+             * @default false
+             */
+            is_deload: boolean;
+            /** Safety Warning */
+            safety_warning?: string | null;
+            /** Skipped Reason */
+            skipped_reason?: ("manual" | "no_basis" | "reps_too_high" | "no_target") | null;
+        };
+        /**
+         * ProgressionWeekly
+         * @description Per-week increments applied on top of ``start``.
+         */
+        ProgressionWeekly: {
+            /** Rpe Delta */
+            rpe_delta?: number | null;
+            /** Reps Delta */
+            reps_delta?: number | null;
+            /** Sets Delta */
+            sets_delta?: number | null;
+            /** Load Delta Kg */
+            load_delta_kg?: number | null;
+            /** Load Delta Pct */
+            load_delta_pct?: number | null;
         };
         /**
          * ProjectedLoadPoint
@@ -9199,6 +9701,68 @@ export interface components {
             /** Summary */
             summary?: string | null;
         };
+        /** StrengthProgressionApplyRequest */
+        StrengthProgressionApplyRequest: {
+            /** Targets */
+            targets: components["schemas"]["ProgressionApplyTarget"][];
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+        };
+        /** StrengthProgressionApplyResponse */
+        StrengthProgressionApplyResponse: {
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /**
+             * Applied
+             * @default []
+             */
+            applied: components["schemas"]["ProgressionApplyResult"][];
+            /**
+             * Skipped
+             * @default []
+             */
+            skipped: components["schemas"]["ProgressionApplyResult"][];
+        };
+        /**
+         * StrengthProgressionSuggestRequest
+         * @description Scope for a suggestion pass (never writes).
+         */
+        StrengthProgressionSuggestRequest: {
+            /**
+             * Scope
+             * @default plan
+             * @enum {string}
+             */
+            scope: "day" | "week" | "plan";
+            /** Day Id */
+            day_id?: string | null;
+            /** Week */
+            week?: number | null;
+            /**
+             * Force
+             * @default false
+             */
+            force: boolean;
+        };
+        /** StrengthProgressionSuggestResponse */
+        StrengthProgressionSuggestResponse: {
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+            /**
+             * Targets
+             * @default []
+             */
+            targets: components["schemas"]["ProgressionTarget"][];
+        };
         /**
          * StrengthWeekTemplate
          * @description One week's progressive-overload parameters in a strength template.
@@ -9283,6 +9847,8 @@ export interface components {
              * @enum {string}
              */
             basis_source: "pr" | "recent_sets" | "none";
+            /** Basis Date */
+            basis_date?: string | null;
             /** Safety Warning */
             safety_warning?: string | null;
         };
@@ -9331,6 +9897,21 @@ export interface components {
             intensity: string;
             /** Icon */
             icon: string;
+        };
+        /**
+         * SwapDayRequest
+         * @description Swap two plan days' dates (atomic).
+         *
+         *     Both days must belong to the same plan and be uncompleted. The service
+         *     exchanges ``day_date`` between them; nothing else moves, so linked
+         *     actuals stay with their own row.
+         */
+        SwapDayRequest: {
+            /**
+             * Target Day Id
+             * Format: uuid
+             */
+            target_day_id: string;
         };
         /** SyncUserRequest */
         SyncUserRequest: {
@@ -9665,6 +10246,86 @@ export interface components {
              */
             current_tsb: number;
         };
+        /**
+         * TrainingPlanBlockCreate
+         * @description A new block.
+         *
+         *     Date containment (inside the plan) and non-overlap (against the plan's other
+         *     blocks) are checked in the service, because both need the plan loaded and
+         *     neither can be expressed on these fields alone.
+         */
+        TrainingPlanBlockCreate: {
+            /** Name */
+            name: string;
+            /** Focus */
+            focus?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Target Tss Per Week */
+            target_tss_per_week?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
+        /** TrainingPlanBlockRead */
+        TrainingPlanBlockRead: {
+            /** Name */
+            name: string;
+            /** Focus */
+            focus?: string | null;
+            /**
+             * Start Date
+             * Format: date
+             */
+            start_date: string;
+            /**
+             * End Date
+             * Format: date
+             */
+            end_date: string;
+            /** Target Tss Per Week */
+            target_tss_per_week?: number | null;
+            /** Notes */
+            notes?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Plan Id
+             * Format: uuid
+             */
+            plan_id: string;
+        };
+        /**
+         * TrainingPlanBlockUpdate
+         * @description A partial block edit.
+         *
+         *     ``exclude_unset`` is what makes this a PATCH: an omitted field is left alone,
+         *     an explicit ``null`` clears it.
+         */
+        TrainingPlanBlockUpdate: {
+            /** Name */
+            name?: string | null;
+            /** Focus */
+            focus?: string | null;
+            /** Start Date */
+            start_date?: string | null;
+            /** End Date */
+            end_date?: string | null;
+            /** Target Tss Per Week */
+            target_tss_per_week?: number | null;
+            /** Notes */
+            notes?: string | null;
+        };
         /** TrainingPlanCreate */
         TrainingPlanCreate: {
             /** Name */
@@ -9698,6 +10359,10 @@ export interface components {
              * @default []
              */
             days: components["schemas"]["TrainingPlanDayCreate"][];
+            /** Strength Progression */
+            strength_progression?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /** TrainingPlanDayCreate */
         TrainingPlanDayCreate: {
@@ -9839,8 +10504,9 @@ export interface components {
          * TrainingPlanDayUpdate
          * @description Partial single-day update (PATCH) — only provided fields are applied.
          *
-         *     Server-managed columns (``activity_id``, ``lifting_session_id``) are not
-         *     client-settable here.  ``planned_volume_kg`` may be sent, but if
+         *     ``activity_id`` / ``lifting_session_id`` are client-settable so the
+         *     unplanned strip can attach an actual to a chosen day (ownership is
+         *     validated in the service).  ``planned_volume_kg`` may be sent, but if
          *     ``planned_exercises`` is also provided the server recomputes volume from
          *     the exercise list to keep them in sync.
          */
@@ -9873,6 +10539,10 @@ export interface components {
             planned_route_id?: string | null;
             /** Warmup Template Id */
             warmup_template_id?: string | null;
+            /** Activity Id */
+            activity_id?: string | null;
+            /** Lifting Session Id */
+            lifting_session_id?: string | null;
             /** Notes */
             notes?: string | null;
             /** Completed */
@@ -9931,6 +10601,10 @@ export interface components {
              * @default []
              */
             days: components["schemas"]["TrainingPlanDayRead"][];
+            /** Strength Progression */
+            strength_progression?: {
+                [key: string]: unknown;
+            }[] | null;
         };
         /**
          * TrainingPlanSummary
@@ -9989,6 +10663,10 @@ export interface components {
             status?: string | null;
             /** Event Id */
             event_id?: string | null;
+            /** Strength Progression */
+            strength_progression?: {
+                [key: string]: unknown;
+            }[] | null;
             /** Days */
             days?: components["schemas"]["TrainingPlanDayCreate"][] | null;
         };
@@ -13596,6 +14274,8 @@ export interface operations {
                 exercise_name?: string | null;
                 /** @description Second period in days (for comparison charts) */
                 days_b?: number | null;
+                /** @description Exclude rides tagged as commutes from load views (Jev purpose) */
+                training_only?: boolean | null;
             };
             header?: never;
             path: {
@@ -17177,6 +17857,57 @@ export interface operations {
             };
         };
     };
+    list_undos_api_v1_undo_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    perform_undo_api_v1_undo__log_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                log_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_metrics_api_v1_goals_metrics_get: {
         parameters: {
             query?: never;
@@ -17990,6 +18721,36 @@ export interface operations {
             };
         };
     };
+    delete_plan_day_api_v1_training_plans__plan_id__days__day_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                day_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     update_plan_day_api_v1_training_plans__plan_id__days__day_id__patch: {
         parameters: {
             query?: never;
@@ -18125,6 +18886,144 @@ export interface operations {
             };
         };
     };
+    suggest_strength_progression_api_v1_training_plans__plan_id__strength_progression_suggest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrengthProgressionSuggestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrengthProgressionSuggestResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    apply_strength_progression_api_v1_training_plans__plan_id__strength_progression_apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StrengthProgressionApplyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StrengthProgressionApplyResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    materialise_strength_progression_api_v1_training_plans__plan_id__strength_progression_materialise_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MaterialiseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MaterialiseResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_plan_review_api_v1_training_plans__plan_id__review_get: {
+        parameters: {
+            query?: {
+                refresh?: boolean;
+            };
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     reschedule_plan_day_api_v1_training_plans__plan_id__days__day_id__reschedule_post: {
         parameters: {
             query?: never;
@@ -18217,6 +19116,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UnplannedActualsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_plan_day_api_v1_training_plans__plan_id__days_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrainingPlanDayCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingPlanDayRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    swap_plan_days_api_v1_training_plans__plan_id__days__day_id__swap_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                day_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SwapDayRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingPlanDayRead"][];
                 };
             };
             /** @description Validation Error */
@@ -18506,6 +19476,138 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plan_blocks_api_v1_training_plans__plan_id__blocks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingPlanBlockRead"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_plan_block_api_v1_training_plans__plan_id__blocks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrainingPlanBlockCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingPlanBlockRead"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_plan_block_api_v1_training_plans__plan_id__blocks__block_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_plan_block_api_v1_training_plans__plan_id__blocks__block_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+                block_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrainingPlanBlockUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrainingPlanBlockRead"];
                 };
             };
             /** @description Validation Error */

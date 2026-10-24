@@ -1,0 +1,75 @@
+version: 1
+name: fittrack
+
+source_of_truth:
+  runtime: application code and tests
+  api_contract: backend OpenAPI schema
+  database: Alembic migrations
+  algorithms: versioned service implementations and golden fixtures
+
+domains:
+  auth:
+    backend:
+      api: backend/app/api/auth.py
+      service: backend/app/services/auth.py
+      models: [backend/app/models/user.py]
+    frontend:
+      pages: [frontend/src/app/(app)/settings/page.tsx]
+    verification:
+      - backend/tests/integration/test_account_and_export.py
+  routes:
+    backend:
+      api: backend/app/api/routes.py
+      service: backend/app/services/route_service.py
+      models: [backend/app/models/route.py]
+    frontend:
+      pages: [frontend/src/app/(app)/routes/page.tsx]
+    verification:
+      - backend/tests/test_route_matching.py
+      - frontend/e2e/routes.spec.ts
+  lifting:
+    backend:
+      api: backend/app/api/lifting.py
+      service: backend/app/services/lifting.py
+      models: [backend/app/models/lifting.py]
+    frontend:
+      pages: [frontend/src/app/(app)/lifting/page.tsx]
+    verification:
+      - backend/tests/test_lifting.py
+      - frontend/e2e/training.spec.ts
+  training_plans:
+    backend:
+      api: backend/app/api/training_plans.py
+      service: backend/app/services/training_plan.py
+      models: [backend/app/models/training_plan.py]
+    frontend:
+      pages: [frontend/src/app/(app)/training/page.tsx]
+    verification:
+      - backend/tests/integration/test_plan_blocks.py
+      - frontend/e2e/training.spec.ts
+  cycling_algorithms:
+    backend:
+      services: backend/app/services/cycling
+      integrations: backend/app/integrations
+      reference: docs/algorithms.md
+    verification:
+      - backend/tests/test_power_curve.py
+      - backend/tests/test_combined_load_guard.py
+
+cross_cutting:
+  api_clients: frontend/src/lib/api
+  migrations: backend/alembic/versions
+  scheduled_tasks: backend/app/tasks/scheduler.py
+  backend_tests: backend/tests
+  frontend_tests: frontend/src/__tests__
+  e2e_tests: frontend/e2e
+
+commands:
+  verify: python scripts/verify.py
+  agent_map_check: python scripts/check_agent_map.py
+  backend_tests: python -m pytest backend/tests/ -q
+  frontend_tests: npm test --prefix frontend
+  frontend_typecheck: npm run typecheck --prefix frontend
+  frontend_build: npm run build --prefix frontend
+  api_codegen: npm run codegen --prefix frontend
+  api_contract_ci: npx openapi-typescript backend/openapi-ci.json -o frontend/src/lib/api/types/generated.ci.ts
