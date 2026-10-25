@@ -88,9 +88,9 @@ the old module path and repoint them. Two integration tests still patch the
 scheduler for `analyze_cross_domain_weekly` and `analyze_weather_performance_weekly`,
 which are still in the scheduler, so they are correct until those tasks move.
 
-## Progress at 2026-10-25
+## Progress at 2026-10-26
 
-Nine slices landed, each with its own PR and the beat invariants green.
+Fifteen slices landed, each with its own PR and the beat invariants green.
 
 | Slice | Module | Contents |
 |-------|--------|----------|
@@ -103,17 +103,26 @@ Nine slices landed, each with its own PR and the beat invariants green.
 | 7 | `analytics.py` | stream and TSS backfills, weather refresh |
 | 8 | `analytics.py` | ride segment recompute, activity context backfill |
 | 9 | `sync.py` | `sync_all_routes` |
+| 10 | `analytics.py` | route quality scoring |
+| 11 | `common.py` | the per-user sync lock and its no-op fallback |
+| 12 | `sync.py` | the Withings sync |
+| 13 | `maintenance.py` | the database backup, which needed `UTC` imported locally |
+| 14 | `analytics.py` | LLM analysis and athlete insights |
+| 15 | `analytics.py` | the Jev backfill |
 
-`scheduler.py` went from 4,641 lines to about 4,000, having also grown with new
+`scheduler.py` went from 4,641 lines to about 3,630, having also grown with new
 features in the same period. Every slice was verified by object identity, the
 registered Celery name, the unchanged 39 beat entries and 41 tasks, and the
-invariants in `test_beat_schedule.py`.
+invariants in `test_beat_schedule.py`. Slice 13 also proved why the free-variable
+check below exists.
 
-**What remains is harder.** The tasks left are large and several depend on
-module-level state. `process_lift_video` is 330 lines with no behavioural test, so
-the identity checks that carried the first nine slices cannot distinguish a
-correct move from a subtly broken one. It needs a test before it moves, or an
-explicit decision to accept that risk.
+**What remains is harder.** `sync_all_whoop_data` at 254 lines and
+`sync_all_strava_activities` at 226 were scanned clean and deliberately left,
+because a copy of that size costs more to review than the move gains now that
+`sync.py` holds four tasks. The notification and plan tasks bring helper
+functions with them. `process_lift_video` at 330 lines still has no behavioural
+test, so identity checks cannot distinguish a correct move from a subtly broken
+one. It needs a test before it moves, or an explicit decision to accept the risk.
 
 ## Check the free variables, not just the imports
 
