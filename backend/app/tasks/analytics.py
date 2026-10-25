@@ -6,6 +6,7 @@ itself lives in the services. This module holds the scheduled entry points.
 
 import logging
 
+from app.config import get_settings
 from app.tasks.celery_app import celery_app
 from app.tasks.common import _run_task_guarded
 
@@ -303,3 +304,95 @@ def compute_route_quality_scores() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("compute_route_quality_scores", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.weekly_llm_analysis")
+def weekly_llm_analysis() -> dict:
+    """Run LLM cycling analysis for all users with Gemini API key configured."""
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.user import User
+
+    settings = get_settings()
+    if not settings.gemini_api_key:
+        return {"status": "skipped", "reason": "GEMINI_API_KEY not configured"}
+
+    async def _run():
+        async with task_session() as db:
+            result = await db.execute(select(User))
+            users = list(result.scalars().all())
+            analyzed = 0
+            failed = 0
+            for user in users:
+                try:
+                    from app.services.llm_analysis import run_llm_analysis
+
+                    await run_llm_analysis(db, user.id)
+                    analyzed += 1
+                except Exception as e:
+                    failed += 1
+                    logger.error(
+                        f"LLM analysis failed for user {user.id}: {e}", exc_info=True
+                    )
+                    # Roll back the poisoned session so a failing user's
+                    # partially-flushed writes don't leak into the next user's
+                    # commit (per-user isolation like every other task loop).
+                    await db.rollback()
+                else:
+                    # Commit per user so a mid-task crash doesn't discard the
+                    # analyses already written for other users.
+                    await db.commit()
+            return {
+                "users_analyzed": analyzed,
+                "users_failed": failed,
+                "users_total": len(users),
+            }
+
+    return asyncio.run(_run())
+
+
+@celery_app.task(name="app.tasks.scheduler.compute_athlete_insights_nightly")
+def compute_athlete_insights_nightly() -> dict:
+    """Nightly deterministic athlete-model compute (Feature 3 / B-15).
+
+    Runs the six insight functions per user and upserts AthleteInsight rows.
+    Pure local computation — no Modal, no Gemini.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.user import User
+
+    async def _run():
+        async with task_session() as db:
+            from app.services.analytics import compute_all_insights
+
+            result = await db.execute(select(User))
+            users = list(result.scalars().all())
+            computed = 0
+            failed = 0
+            for user in users:
+                try:
+                    await compute_all_insights(db, user.id)
+                    computed += 1
+                except Exception as e:
+                    failed += 1
+                    logger.error(
+                        f"Athlete insights failed for user {user.id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+                else:
+                    await db.commit()
+            return {
+                "users_computed": computed,
+                "users_failed": failed,
+                "users_total": len(users),
+            }
+
+    return asyncio.run(_run_task_guarded("compute_athlete_insights_nightly", _run))

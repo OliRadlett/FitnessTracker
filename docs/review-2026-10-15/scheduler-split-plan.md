@@ -115,6 +115,19 @@ the identity checks that carried the first nine slices cannot distinguish a
 correct move from a subtly broken one. It needs a test before it moves, or an
 explicit decision to accept that risk.
 
+## Check the free variables, not just the imports
+
+A function's own imports are not the whole story. It may also read names from its
+module's scope. `backup_database` called `datetime.now(UTC)` while importing
+`datetime` locally and taking `UTC` from the scheduler's module-level import, so a
+verbatim move would have raised `NameError` on the first scheduled backup, days
+after a green PR.
+
+Before each cut, list the names the function uses that it does not define and does
+not import. Anything from module scope must move with it or be imported into the
+new module. Identity checks cannot see this, and neither can a test that never
+runs the task.
+
 ## What not to do
 
 - Do not rename task names, even to tidy them. Queued messages and beat entries
