@@ -14,6 +14,7 @@ from app.integrations.resilience import ModalCircuitBreaker
 from app.services.geo_clusters import geo_cluster_segments
 from app.tasks.analytics import (
     backfill_activity_context,
+    backfill_free_text_tags,
     backfill_manual_activity_tss,
     backfill_streams_for_all_activities,
     compute_athlete_insights_nightly,
@@ -625,66 +626,7 @@ def classify_route_terrain() -> dict:
 
 
 
-@celery_app.task(name="app.tasks.scheduler.backfill_free_text_tags")
-def backfill_free_text_tags() -> dict:
-    """Jev weekly backfill — tag lifting-session notes (Phase 1) and classify
-    sessions from their sets (classification Phase 1). Both are idempotent
-    (note-hash / content-hash + model + taxonomy version) and no-op when Jev is
-    not configured.
-    """
-    import asyncio
 
-    from sqlalchemy import select
-
-    from app.database import task_session
-    from app.integrations import jev_client
-    from app.models.activity import Activity
-    from app.models.lifting import LiftingSession
-
-    if not jev_client.is_configured():
-        return {"skipped": True, "reason": "Jev not configured"}
-
-    async def _run():
-        from app.services.jev_classification import (
-            backfill_session_classifications as _backfill_class,
-        )
-        from app.services.jev_tagging import backfill_free_text_tags as _backfill
-
-        async with task_session() as db:
-            # Every user with a lifting session (classification) or a named
-            # activity (purpose tagging); each backfill skips rows it can't use.
-            result = await db.execute(select(LiftingSession.user_id).distinct())
-            user_ids = {r for (r,) in result.all()}
-            act_result = await db.execute(
-                select(Activity.user_id)
-                .where(Activity.name.isnot(None), Activity.name != "")
-                .distinct()
-            )
-            user_ids |= {r for (r,) in act_result.all()}
-
-            total_tagged = 0
-            total_classified = 0
-            done = 0
-            for user_id in user_ids:
-                try:
-                    total_tagged += await _backfill(db, user_id)
-                    total_classified += await _backfill_class(db, user_id)
-                    await db.commit()
-                    done += 1
-                except Exception as e:
-                    logger.error(
-                        f"Jev backfill failed for user {user_id}: {e}",
-                        exc_info=True,
-                    )
-                    await db.rollback()
-
-            return {
-                "users_processed": done,
-                "sessions_tagged": total_tagged,
-                "sessions_classified": total_classified,
-            }
-
-    return asyncio.run(_run_task_guarded("backfill_free_text_tags", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.map_match_routes")
