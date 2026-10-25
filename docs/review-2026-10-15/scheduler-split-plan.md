@@ -76,6 +76,18 @@ the attributes means no caller, test, or beat entry has to change.
 - Restart a worker after each slice and confirm `celery inspect registered` lists
   the same count. No task logic changes, so no behavioural test is added.
 
+## The test-patch trap
+
+A moved task resolves `_run_task_guarded` in its own module's namespace, not the
+scheduler's. A test that patches `app.tasks.scheduler._run_task_guarded` to bypass
+Redis therefore stops affecting that task, and instead of failing loudly it runs
+the real guard. `test_task_lock_guard.py` hit this on the first sync move.
+
+The patch target must follow the definition. When a task moves, grep the tests for
+the old module path and repoint them. Two integration tests still patch the
+scheduler for `analyze_cross_domain_weekly` and `analyze_weather_performance_weekly`,
+which are still in the scheduler, so they are correct until those tasks move.
+
 ## What not to do
 
 - Do not rename task names, even to tidy them. Queued messages and beat entries
