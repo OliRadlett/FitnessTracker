@@ -241,3 +241,65 @@ def backfill_activity_context() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.compute_route_quality_scores")
+def compute_route_quality_scores() -> dict:
+    """Recompute route quality scores for all routes.
+
+    Runs weekly. For each route, computes completeness, popularity,
+    surface quality, and effort match scores, then persists to
+    the route_quality table and the routes.quality_score column.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from app.database import task_session
+    from app.models.route import Route
+
+    async def _run():
+        from app.services.route_quality_service import compute_and_store_quality
+
+        async with task_session() as db:
+            # Get all users with routes
+            result = await db.execute(select(Route.user_id).distinct())
+            user_ids = [r for (r,) in result.all()]
+
+            total_routes = 0
+            updated_routes = 0
+
+            for user_id in user_ids:
+                try:
+                    result = await db.execute(
+                        select(Route)
+                        .where(Route.user_id == user_id)
+                        .options(selectinload(Route.sources))
+                    )
+                    routes = list(result.scalars().all())
+
+                    for route in routes:
+                        try:
+                            await compute_and_store_quality(db, route, user_id)
+                            updated_routes += 1
+                        except Exception as e:
+                            logger.warning(
+                                f"Quality scoring failed for route {route.id}: {e}"
+                            )
+                    await db.commit()
+                    total_routes += len(routes)
+                except Exception as e:
+                    logger.error(
+                        f"Quality scoring batch failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+
+            return {
+                "total_routes": total_routes,
+                "updated_routes": updated_routes,
+                "users_processed": len(user_ids),
+            }
+
+    return asyncio.run(_run_task_guarded("compute_route_quality_scores", _run))

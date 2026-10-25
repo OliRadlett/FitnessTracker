@@ -88,6 +88,33 @@ the old module path and repoint them. Two integration tests still patch the
 scheduler for `analyze_cross_domain_weekly` and `analyze_weather_performance_weekly`,
 which are still in the scheduler, so they are correct until those tasks move.
 
+## Progress at 2026-10-25
+
+Nine slices landed, each with its own PR and the beat invariants green.
+
+| Slice | Module | Contents |
+|-------|--------|----------|
+| 1 | `beat.py` | the beat schedule |
+| 2 | `common.py` | `_run_task_guarded` |
+| 3 | `celery_app.py` | the Celery app, the prerequisite slices 4 onward need |
+| 4 | `maintenance.py` | cleanup, quarantine, undo prune |
+| 5 | `videos.py` | weekly video aggregation |
+| 6 | `sync.py` | Strava webhook drain and reconciliation |
+| 7 | `analytics.py` | stream and TSS backfills, weather refresh |
+| 8 | `analytics.py` | ride segment recompute, activity context backfill |
+| 9 | `sync.py` | `sync_all_routes` |
+
+`scheduler.py` went from 4,641 lines to about 4,000, having also grown with new
+features in the same period. Every slice was verified by object identity, the
+registered Celery name, the unchanged 39 beat entries and 41 tasks, and the
+invariants in `test_beat_schedule.py`.
+
+**What remains is harder.** The tasks left are large and several depend on
+module-level state. `process_lift_video` is 330 lines with no behavioural test, so
+the identity checks that carried the first nine slices cannot distinguish a
+correct move from a subtly broken one. It needs a test before it moves, or an
+explicit decision to accept that risk.
+
 ## What not to do
 
 - Do not rename task names, even to tidy them. Queued messages and beat entries
