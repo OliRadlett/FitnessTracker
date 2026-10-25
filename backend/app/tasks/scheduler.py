@@ -13,8 +13,10 @@ from app.config import get_settings
 from app.integrations.resilience import ModalCircuitBreaker
 from app.services.geo_clusters import geo_cluster_segments
 from app.tasks.analytics import (
+    backfill_activity_context,
     backfill_manual_activity_tss,
     backfill_streams_for_all_activities,
+    recompute_ride_segments,
     refresh_weather_forecasts,
 )
 from app.tasks.beat import beat_schedule
@@ -798,108 +800,10 @@ def classify_route_terrain() -> dict:
     return asyncio.run(_run_task_guarded("classify_route_terrain", _run))
 
 
-@celery_app.task(name="app.tasks.scheduler.recompute_ride_segments")
-def recompute_ride_segments() -> dict:
-    """Recompute ride segments (§3.13) for all users with cycling routes.
-
-    Runs weekly. For each cycling route, detects climb segments from the
-    route geometry + elevation profile, then distance-aligns linked activity
-    streams to compute per-segment efforts and PRs (leaderboard-of-self).
-    """
-    import asyncio
-
-    from sqlalchemy import select
-
-    from app.database import task_session
-    from app.models.route import Route
-
-    async def _run():
-        from app.services.segments import recompute_all_user_segments
-
-        async with task_session() as db:
-            result = await db.execute(
-                select(Route.user_id).where(Route.sport_type == "cycling").distinct()
-            )
-            user_ids = [r for (r,) in result.all()]
-
-            total_segments = 0
-            done = 0
-            for user_id in user_ids:
-                try:
-                    total_segments += await recompute_all_user_segments(db, user_id)
-                    await db.commit()
-                    done += 1
-                except Exception as e:
-                    logger.error(
-                        f"Segment recompute failed for user {user_id}: {e}",
-                        exc_info=True,
-                    )
-                    await db.rollback()
-
-            return {
-                "total_segments": total_segments,
-                "users_processed": done,
-            }
-
-    return asyncio.run(_run_task_guarded("recompute_ride_segments", _run))
 
 
-@celery_app.task(name="app.tasks.scheduler.backfill_activity_context")
-def backfill_activity_context() -> dict:
-    """Precompute cached ride context (§1.3) for cycling activities that have
-    streams but no `context` yet — rows predating the sync-time compute, or
-    activities whose streams were backfilled later. Idempotent (skips rows
-    that already have context).
-    """
-    import asyncio
 
-    from sqlalchemy import select
 
-    from app.database import task_session
-    from app.models.activity import Activity
-
-    async def _run():
-        from app.services.activity_context import ensure_activity_contexts_by_id
-
-        async with task_session() as db:
-            result = await db.execute(
-                select(Activity.user_id)
-                .where(
-                    Activity.sport_type == "cycling",
-                    Activity.context.is_(None),
-                )
-                .distinct()
-            )
-            user_ids = [r for (r,) in result.all()]
-
-            total_stored = 0
-            done = 0
-            for user_id in user_ids:
-                try:
-                    ids_result = await db.execute(
-                        select(Activity.id).where(
-                            Activity.user_id == user_id,
-                            Activity.sport_type == "cycling",
-                            Activity.context.is_(None),
-                        )
-                    )
-                    ids = [r for (r,) in ids_result.all()]
-                    total_stored += await ensure_activity_contexts_by_id(db, ids)
-                    await db.commit()
-                    done += 1
-                except Exception as e:
-                    logger.error(
-                        f"Context backfill failed for user {user_id}: {e}",
-                        exc_info=True,
-                    )
-                    await db.rollback()
-
-            return {
-                "users_processed": done,
-                "contexts_stored": total_stored,
-            }
-
-    return asyncio.run(_run_task_guarded("backfill_activity_context", _run))
 
 
 @celery_app.task(name="app.tasks.scheduler.backfill_free_text_tags")
