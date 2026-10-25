@@ -22,7 +22,7 @@ from app.tasks.analytics import (
 )
 from app.tasks.beat import beat_schedule
 from app.tasks.celery_app import celery_app
-from app.tasks.common import _run_task_guarded
+from app.tasks.common import _run_task_guarded, _try_acquire_user_lock
 from app.tasks.maintenance import (
     cleanup_old_data,
     prune_expired_undo_logs,
@@ -57,37 +57,7 @@ _MODAL_BREAKER = ModalCircuitBreaker(
 # integration tests monkeypatch it here to run without Redis.
 
 
-class _NoopLock:
-    """Async context manager that does nothing — used when Redis is down so
-    per-user sync still proceeds without the concurrency guard."""
 
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *args):
-        return False
-
-
-async def _try_acquire_user_lock(user_id, provider: str, ttl: int = 1800):
-    """Best-effort acquire the ``sync:{user}:{provider}`` lock.
-
-    Returns the lock context manager, ``None`` if it is genuinely held by
-    another run (scheduled task or manual sync), or a no-op lock if Redis
-    is unavailable (fail open — a Redis outage must not stop syncing).
-    """
-    from app.services.cache import LockHeldError, redis_lock
-
-    try:
-        cm = redis_lock(f"sync:{user_id}:{provider}", ttl=ttl)
-        await cm.__aenter__()
-        return cm
-    except LockHeldError:
-        return None
-    except Exception as e:
-        logger.warning(
-            f"Redis unavailable for sync lock ({e}) — proceeding without lock"
-        )
-        return _NoopLock()
 
 
 # ── Beat schedule ─────────────────────────────────────────────────────────────
