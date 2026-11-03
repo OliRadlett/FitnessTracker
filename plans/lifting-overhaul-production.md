@@ -357,8 +357,8 @@ Existing tests to update, not delete: `frontend/e2e/lifting.spec.ts` (tab labels
 | P4 PR cards/standards/history table | **Landed** (`f652653`) |
 | P5 Mobile check, 44px empty-state fix, tab keyboard test | **Landed** (`bfd4ed3`) |
 | Big-3 backend correction | **Landed** (`c00408e`) |
-| P6 cleanup | **Open, non-visual** — `prs-legacy` block, `SessionBrowser`, `SessionCardMini`, `SessionFocusChips`, `SetsVisualizer`, unused chart queries |
-| P7 production gate / deploy | **Not run** — no push, PR or merge |
+| P6 cleanup | **Landed** (`4d7dfb7`) — legacy PR block and `SessionBrowser`/`SessionCardMini`/`SessionFocusChips`/`SetsVisualizer`/`TodayStrengthDayCard` deleted; unused PR/volume/video queries pruned; manual PR modal restored |
+| P7 production gate / deploy | **Gate captured, no deploy** — eight-state Playwright gate at 1440/390 in `frontend/test-results/lifting-gate/`; push/PR/merge still open |
 
 Evidence: `npx tsc --noEmit` clean; `npm run build` clean; `e2e/lifting.spec.ts` 19 passed; touch audit 0 targets under 44 at 390; keyboard tab test passes. Visual captures exist for Overview, Sessions rail/detail, Analytics, PRs and mobile Overview/Sessions under `prototype/lifting/qa/out/port/` in the main checkout.
 
