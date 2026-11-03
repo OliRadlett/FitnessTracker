@@ -9,23 +9,14 @@ import type {
   LiftingSession,
   PersonalRecord,
   CreateSessionPayload,
-  UpdateSessionPayload,
   CreatePRPayload,
+  UpdateSessionPayload,
   ChartData,
   LinkedActivity,
   LiftingAnalysis,
   DeficiencyResponse,
-  LiftVideo,
   CyclingProfile,
 } from '@/lib/api';
-import {
-  LEVEL_ORDER,
-  levelForRatio,
-  nextLevelTarget,
-  ratioToBodyweight,
-  standardKeyFor,
-  type StandardLevel,
-} from '@/lib/lifting/standards';
 import { VolumeTrendChart } from '@/components/lifting/overview/VolumeTrendChart';
 import { amount, bestPr, big3Total, previousSameFocus, shortWeight, topSet } from '@/lib/lifting/overview';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
@@ -41,34 +32,26 @@ import { LinkActivityModal } from '@/components/lifting/LinkActivityModal';
 import { WarmupTemplateManager } from '@/components/lifting/WarmupTemplateManager';
 import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
-import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
-import { VideoChip } from '@/components/lifting/VideoChip';
 import { SessionRail } from '@/components/lifting/SessionRail';
 import { SetLadder } from '@/components/lifting/SetLadder';
 import { PrTab } from '@/components/lifting/PrTab';
 import { useSessionBrowserFilters } from '@/components/lifting/useSessionBrowserFilters';
 import { SessionLabels } from '@/components/lifting/SessionLabels';
+import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { RepeatSessionButton } from '@/components/lifting/RepeatSessionButton';
-import { BestByRepRangeStrip } from '@/components/lifting/BestByRepRangeStrip';
 import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
-import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
-import { DotsProgressionCard } from '@/components/lifting/DotsProgressionCard';
-import { LiftingGoalsStrip, type GoalPrefill } from '@/components/lifting/LiftingGoalsStrip';
 import { RepRangeCard } from '@/components/lifting/RepRangeCard';
 import { RpeDriftCard } from '@/components/lifting/RpeDriftCard';
 import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
-import { VideoGalleryModal } from '@/components/lifting/VideoGalleryModal';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
-import { Sparkline } from '@/components/ui/Sparkline';
 import { fromLocalInputValue, toLocalInputValue } from '@/lib/lifting/sessionTime';
 import { useForecastChart } from '@/lib/projection';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
-import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
-import { Dumbbell, Link2, Clock, TriangleAlert, Target, Pencil, Trash2 } from 'lucide-react';
+import { Dumbbell, Link2, Clock, TriangleAlert, Pencil, Trash2 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -158,19 +141,13 @@ export default function LiftingPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showManualPR, setShowManualPR] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showEditSession, setShowEditSession] = useState(false);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
-  const [showManualPR, setShowManualPR] = useState(false);
-  const [showAccessories, setShowAccessories] = useState(false);
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
   const [celebrationPR, setCelebrationPR] = useState<PREvent | null>(null);
-  // Lifting → goals two-way: a PR card's "Set goal" opens the strip's create
-  // modal prefilled (estimated_1rm + exercise). Nulled on consume so the same
-  // exercise can re-fire via a fresh nonce.
-  const [goalPrefill, setGoalPrefill] = useState<GoalPrefill | null>(null);
-  const handleGoalPrefillConsumed = useCallback(() => setGoalPrefill(null), []);
 
   // Tab URL state — syncs with `?tab=<name>` for deep-linking
   const [activeTab, setActiveTab] = useState<LiftingTab>('overview');
@@ -209,8 +186,8 @@ export default function LiftingPage() {
     setParam('session', id);
   }, [setParam]);
 
-  // Session browser filter state — one URL-synced (s_*) instance shared by
-  // SessionFocusChips and SessionBrowser. `?session=` / `?tab=` / `?pr=` are untouched.
+  // Session browser filter state — one URL-synced (s_*) instance used by the
+  // SessionRail search + focus chips. `?session=` / `?tab=` / `?pr=` are untouched.
   const browserFilterBag = useSessionBrowserFilters();
 
   // Mobile drill-down: selecting a session below the fold scrolls the detail
@@ -235,7 +212,7 @@ export default function LiftingPage() {
   // ── Queries ──────────────────────────────────────────────────────────────
 
   // Full-list query retained for AutoregulationCard, Whoop banner, e1RM
-  // options and chip facets; the visible list itself is paginated by SessionBrowser.
+  // options and chip facets; SessionRail filters it client-side.
   const { data: sessions } = useQuery<LiftingSession[]>({
     queryKey: ['lifting-sessions'],
     queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions'),
@@ -246,13 +223,6 @@ export default function LiftingPage() {
   const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
     queryKey: ['chart-strength-balance', 30],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/strength_balance'),
-    enabled: !!token,
-    staleTime: 300_000,
-  });
-
-  const { data: big3TotalChart, isLoading: big3TotalLoading } = useQuery<ChartData>({
-    queryKey: ['chart-big-3-total'],
-    queryFn: () => authFetch<ChartData>('/api/v1/charts/big_3_total'),
     enabled: !!token,
     staleTime: 300_000,
   });
@@ -337,53 +307,6 @@ export default function LiftingPage() {
     staleTime: 300_000,  // 5 min — PRs change rarely
   });
 
-  const { data: allVideos } = useQuery<LiftVideo[]>({
-    queryKey: ['lift-videos'],
-    queryFn: () => authFetch<LiftVideo[]>('/api/v1/lifting/videos/?limit=200'),
-    enabled: !!token,
-    staleTime: 60_000,
-  });
-
-  const videoBySession = useMemo(
-    () => new Map<string, LiftVideo[]>(),
-    [],
-  );
-  const videoByPR = useMemo(
-    () => new Map<string, LiftVideo[]>(),
-    [],
-  );
-  useEffect(() => {
-    if (!allVideos) return;
-    const bySession = new Map<string, LiftVideo[]>();
-    const byPR = new Map<string, LiftVideo[]>();
-    for (const v of allVideos) {
-      if (v.lifting_session_id) {
-        const arr = bySession.get(v.lifting_session_id) ?? [];
-        arr.push(v);
-        bySession.set(v.lifting_session_id, arr);
-      }
-      if (v.personal_record_id) {
-        const arr = byPR.get(v.personal_record_id) ?? [];
-        arr.push(v);
-        byPR.set(v.personal_record_id, arr);
-      }
-    }
-    videoBySession.clear();
-    for (const [k, v] of bySession) videoBySession.set(k, v);
-    videoByPR.clear();
-    for (const [k, v] of byPR) videoByPR.set(k, v);
-  }, [allVideos, videoBySession, videoByPR]);
-
-  const [videoGalleryOpen, setVideoGalleryOpen] = useState(false);
-  const [videoGalleryVideos, setVideoGalleryVideos] = useState<LiftVideo[]>([]);
-  const [videoGalleryTitle, setVideoGalleryTitle] = useState('');
-
-  function openVideoGallery(videos: LiftVideo[], title: string) {
-    setVideoGalleryVideos(videos);
-    setVideoGalleryTitle(title);
-    setVideoGalleryOpen(true);
-  }
-
   // PRs achieved per session (for card-level PR badges)
   const prsBySession = useMemo(() => {
     const map = new Map<string, PersonalRecord[]>();
@@ -454,6 +377,19 @@ export default function LiftingPage() {
   const [actionError, setActionError] = useState<string | null>(null);
 
   // ── Mutations ────────────────────────────────────────────────────────────
+
+  const createPRMutation = useMutation({
+    mutationFn: (payload: CreatePRPayload) =>
+      authFetch<PersonalRecord>('/api/v1/lifting/prs', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['personal-records'] });
+      setShowManualPR(false);
+    },
+    onError: (err: Error) => setActionError(err.message || 'Failed to create PR'),
+  });
 
   const createSessionMutation = useMutation({
     mutationFn: (payload: CreateSessionPayload) =>
@@ -561,19 +497,6 @@ export default function LiftingPage() {
       setConfirmDeleteSession(false);
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to delete session'),
-  });
-
-  const createPRMutation = useMutation({
-    mutationFn: (payload: CreatePRPayload) =>
-      authFetch<PersonalRecord>('/api/v1/lifting/prs', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['personal-records'] });
-      setShowManualPR(false);
-    },
-    onError: (err: Error) => setActionError(err.message || 'Failed to create PR'),
   });
 
   // Compute exercise groups for detail view
@@ -1122,6 +1045,8 @@ export default function LiftingPage() {
           bodyweightKg={bodyweightKg}
           isLoading={prLoading}
           selectedPRId={selectedPRId}
+          // Manual PR entry has no page-level form after the legacy block was
+          // removed; kept as a no-op so PrTab's required prop stays satisfied.
           onAddPR={() => setShowManualPR(true)}
           onOpenSession={(id) => {
             setActiveTab('sessions');
@@ -1132,273 +1057,6 @@ export default function LiftingPage() {
           deficiency={deficiency}
           deficiencyLoading={deficiencyLoading}
         />
-      )}
-
-      {(activeTab as string) === 'prs-legacy' && (
-        <div className="space-y-6">
-          {/* Two-way goals surface: active lifting goals + PR → goal creation */}
-          <LiftingGoalsStrip prefill={goalPrefill} onPrefillConsumed={handleGoalPrefillConsumed} />
-          <DotsScoreCard
-            personalRecords={personalRecords}
-            bodyweightKg={bodyweightKg}
-            isLoading={prLoading}
-          />
-          <DotsProgressionCard
-            totalChart={big3TotalChart}
-            isLoading={big3TotalLoading}
-          />
-          <BestByRepRangeStrip records={personalRecords} isLoading={prLoading} />
-
-      {/* Personal Records */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Personal Records</CardTitle>
-            <button
-              onClick={() => setShowManualPR(!showManualPR)}
-              className="px-3 py-1.5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors"
-            >
-              {showManualPR ? 'Cancel' : '+ Add PR'}
-            </button>
-          </div>
-        </CardHeader>
-
-        {/* Manual PR Form */}
-        {showManualPR && <ManualPRForm onSubmit={(data) => createPRMutation.mutate(data)} onCancel={() => setShowManualPR(false)} isPending={createPRMutation.isPending} />}
-
-        {prLoading ? (
-          <SkeletonRow className="h-40" />
-        ) : personalRecords && personalRecords.length > 0 ? (() => {
-          // Group and sort PRs: Big 3 first, then compounds, then accessories
-          const BIG_3 = ['Back Squat', 'Bench Press', 'Deadlift'];
-          const big3PRs: PersonalRecord[] = [];
-          const compoundPRs: PersonalRecord[] = [];
-          const accessoryPRs: PersonalRecord[] = [];
-          const big3Seen = new Set<string>();
-
-          for (const pr of personalRecords) {
-            const name = pr.exercise_name;
-            if (BIG_3.includes(name) && !big3Seen.has(name)) {
-              big3PRs.push(pr);
-              big3Seen.add(name);
-            } else if (!BIG_3.includes(name)) {
-              // Heuristic: compound exercises are typically barbell/multi-joint
-              const compoundHints = ['squat', 'press', 'deadlift', 'row', 'pull', 'dip', 'lunge', 'thrust', 'clean', 'snatch', 'hip'];
-              const isCompound = compoundHints.some(h => name.toLowerCase().includes(h));
-              if (isCompound) compoundPRs.push(pr);
-              else accessoryPRs.push(pr);
-            }
-          }
-          // Sort Big 3 in canonical order
-          big3PRs.sort((a, b) => BIG_3.indexOf(a.exercise_name) - BIG_3.indexOf(b.exercise_name));
-          compoundPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
-          accessoryPRs.sort((a, b) => a.exercise_name.localeCompare(b.exercise_name));
-
-           // Group PRs by exercise name for progression sparkline
-           const prsByExercise = new Map<string, PersonalRecord[]>();
-           for (const pr of personalRecords) {
-             const arr = prsByExercise.get(pr.exercise_name) ?? [];
-             arr.push(pr);
-             prsByExercise.set(pr.exercise_name, arr);
-           }
-
-           const LEVEL_COLORS: Record<StandardLevel, string> = {
-            beginner: 'text-muted',
-            intermediate: 'text-blue-400',
-            advanced: 'text-purple-400',
-            elite: 'text-positive',
-          };
-
-          function PRCard({ pr, progression }: { pr: PersonalRecord; progression: (number | null)[] }) {
-            const standardKey = standardKeyFor(pr.exercise_name);
-            const bwRatio =
-              standardKey != null
-                ? ratioToBodyweight(pr.estimated_1rm, bodyweightKg)
-                : null;
-            const isDeepLinked = selectedPRId != null && pr.id === selectedPRId;
-            return (
-              <div
-                className={`p-4 bg-surface-light/30 rounded-lg ${isDeepLinked ? 'ring-2 ring-accent' : ''}`}
-                ref={isDeepLinked ? (el) => el?.scrollIntoView({ block: 'center' }) : undefined}
-              >
-                <p className="text-sm font-medium text-foreground mb-2">{pr.exercise_name}</p>
-                {standardKey != null && bwRatio != null && bodyweightKg != null && (() => {
-                  const level = levelForRatio(standardKey, bwRatio);
-                  const next = nextLevelTarget(standardKey, level);
-                  const nextName =
-                    next != null ? LEVEL_ORDER[LEVEL_ORDER.indexOf(level) + 1] : null;
-                  return (
-                    <div className="flex items-center justify-center gap-1.5 mb-2 flex-wrap">
-                      <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-medium bg-surface-light ${LEVEL_COLORS[level]}`}
-                        title={`Estimated 1RM is ${bwRatio.toFixed(2)}× bodyweight (${bodyweightKg.toFixed(0)} kg)`}
-                      >
-                        {level.charAt(0).toUpperCase() + level.slice(1)} · {bwRatio.toFixed(2)}× BW
-                      </span>
-                      {next != null && nextName != null && (
-                        <span className="text-[11px] text-muted">
-                          → {Math.round(next * bodyweightKg)} kg {nextName}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })()}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-center">
-                   <div>
-                     <p className="text-lg font-bold text-blue-400">{pr.weight_kg} kg</p>
-                     <p className="text-xs text-muted">Weight</p>
-                   </div>
-                   <div>
-                     <p className="text-lg font-bold text-positive">{pr.reps}</p>
-                     <p className="text-xs text-muted">Reps</p>
-                   </div>
-                   <div>
-                     <p className="text-lg font-bold text-purple-400">{pr.estimated_1rm?.toFixed(1)} kg</p>
-                     <p className="text-xs text-muted">Est. 1RM</p>
-                   </div>
-                 </div>
-                 {progression.length > 1 && (
-                   <div className="mt-2 h-4">
-                     <Sparkline
-                       data={progression}
-                       height={16}
-                       color={pr.estimated_1rm != null ? "rgb(168 85 247)" : "rgb(96 165 250)"}
-                     />
-                   </div>
-                 )}
-                <p className="text-xs text-muted mt-2 text-center">
-                  {new Date(pr.achieved_date).toLocaleDateString(getActiveLocale())}
-                </p>
-                 {pr.notes && <p className="text-xs text-accent mt-1 text-center">{pr.notes}</p>}
-                 {(() => {
-                   const pv = videoByPR.get(pr.id);
-                   if (!pv || pv.length === 0) return null;
-                   return (
-                     <button
-                       onClick={(e) => {
-                         e.stopPropagation();
-                         openVideoGallery(pv, `${pr.exercise_name} PR videos`);
-                       }}
-                       title={`${pv.length} video${pv.length !== 1 ? 's' : ''}`}
-                       className="mt-2 mx-auto flex items-center justify-center gap-1"
-                     >
-                       <VideoChip count={pv.length} />
-                     </button>
-                   );
-                 })()}
-                 {pr.activity_id && (
-                  <Link
-                    href={`/activities?activity=${pr.activity_id}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-2 text-xs text-accent/70 hover:text-accent text-center block transition-colors"
-                  >
-                    View activity →
-                  </Link>
-                )}
-                {pr.session_id && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleSelectSession(pr.session_id as string);
-                      handleTabChange('sessions');
-                    }}
-                    className="mt-1 text-xs text-accent/70 hover:text-accent text-center block w-full transition-colors"
-                  >
-                    View session →
-                  </button>
-                )}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setGoalPrefill({
-                      metric: 'estimated_1rm',
-                      exercise: pr.exercise_name,
-                      nonce: Date.now(),
-                    });
-                  }}
-                  className="mt-1 min-h-[44px] px-3 text-xs text-accent/70 hover:text-accent text-center block w-full transition-colors"
-                  title={`Set a 1RM goal for ${pr.exercise_name}`}
-                >
-                   <Target className="w-3 h-3 mr-1" /> Set goal
-                </button>
-              </div>
-            );
-          }
-
-          // Calculate Big 3 total
-          const big3Total = big3PRs.reduce((sum, pr) => sum + (pr.estimated_1rm || pr.weight_kg), 0);
-
-          return (
-            <div className="space-y-4">
-              {/* Big 3 */}
-              {big3PRs.length > 0 && (
-                <div>
-                  <div className="flex items-center gap-4 mb-3">
-                    <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider">Big 3</h3>
-                    {big3Total > 0 && (
-                      <span className="text-xs font-bold text-foreground bg-blue-500/20 px-3 py-1 rounded-full">
-                        Total: {Math.round(big3Total)} kg
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {big3PRs.map((pr) => (
-                      <PRCard
-                        key={pr.id}
-                        pr={pr}
-                        progression={(prsByExercise.get(pr.exercise_name) ?? []).map((p) => p.estimated_1rm ?? p.weight_kg ?? null)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Other Compounds */}
-              {compoundPRs.length > 0 && (
-                <div>
-                  <h3 className="text-xs font-semibold text-positive uppercase tracking-wider mb-3">Compounds</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {compoundPRs.map((pr) => (
-                      <PRCard
-                        key={pr.id}
-                        pr={pr}
-                        progression={(prsByExercise.get(pr.exercise_name) ?? []).map((p) => p.estimated_1rm ?? p.weight_kg ?? null)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-              {/* Accessories (behind toggle) */}
-              {accessoryPRs.length > 0 && (
-                <div>
-                  <button
-                    onClick={() => setShowAccessories(!showAccessories)}
-                    className="text-xs font-semibold text-muted hover:text-foreground uppercase tracking-wider mb-3 transition-colors flex items-center gap-1"
-                  >
-                    <span>{showAccessories ? '▾' : '▸'}</span> Accessories ({accessoryPRs.length})
-                  </button>
-                  {showAccessories && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {accessoryPRs.map((pr) => (
-                        <PRCard
-                          key={pr.id}
-                          pr={pr}
-                          progression={(prsByExercise.get(pr.exercise_name) ?? []).map((p) => p.estimated_1rm ?? p.weight_kg ?? null)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })() : (
-          <p className="text-muted text-center py-8">No personal records yet</p>
-        )}
-      </Card>
-
-      {/* Weakness / Deficiency Analysis */}
-      <DeficiencyCard data={deficiency} isLoading={deficiencyLoading} category="lifting" />
-        </div>
       )}
 
       {/* ── Analytics Tab ──────────────────────────────────────────────────────── */}
@@ -1555,18 +1213,19 @@ export default function LiftingPage() {
         <WarmupTemplateManager />
       </Modal>
 
+      {/* Manual PR entry */}
+      {showManualPR && (
+        <ManualPRForm
+          onSubmit={(data) => createPRMutation.mutate(data)}
+          onCancel={() => setShowManualPR(false)}
+          isPending={createPRMutation.isPending}
+        />
+      )}
+
       {/* Link Activity Modal */}
       {linkModalSessionId && (
         <LinkActivityModal sessionId={linkModalSessionId} onClose={() => setLinkModalSessionId(null)} />
       )}
-
-      {/* Strength Video Gallery Modal (§1.1) */}
-      <VideoGalleryModal
-        title={videoGalleryTitle}
-        videos={videoGalleryVideos}
-        open={videoGalleryOpen}
-        onClose={() => setVideoGalleryOpen(false)}
-      />
     </div>
   );
 }
