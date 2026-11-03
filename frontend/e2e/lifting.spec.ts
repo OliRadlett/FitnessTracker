@@ -32,6 +32,13 @@ test.describe('Lifting Page', () => {
     await expect(page.getByRole('tab', { name: 'Templates' })).toHaveCount(0);
   });
 
+  test('tabs support keyboard navigation', async ({ authenticatedPage: page }) => {
+    const overview = page.getByRole('tab', { name: 'Overview' });
+    await overview.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Sessions' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   // ── Session List ────────────────────────────────────────────────────────
 
   test('session list renders with sessions', async ({ authenticatedPage: page }) => {
