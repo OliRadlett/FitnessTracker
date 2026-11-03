@@ -26,7 +26,8 @@ import {
   standardKeyFor,
   type StandardLevel,
 } from '@/lib/lifting/standards';
-import { amount, previousSameFocus, shortWeight, topSet } from '@/lib/lifting/overview';
+import { VolumeTrendChart } from '@/components/lifting/overview/VolumeTrendChart';
+import { amount, bestPr, big3Total, previousSameFocus, shortWeight, topSet } from '@/lib/lifting/overview';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -262,7 +263,7 @@ export default function LiftingPage() {
     staleTime: 300_000,
   });
 
-  const { data: weeklyVolumeChart, isLoading: weeklyVolumeLoading } = useQuery<ChartData>({
+  const { data: weeklyVolumeChart } = useQuery<ChartData>({
     queryKey: ['chart-weekly-volume', 16],
     queryFn: () => authFetch<ChartData>('/api/v1/charts/weekly_volume?weeks=16'),
     enabled: !!token,
@@ -591,6 +592,22 @@ export default function LiftingPage() {
     () => (sessionDetail ? previousSameFocus(sessionDetail, sessions ?? []) : null),
     [sessionDetail, sessions],
   );
+
+  // Analytics heroes — derived once, from the same PR/session data the tabs use.
+  const big3Cards = ['Back Squat', 'Bench Press', 'Deadlift'].map((name) => ({
+    name,
+    pr: bestPr(personalRecords ?? [], name),
+  }));
+  const big3TotalValue = big3Total(personalRecords ?? []);
+  const weeklyVolumeValues = (weeklyVolumeChart?.series[0]?.data ?? [])
+    .slice(-10)
+    .map((v) => Number(v ?? 0));
+  const weeklyVolumeLabels = (weeklyVolumeChart?.labels ?? [])
+    .slice(-10)
+    .map((d) => {
+      const date = new Date(`${d}T12:00:00`);
+      return Number.isNaN(date.getTime()) ? d : date.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    });
 
   return (
     <div className="space-y-6">
@@ -1369,20 +1386,62 @@ export default function LiftingPage() {
       {activeTab === 'analytics' && (
         <div className="space-y-6">
 
-      {/* Featured: unified cycling + lifting load */}
+      {/* Three heroes: volume, Big-3 PRs, combined load */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle>Weekly volume</CardTitle>
+                <p className="mt-0.5 text-[12px] text-muted">{shortWeight(weeklyVolumeValues[weeklyVolumeValues.length - 1] ?? 0)} last week</p>
+              </div>
+              <span className="rounded-md bg-accent/12 px-1.5 py-1 text-[12px] font-medium text-accent">kg</span>
+            </div>
+          </CardHeader>
+          {weeklyVolumeValues.some((v) => v > 0) ? (
+            <VolumeTrendChart labels={weeklyVolumeLabels} values={weeklyVolumeValues} average={weeklyVolumeValues.length >= 4 ? weeklyVolumeValues.slice(-5, -1).reduce((a, b) => a + b, 0) / 4 : undefined} height={200} />
+          ) : (
+            <p className="py-8 text-center text-[12px] text-muted">No lifting volume recorded yet.</p>
+          )}
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <CardTitle>Big-3 PRs</CardTitle>
+                <p className="mt-0.5 text-[12px] text-muted">Total {shortWeight(big3TotalValue)} · best e1RM per lift</p>
+              </div>
+              <span className="rounded-md bg-accent/12 px-1.5 py-1 text-[12px] font-medium text-accent">e1RM</span>
+            </div>
+          </CardHeader>
+          <div className="space-y-4 px-1 pb-2">
+            {big3Cards.map(({ name, pr }) => {
+              const value = pr ? (pr.estimated_1rm ?? pr.weight_kg) : 0;
+              return (
+                <div key={name}>
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-[12px] font-medium">{name}</span>
+                    <span className="text-[12px] text-muted">{pr ? `${amount(pr.estimated_1rm ?? pr.weight_kg)} kg · ${new Date(`${pr.achieved_date}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}` : 'No record'}</span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface-light/70">
+                    {pr && <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, Math.max(2, (value / 200) * 100))}%` }} />}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      </div>
+
       <CombinedLoadChart />
 
-      {/* Big-3 Total progression */}
-      <Card>
-        <CardHeader><CardTitle>Big-3 Total</CardTitle></CardHeader>
-        <ChartBody
-          isLoading={big3TotalLoading}
-          data={big3TotalChart}
-          emptyMessage="Log 1RM PRs on squat, bench, and deadlift to track your total"
-          height={280}
-        />
-      </Card>
-
+      <details className="rounded-xl border border-surface-light/60 bg-surface/50">
+        <summary className="flex min-h-[44px] cursor-pointer items-center justify-between px-4 text-[13px] font-medium text-muted hover:text-foreground">
+          More analysis
+          <span className="text-[12px] text-muted">4 reads</span>
+        </summary>
+        <div className="space-y-6 border-t border-surface-light/50 p-4">
       {/* Rep-range mix (overview + per-exercise) */}
       <RepRangeCard />
 
@@ -1433,17 +1492,6 @@ export default function LiftingPage() {
         />
       </Card>
 
-      {/* Weekly Volume — backend attaches an injury-risk insight on spikes */}
-      <Card>
-        <CardHeader><CardTitle>Weekly Volume</CardTitle></CardHeader>
-        <ChartBody
-          isLoading={weeklyVolumeLoading}
-          data={weeklyVolumeChart}
-          emptyMessage="No lifting volume recorded yet"
-          height={280}
-        />
-      </Card>
-
       {/* Estimated 1RM History */}
       {e1rmExerciseList.length > 0 && (
         <Card>
@@ -1472,6 +1520,8 @@ export default function LiftingPage() {
 
       {/* Exercise Progress */}
       <ExerciseProgressSection sessions={sessions} />
+        </div>
+      </details>
         </div>
       )}
 
