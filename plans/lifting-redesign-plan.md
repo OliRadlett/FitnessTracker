@@ -1,5 +1,10 @@
 # Lifting Page Redesign Plan
 
+> **Delivery superseded (2026-11-03):** the production port is tracked in
+> [`lifting-overhaul-production.md`](lifting-overhaul-production.md). P1 (Overview tab + four-section
+> shell) and the Big-3 chart fix are on `feature/lifting-overhaul`; the Sessions/Analytics/PRs port
+> and lab cleanup remain. This document stays as feature history.
+
 > **Status**: Draft for review. Collaboratively evolving with the user.
 > **Goal**: Transform `/lifting` from a dense data scroll into a useful, beautiful, coach-grade strength training hub.
 > **Scope**: Frontend redesign + UX rearchitecture. Backend reuse wherever possible; minimal new endpoints only where a gap genuinely exists.

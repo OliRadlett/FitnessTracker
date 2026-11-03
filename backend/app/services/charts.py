@@ -17,6 +17,7 @@ from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
 from app.models.sleep import SleepLog
 from app.models.weight import WeightLog
+from app.services.big3 import canonical_big3_bucket, canonical_big3_total
 from app.services.cycling import (
     CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
@@ -2685,16 +2686,6 @@ class ChartService:
         )
         records = list(result.scalars().all())
 
-        def bucket_for(name: str) -> str | None:
-            lowered = name.lower()
-            if "squat" in lowered:
-                return "Squat"
-            if "bench" in lowered:
-                return "Bench Press"
-            if "deadlift" in lowered:
-                return "Deadlift"
-            return None
-
         best: dict[str, float | None] = {
             "Squat": None,
             "Bench Press": None,
@@ -2710,14 +2701,12 @@ class ChartService:
             squat_data.append(best["Squat"])
             bench_data.append(best["Bench Press"])
             dead_data.append(best["Deadlift"])
-            total_data.append(
-                round(sum(v for v in best.values() if v is not None), 1)
-            )
+            total_data.append(canonical_big3_total(best))
 
         for rec in records:
             if rec.estimated_1rm is None:
                 continue
-            bucket = bucket_for(rec.exercise_name)
+            bucket = canonical_big3_bucket(rec.exercise_name)
             if bucket is None:
                 continue
             value = float(rec.estimated_1rm)
@@ -2730,9 +2719,7 @@ class ChartService:
                 squat_data[-1] = best["Squat"]
                 bench_data[-1] = best["Bench Press"]
                 dead_data[-1] = best["Deadlift"]
-                total_data[-1] = round(
-                    sum(v for v in best.values() if v is not None), 1
-                )
+                total_data[-1] = canonical_big3_total(best)
             else:
                 labels.append(label)
                 snapshot()
