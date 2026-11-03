@@ -146,6 +146,7 @@
 | `LiftingTabs` | Underline tab bar for `/lifting` (Overview / Sessions / Analytics / PRs) — roving tabindex + Arrow/Home/End, `role=tab`/`aria-selected`, four equal segments at 390px |
 | `SessionRail` | Compact, month-grouped session rail — search + focus chips over the full sessions query, `s_*` URL filters preserved, 55px rows with focus/PR/sets/TSS/volume, selected row `aria-current`; replaces the 190px `SessionCardMini` grid |
 | `SetLadder` | Read-only session ladder — one row per set (weight/reps/RPE/delta vs the same set number in the previous same-focus session), warm-ups subordinate, one top set per exercise |
+| `PrTab` | PRs tab — three competition-lift cards with standards progress (production thresholds), Big-3/Dots/bodyweight strip, one PR history table, manual-PR entry, lifting weakness card; `?pr=` scroll/highlight |
 | `overview/OverviewTab` | Default `/lifting` landing — today/rest card, week numbers (falls back to the latest training week when the current week is empty), recent five, 10-week volume trend, plan progress. Presentational; all data via props + `usePlanWeekOverview` |
 | `overview/VolumeTrendChart` | Measured-width SVG bar chart for weekly tonnage (12px axis labels, 4-week average line, last point labelled); no animation |
 | `AddExerciseForm` | Add exercise + sets to session |

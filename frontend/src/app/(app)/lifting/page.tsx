@@ -46,6 +46,7 @@ import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSe
 import { VideoChip } from '@/components/lifting/VideoChip';
 import { SessionRail } from '@/components/lifting/SessionRail';
 import { SetLadder } from '@/components/lifting/SetLadder';
+import { PrTab } from '@/components/lifting/PrTab';
 import { useSessionBrowserFilters } from '@/components/lifting/useSessionBrowserFilters';
 import { SessionLabels } from '@/components/lifting/SessionLabels';
 import { RepeatSessionButton } from '@/components/lifting/RepeatSessionButton';
@@ -1116,6 +1117,24 @@ export default function LiftingPage() {
 
       {/* ── PRs Tab ───────────────────────────────────────────────────────────── */}
       {activeTab === 'prs' && (
+        <PrTab
+          prs={personalRecords ?? []}
+          bodyweightKg={bodyweightKg}
+          isLoading={prLoading}
+          selectedPRId={selectedPRId}
+          onAddPR={() => setShowManualPR(true)}
+          onOpenSession={(id) => {
+            setActiveTab('sessions');
+            setSelectedSessionId(id);
+            setParam('tab', 'sessions');
+            setParam('session', id);
+          }}
+          deficiency={deficiency}
+          deficiencyLoading={deficiencyLoading}
+        />
+      )}
+
+      {(activeTab as string) === 'prs-legacy' && (
         <div className="space-y-6">
           {/* Two-way goals surface: active lifting goals + PR → goal creation */}
           <LiftingGoalsStrip prefill={goalPrefill} onPrefillConsumed={handleGoalPrefillConsumed} />
