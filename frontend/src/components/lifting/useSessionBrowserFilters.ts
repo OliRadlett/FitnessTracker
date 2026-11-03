@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Filter state for {@link SessionBrowser}.
+ * Filter state for {@link SessionRail} (and the `s_*` URL contract it preserves).
  *
  * `page` is 1-based. All other fields are client-side filters; `from`/`to`
  * are `YYYY-MM-DD` bounds (inclusive). When `from === to` the browser also

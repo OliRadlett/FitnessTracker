@@ -20,6 +20,25 @@ test.describe('Lifting Page', () => {
     await expect(page.locator('main h1')).toContainText('Lifting');
   });
 
+  test('overview is the default tab', async ({ authenticatedPage: page }) => {
+    await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText(/today/i).first()).toBeVisible();
+    await expect(page.getByText(/recent sessions/i)).toBeVisible();
+  });
+
+  test('bottom tabs are the four page sections', async ({ authenticatedPage: page }) => {
+    const tabs = page.getByRole('tab');
+    await expect(tabs).toHaveCount(4);
+    await expect(page.getByRole('tab', { name: 'Templates' })).toHaveCount(0);
+  });
+
+  test('tabs support keyboard navigation', async ({ authenticatedPage: page }) => {
+    const overview = page.getByRole('tab', { name: 'Overview' });
+    await overview.focus();
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByRole('tab', { name: 'Sessions' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   // ── Session List ────────────────────────────────────────────────────────
 
   test('session list renders with sessions', async ({ authenticatedPage: page }) => {
@@ -50,30 +69,32 @@ test.describe('Lifting Page', () => {
   // ── Session Detail ──────────────────────────────────────────────────────
 
   test('clicking session shows detail panel', async ({ authenticatedPage: page }) => {
-    // Click on the first session
-    const sessionButton = page.getByText(/squat day/i).first();
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+    const sessionButton = page.locator('main button').filter({ hasText: /bench day/i }).filter({ hasText: /6,200 kg/ }).first();
     await sessionButton.click();
     await page.waitForTimeout(1000);
 
     // Should show exercise groups
-    await expect(page.getByText(/squat|romanian deadlift|leg press/i).first()).toBeVisible();
+    await expect(page.getByText(/bench|squat|deadlift/i).first()).toBeVisible();
   });
 
   test('session detail shows sets', async ({ authenticatedPage: page }) => {
-    const sessionButton = page.getByText(/squat day/i).first();
-    await sessionButton.click();
-    await page.waitForTimeout(1000);
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(800);
 
-    // Should show weight/reps info
+    // The newest session is selected by default on desktop; the ladder shows weights.
     await expect(page.getByText(/120|140|160/).first()).toBeVisible();
   });
 
   // ── Add Exercise Form ───────────────────────────────────────────────────
 
   test('add exercise button is present in detail view', async ({ authenticatedPage: page }) => {
-    const sessionButton = page.getByText(/squat day/i).first();
-    await sessionButton.click();
-    await page.waitForTimeout(1000);
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(800);
 
     const addExerciseBtn = page.getByRole('button', { name: /add exercise/i });
     await expect(addExerciseBtn).toBeVisible();
@@ -82,9 +103,9 @@ test.describe('Lifting Page', () => {
   // ── Exercise Groups ─────────────────────────────────────────────────────
 
   test('exercise groups display correctly', async ({ authenticatedPage: page }) => {
-    const sessionButton = page.getByText(/squat day/i).first();
-    await sessionButton.click();
-    await page.waitForTimeout(1000);
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(800);
 
     // Should show exercise names as group headers
     await expect(page.getByText(/squat/i).first()).toBeVisible();
@@ -103,6 +124,8 @@ test.describe('Lifting Page', () => {
   // ── Warmup Templates ────────────────────────────────────────────────────
 
   test('warmup template section renders', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: 'Templates' }).click();
+    await expect(page.getByRole('dialog', { name: /warm-up templates/i })).toBeVisible();
     await expect(page.getByText(/warmup/i).first()).toBeVisible();
   });
 

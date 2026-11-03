@@ -90,10 +90,14 @@ def test_webhook_drain_task_is_guarded_by_lock():
     no ``skipped_lock``. This pins the wiring: the Celery task must delegate to
     the guarded wrapper keyed on its own task name (``celery-task:…``), which is
     what makes a second concurrent invocation skip instead of re-draining.
-    """
-    from app.tasks.scheduler import process_strava_webhook_events
 
-    with patch("app.tasks.scheduler._run_task_guarded", new_callable=AsyncMock) as spy:
+    The task lives in ``app.tasks.sync`` now, and it resolves the guard in that
+    module's namespace, so the patch target follows the definition rather than
+    the re-export.
+    """
+    from app.tasks.sync import process_strava_webhook_events
+
+    with patch("app.tasks.sync._run_task_guarded", new_callable=AsyncMock) as spy:
         process_strava_webhook_events()
 
     spy.assert_called_once()
