@@ -26,6 +26,7 @@ import {
   standardKeyFor,
   type StandardLevel,
 } from '@/lib/lifting/standards';
+import { amount, previousSameFocus, shortWeight, topSet } from '@/lib/lifting/overview';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -41,17 +42,14 @@ import { AddExerciseForm } from '@/components/lifting/AddExerciseForm';
 import { ExerciseGroup } from '@/components/lifting/ExerciseGroup';
 import { ManualPRForm } from '@/components/lifting/ManualPRForm';
 import { ExerciseProgressSection } from '@/components/lifting/ExerciseProgressSection';
-import { AutoregulationCard } from '@/components/lifting/AutoregulationCard';
 import { VideoChip } from '@/components/lifting/VideoChip';
-import { SessionBrowser } from '@/components/lifting/SessionBrowser';
+import { SessionRail } from '@/components/lifting/SessionRail';
+import { SetLadder } from '@/components/lifting/SetLadder';
 import { useSessionBrowserFilters } from '@/components/lifting/useSessionBrowserFilters';
-import { SessionFocusChips } from '@/components/lifting/SessionFocusChips';
 import { SessionLabels } from '@/components/lifting/SessionLabels';
 import { RepeatSessionButton } from '@/components/lifting/RepeatSessionButton';
 import { BestByRepRangeStrip } from '@/components/lifting/BestByRepRangeStrip';
-import { SetsVisualizer } from '@/components/lifting/SetsVisualizer';
 import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
-import { TodayStrengthDayCard } from '@/components/lifting/TodayStrengthDayCard';
 import { DotsScoreCard } from '@/components/lifting/DotsScoreCard';
 import { DotsProgressionCard } from '@/components/lifting/DotsProgressionCard';
 import { LiftingGoalsStrip, type GoalPrefill } from '@/components/lifting/LiftingGoalsStrip';
@@ -68,7 +66,7 @@ import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
-import { Dumbbell, Zap, Link2, Clock, TriangleAlert, Target } from 'lucide-react';
+import { Dumbbell, Link2, Clock, TriangleAlert, Target, Pencil, Trash2 } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -453,25 +451,6 @@ export default function LiftingPage() {
 
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Whoop-mismatch banner snooze (2.7) — 7 days, localStorage.
-  const WHOOP_BANNER_KEY = 'fittrack-whoop-mismatch-snoozed';
-  const [whoopBannerSnoozed, setWhoopBannerSnoozed] = useState<boolean>(() => {
-    try {
-      const raw = localStorage.getItem(WHOOP_BANNER_KEY);
-      return raw != null && Date.now() - Number(raw) < 7 * 24 * 60 * 60 * 1000;
-    } catch {
-      return false;
-    }
-  });
-  function snoozeWhoopBanner() {
-    try {
-      localStorage.setItem(WHOOP_BANNER_KEY, String(Date.now()));
-    } catch {
-      /* ignore */
-    }
-    setWhoopBannerSnoozed(true);
-  }
-
   // ── Mutations ────────────────────────────────────────────────────────────
 
   const createSessionMutation = useMutation({
@@ -598,17 +577,20 @@ export default function LiftingPage() {
   // Compute exercise groups for detail view
   const exerciseGroups = sessionDetail?.sets ? groupSetsByExercise(sessionDetail.sets) : new Map();
 
-  // Best stored 1RM per exercise — basis for the set-review % markers.
-  const e1rmByExercise = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const pr of personalRecords ?? []) {
-      if (pr.record_type !== '1rm' || pr.estimated_1rm == null) continue;
-      if (pr.estimated_1rm > (map.get(pr.exercise_name) ?? 0)) {
-        map.set(pr.exercise_name, pr.estimated_1rm);
-      }
+  // Desktop default selection: the newest session, so the detail pane is never
+  // an empty placeholder. Mobile keeps the list-first drill-down.
+  useEffect(() => {
+    if (selectedSessionId || !sessions?.length) return;
+    if (typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches) {
+      setSelectedSessionId(sessions[0].id);
     }
-    return map;
-  }, [personalRecords]);
+  }, [sessions, selectedSessionId]);
+
+  // Previous same-focus session — the delta basis for the set ladder.
+  const previousSession = useMemo(
+    () => (sessionDetail ? previousSameFocus(sessionDetail, sessions ?? []) : null),
+    [sessionDetail, sessions],
+  );
 
   return (
     <div className="space-y-6">
@@ -707,82 +689,6 @@ export default function LiftingPage() {
       {activeTab === 'sessions' && (
         <div className="space-y-6">
 
-      {/* Today's planned strength day (active plan) */}
-      <TodayStrengthDayCard />
-
-      {/* Live Lift entry point */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 bg-surface-light/40 rounded-xl border border-surface-light/50">
-        <div>
-          <p className="text-foreground font-semibold inline-flex items-center gap-1.5">
-            <Zap className="w-4 h-4" aria-hidden />Track a session live
-          </p>
-          <p className="text-sm text-muted">
-            Log sets as you lift — one tap per set, works offline, Whoop strain attaches automatically.
-          </p>
-        </div>
-        <a
-          href="/lifting/live"
-          className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-background font-bold rounded-xl transition-colors whitespace-nowrap"
-        >
-          Start Live Session
-        </a>
-      </div>
-
-      {/* B-17 autoregulation hints from last RPEs */}
-      <AutoregulationCard sessions={sessions} />
-
-      {/* Whoop unmatched-session warning (live sessions only) */}
-      {(() => {
-        const THREE_H = 3 * 60 * 60 * 1000;
-        const unmatched = (sessions ?? []).filter(
-          (s) =>
-            s.started_at &&
-            s.ended_at &&
-            !s.whoop_strain &&
-            Date.now() - new Date(s.ended_at).getTime() > THREE_H
-        );
-        if (unmatched.length === 0 || whoopBannerSnoozed) return null;
-        const latest = unmatched[0];
-        const start = new Date(latest.started_at!).toLocaleTimeString(getActiveLocale(), {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        const end = new Date(latest.ended_at!).toLocaleTimeString(getActiveLocale(), {
-          hour: '2-digit',
-          minute: '2-digit',
-        });
-        return (
-          <div className="p-4 bg-warning/10 border border-warning/30 rounded-xl text-sm">
-            <div className="flex items-start justify-between gap-3">
-              <p className="text-warning font-semibold">
-                ⚠ No Whoop workout matched{' '}
-                {unmatched.length > 1 ? `${unmatched.length} recent live sessions` : 'a recent live session'}
-              </p>
-              <button
-                onClick={snoozeWhoopBanner}
-                className="shrink-0 min-h-[44px] min-w-[44px] px-2 text-xs text-muted hover:text-foreground"
-                aria-label="Dismiss for 7 days"
-                title="Dismiss for 7 days"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-muted mt-1">
-              If you wore your Whoop, add the activity in the Whoop app with the exact
-              time range ({start}–{end}) and it will attach after the next sync.
-            </p>
-          </div>
-        );
-      })()}
-
-      {/* Readiness lives on the Dashboard — not duplicated here (2.7). */}
-      <Link
-        href="/"
-        className="text-xs text-muted hover:text-foreground transition-colors"
-      >
-        Check training readiness on the Dashboard →
-      </Link>
-
       {/* Backfill result */}
       {backfillMutation.isSuccess && backfillMutation.data && (
         <div className="p-3 bg-positive/10 border border-positive/30 rounded-lg text-sm text-positive" role="status" aria-live="polite">
@@ -855,21 +761,13 @@ export default function LiftingPage() {
 
       {/* Sessions + Detail */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Session browser (paginated, filterable, month-grouped) */}
-        <div className="lg:col-span-1 space-y-3">
-          <SessionFocusChips
-            value={browserFilterBag.filters.focus.trim() === '' ? null : browserFilterBag.filters.focus}
-            onChange={(focus) => browserFilterBag.setPartial({ focus: focus ?? '' })}
-            sessions={sessions}
-          />
-          <SessionBrowser
-            selectedSessionId={selectedSessionId}
-            onSelectSession={handleSelectSessionInBrowser}
-            videosBySession={videoBySession}
+        {/* Compact, month-grouped rail (replaces the 190px card grid) */}
+        <div className="lg:col-span-1">
+          <SessionRail
+            sessions={sessions ?? []}
+            selectedId={selectedSessionId}
+            onSelect={handleSelectSessionInBrowser}
             prsBySession={prsBySession}
-            onAddSet={(s) => { handleSelectSession(s.id); setShowAddExercise(true); }}
-            onEdit={(s) => { handleSelectSession(s.id); setShowEditSession(true); }}
-            onDelete={(s) => { handleSelectSession(s.id); setConfirmDeleteSession(true); }}
             filterBag={browserFilterBag}
           />
         </div>
@@ -969,11 +867,11 @@ export default function LiftingPage() {
                     />
                     <button
                       onClick={() => setShowEditSession(!showEditSession)}
-                      className="px-3 py-1.5 text-muted hover:text-accent text-sm transition-colors"
+                      className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-light/40 hover:text-accent"
                       aria-label="Edit session"
                       title="Edit session"
                     >
-                      ✏️
+                      <Pencil className="h-4 w-4" aria-hidden />
                     </button>
                     {confirmDeleteSession ? (
                       <div className="flex gap-1">
@@ -989,11 +887,11 @@ export default function LiftingPage() {
                     ) : (
                       <button
                         onClick={() => setConfirmDeleteSession(true)}
-                        className="px-3 py-1.5 text-muted hover:text-warning text-sm transition-colors"
+                        className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-light/40 hover:text-warning"
                         aria-label="Delete session"
                         title="Delete session"
                       >
-                        🗑️
+                        <Trash2 className="h-4 w-4" aria-hidden />
                       </button>
                     )}
                     <button
@@ -1005,6 +903,37 @@ export default function LiftingPage() {
                   </div>
                 </div>
               </CardHeader>
+
+              {/* Summary strip — the four numbers read before the sets */}
+              <div className="mb-4 grid grid-cols-2 gap-x-3 gap-y-3 rounded-lg border border-surface-light/50 bg-background/30 p-3 sm:grid-cols-4 sm:p-4">
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">Volume</p>
+                  <p className="mt-1 text-[20px] font-semibold leading-none">{shortWeight(sessionDetail.total_volume_kg)}</p>
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">Sets</p>
+                  <p className="mt-1 text-[20px] font-semibold leading-none">{sessionDetail.sets.length}</p>
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">Top set</p>
+                  <p className="mt-1 text-[20px] font-semibold leading-none">
+                    {topSet(sessionDetail) ? `${amount(topSet(sessionDetail)!.weight_kg)}×${topSet(sessionDetail)!.reps}` : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-muted">TSS</p>
+                  <p className="mt-1 text-[20px] font-semibold leading-none">
+                    {sessionDetail.estimated_tss ? Math.round(sessionDetail.estimated_tss) : '—'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Set ladder — read-only review layer, separate from logging/editing */}
+              {sessionDetail.sets && sessionDetail.sets.length > 0 && (
+                <div className="mb-4 rounded-lg border border-surface-light/50 p-3 sm:p-4">
+                  <SetLadder session={sessionDetail} previous={previousSession} />
+                </div>
+              )}
 
               {/* Edit Session Form */}
               {showEditSession && (
@@ -1095,7 +1024,12 @@ export default function LiftingPage() {
                 </div>
               )}
 
-              {/* Exercise Groups */}
+              {/* Exercise Groups — action surface, collapsed under the ladder */}
+              <details className="mt-2">
+                <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] font-medium text-muted hover:text-foreground">
+                  Edit sets
+                </summary>
+                <div className="mt-3">
               {exerciseGroups.size > 0 ? (
                 <div className="space-y-3">
                   {Array.from(exerciseGroups.entries()).map(([exerciseName, sets]) => (
@@ -1113,14 +1047,11 @@ export default function LiftingPage() {
               ) : (
                 <p className="text-muted text-center py-8">No exercises yet. Add your first exercise above.</p>
               )}
+                </div>
+              </details>
             </Card>
 
-            {/* Set review — read-only viz layer, separate from logging/editing */}
-            {sessionDetail.sets && sessionDetail.sets.length > 0 && (
-              <div className="mt-6">
-                <SetsVisualizer sets={sessionDetail.sets} e1rmByExercise={e1rmByExercise} />
-              </div>
-            )}
+            {/* Set ladder lives inside the detail card, above the edit table. */}
 
             {/* Static Session Analysis */}
             {sessionAnalysis && (

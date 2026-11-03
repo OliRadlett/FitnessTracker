@@ -65,23 +65,20 @@ test.describe('Lifting Page', () => {
     await page.goto('/fittrack/lifting?tab=sessions');
     await page.waitForLoadState('networkidle');
     await page.waitForTimeout(600);
-    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
+    const sessionButton = page.locator('main button').filter({ hasText: /bench day/i }).filter({ hasText: /6,200 kg/ }).first();
     await sessionButton.click();
     await page.waitForTimeout(1000);
 
     // Should show exercise groups
-    await expect(page.getByText(/squat|romanian deadlift|leg press/i).first()).toBeVisible();
+    await expect(page.getByText(/bench|squat|deadlift/i).first()).toBeVisible();
   });
 
   test('session detail shows sets', async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/lifting?tab=sessions');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(600);
-    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
-    await sessionButton.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(800);
 
-    // Should show weight/reps info
+    // The newest session is selected by default on desktop; the ladder shows weights.
     await expect(page.getByText(/120|140|160/).first()).toBeVisible();
   });
 
@@ -90,10 +87,7 @@ test.describe('Lifting Page', () => {
   test('add exercise button is present in detail view', async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/lifting?tab=sessions');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(600);
-    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
-    await sessionButton.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(800);
 
     const addExerciseBtn = page.getByRole('button', { name: /add exercise/i });
     await expect(addExerciseBtn).toBeVisible();
@@ -104,10 +98,7 @@ test.describe('Lifting Page', () => {
   test('exercise groups display correctly', async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/lifting?tab=sessions');
     await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(600);
-    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
-    await sessionButton.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(800);
 
     // Should show exercise names as group headers
     await expect(page.getByText(/squat/i).first()).toBeVisible();
