@@ -20,6 +20,18 @@ test.describe('Lifting Page', () => {
     await expect(page.locator('main h1')).toContainText('Lifting');
   });
 
+  test('overview is the default tab', async ({ authenticatedPage: page }) => {
+    await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByText(/today/i).first()).toBeVisible();
+    await expect(page.getByText(/recent sessions/i)).toBeVisible();
+  });
+
+  test('bottom tabs are the four page sections', async ({ authenticatedPage: page }) => {
+    const tabs = page.getByRole('tab');
+    await expect(tabs).toHaveCount(4);
+    await expect(page.getByRole('tab', { name: 'Templates' })).toHaveCount(0);
+  });
+
   // ── Session List ────────────────────────────────────────────────────────
 
   test('session list renders with sessions', async ({ authenticatedPage: page }) => {
@@ -50,8 +62,10 @@ test.describe('Lifting Page', () => {
   // ── Session Detail ──────────────────────────────────────────────────────
 
   test('clicking session shows detail panel', async ({ authenticatedPage: page }) => {
-    // Click on the first session
-    const sessionButton = page.getByText(/squat day/i).first();
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
     await sessionButton.click();
     await page.waitForTimeout(1000);
 
@@ -60,7 +74,10 @@ test.describe('Lifting Page', () => {
   });
 
   test('session detail shows sets', async ({ authenticatedPage: page }) => {
-    const sessionButton = page.getByText(/squat day/i).first();
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
     await sessionButton.click();
     await page.waitForTimeout(1000);
 
@@ -71,7 +88,10 @@ test.describe('Lifting Page', () => {
   // ── Add Exercise Form ───────────────────────────────────────────────────
 
   test('add exercise button is present in detail view', async ({ authenticatedPage: page }) => {
-    const sessionButton = page.getByText(/squat day/i).first();
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
     await sessionButton.click();
     await page.waitForTimeout(1000);
 
@@ -82,7 +102,10 @@ test.describe('Lifting Page', () => {
   // ── Exercise Groups ─────────────────────────────────────────────────────
 
   test('exercise groups display correctly', async ({ authenticatedPage: page }) => {
-    const sessionButton = page.getByText(/squat day/i).first();
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+    const sessionButton = page.locator('main div.cursor-pointer').filter({ hasText: /squat day/i }).first();
     await sessionButton.click();
     await page.waitForTimeout(1000);
 
@@ -103,6 +126,8 @@ test.describe('Lifting Page', () => {
   // ── Warmup Templates ────────────────────────────────────────────────────
 
   test('warmup template section renders', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: 'Templates' }).click();
+    await expect(page.getByRole('dialog', { name: /warm-up templates/i })).toBeVisible();
     await expect(page.getByText(/warmup/i).first()).toBeVisible();
   });
 

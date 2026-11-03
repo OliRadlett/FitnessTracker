@@ -27,8 +27,10 @@ import {
   type StandardLevel,
 } from '@/lib/lifting/standards';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Modal, ModalHeader } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { LiftingTabs, type LiftingTab } from '@/components/lifting/LiftingTabs';
+import { OverviewTab } from '@/components/lifting/overview/OverviewTab';
 import { ChartBody } from '@/components/charts/Chart';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -66,8 +68,7 @@ import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
 import { DeficiencyCard } from '@/components/ui/DeficiencyCard';
-import type { LucideIcon } from 'lucide-react';
-import { Dumbbell, ChartColumn, TrendingUp, Timer, Zap, Link2, Clock, TriangleAlert, Target } from 'lucide-react';
+import { Dumbbell, Zap, Link2, Clock, TriangleAlert, Target } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -147,14 +148,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
 
 // ── Main Page ────────────────────────────────────────────────────────────────
 
-type LiftingTab = 'sessions' | 'analytics' | 'prs' | 'templates';
-
-const TABS: { value: LiftingTab; label: string; icon: LucideIcon }[] = [
-  { value: 'sessions', label: 'Sessions', icon: Dumbbell },
-  { value: 'analytics', label: 'Analytics', icon: ChartColumn },
-  { value: 'prs', label: 'PRs', icon: TrendingUp },
-  { value: 'templates', label: 'Templates', icon: Timer },
-];
+const TAB_VALUES: LiftingTab[] = ['overview', 'sessions', 'analytics', 'prs'];
 
 export default function LiftingPage() {
   usePageTitle('Lifting');
@@ -163,6 +157,7 @@ export default function LiftingPage() {
   const { getParam, setParam } = useDeepLink();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showNewSession, setShowNewSession] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showEditSession, setShowEditSession] = useState(false);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
@@ -178,12 +173,15 @@ export default function LiftingPage() {
   const handleGoalPrefillConsumed = useCallback(() => setGoalPrefill(null), []);
 
   // Tab URL state — syncs with `?tab=<name>` for deep-linking
-  const [activeTab, setActiveTab] = useState<LiftingTab>('sessions');
+  const [activeTab, setActiveTab] = useState<LiftingTab>('overview');
 
   // Deep-link: read tab + session/PR from URL on mount
   useEffect(() => {
-    const tab = getParam('tab') as LiftingTab | null;
-    if (tab && TABS.some((t) => t.value === tab)) {
+    const tab = getParam('tab') as LiftingTab | 'templates' | null;
+    if (tab === 'templates') {
+      setShowTemplates(true);
+      setActiveTab('sessions');
+    } else if (tab && TAB_VALUES.includes(tab)) {
       setActiveTab(tab);
     }
     const sessionId = getParam('session');
@@ -632,15 +630,16 @@ export default function LiftingPage() {
       )}
 
       {/* Header */}
-      <PageHeader
-        title="Lifting"
-        subtitle="Track your strength training sessions"
+      <div className="pr-0 lg:pr-12">
+        <PageHeader
+          title="Lifting"
+        subtitle={sessions ? `${sessions.length} sessions · strength, tracked` : 'Strength, tracked'}
         actions={
           <>
             <button
               onClick={() => backfillMutation.mutate()}
               disabled={backfillMutation.isPending}
-              className="min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
+              className="hidden 2xl:inline-flex min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light disabled:opacity-50"
               title="Auto-link Strava strength activities to lifting sessions"
             >
               {backfillMutation.isPending ? 'Linking...' : (
@@ -650,7 +649,25 @@ export default function LiftingPage() {
               )}
             </button>
             <button
-              onClick={() => setShowNewSession(!showNewSession)}
+              onClick={() => setShowTemplates(true)}
+              className="hidden sm:inline-flex min-h-[44px] px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light"
+            >
+              Templates
+            </button>
+            <Link
+              href="/lifting/live"
+              className="hidden sm:inline-flex min-h-[44px] items-center px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light"
+            >
+              Start live
+            </Link>
+            <button
+              onClick={() => {
+                if (!showNewSession) {
+                  setActiveTab('sessions');
+                  setParam('tab', 'sessions');
+                }
+                setShowNewSession(!showNewSession);
+              }}
               className="min-h-[44px] px-4 py-2 bg-accent hover:bg-accent-hover text-white font-medium rounded-lg transition-colors"
             >
               {showNewSession ? 'Cancel' : '+ New Session'}
@@ -658,14 +675,33 @@ export default function LiftingPage() {
           </>
         }
       />
+      </div>
 
       {/* Tab bar */}
-      <SegmentedControl
-        ariaLabel="Lifting page sections"
-        value={activeTab}
-        onChange={handleTabChange}
-        options={TABS.map((t) => ({ value: t.value, label: t.label, icon: t.icon }))}
-      />
+      <LiftingTabs value={activeTab} onChange={handleTabChange} />
+
+      {/* ── Overview Tab ─────────────────────────────────────────────────────── */}
+      {activeTab === 'overview' && (
+        <OverviewTab
+          sessions={sessions ?? []}
+          prs={personalRecords ?? []}
+          weeklyVolumeChart={weeklyVolumeChart}
+          isLoading={!sessions}
+          onOpenSession={(id) => {
+            setActiveTab('sessions');
+            setSelectedSessionId(id);
+            setParam('tab', 'sessions');
+            setParam('session', id);
+          }}
+          onOpenSessions={() => handleTabChange('sessions')}
+          onLogSession={() => {
+            setActiveTab('sessions');
+            setShowNewSession(true);
+            setParam('tab', 'sessions');
+          }}
+          onAnalytics={() => handleTabChange('analytics')}
+        />
+      )}
 
       {/* ── Sessions Tab ──────────────────────────────────────────────────────── */}
       {activeTab === 'sessions' && (
@@ -1128,7 +1164,7 @@ export default function LiftingPage() {
       )}
 
       {/* ── Templates Tab ─────────────────────────────────────────────────────── */}
-      {activeTab === 'templates' && <WarmupTemplateManager />}
+      {/* Templates are a modal now — no top-level tab. */}
 
       {/* ── PRs Tab ───────────────────────────────────────────────────────────── */}
       {activeTab === 'prs' && (
@@ -1507,6 +1543,17 @@ export default function LiftingPage() {
       <ExerciseProgressSection sessions={sessions} />
         </div>
       )}
+
+      {/* Warm-up templates (moved out of the tab bar) */}
+      <Modal
+        open={showTemplates}
+        onClose={() => setShowTemplates(false)}
+        size="xl"
+        aria-label="Warm-up templates"
+      >
+        <ModalHeader title="Warm-up templates" onClose={() => setShowTemplates(false)} />
+        <WarmupTemplateManager />
+      </Modal>
 
       {/* Link Activity Modal */}
       {linkModalSessionId && (
