@@ -344,3 +344,22 @@ Existing tests to update, not delete: `frontend/e2e/lifting.spec.ts` (tab labels
 - `CODEMAP`, `AGENTS.md`, the redesign plan and the prod-shots manifest are current.
 - The old components are deleted, not left dormant.
 - Release notes state the Big-3 correction (482.5 → 447.7) and the new tab IA.
+
+---
+
+## Port status — 2026-11-03 (feature/lifting-overhaul)
+
+| Phase | State |
+|---|---|
+| P1 Overview + four-section shell + Templates modal | **Landed** (`c54b92f`) |
+| P2 Session rail, default detail, set ladder, summary strip | **Landed** (`15fe9ca`) |
+| P3 Three Analytics heroes + closed More-analysis drawer | **Landed** (`32de7c4`) |
+| P4 PR cards/standards/history table | **Landed** (`f652653`) |
+| P5 Mobile check, 44px empty-state fix, tab keyboard test | **Landed** (`bfd4ed3`) |
+| Big-3 backend correction | **Landed** (`c00408e`) |
+| P6 cleanup | **Open, non-visual** — `prs-legacy` block, `SessionBrowser`, `SessionCardMini`, `SessionFocusChips`, `SetsVisualizer`, unused chart queries |
+| P7 production gate / deploy | **Not run** — no push, PR or merge |
+
+Evidence: `npx tsc --noEmit` clean; `npm run build` clean; `e2e/lifting.spec.ts` 19 passed; touch audit 0 targets under 44 at 390; keyboard tab test passes. Visual captures exist for Overview, Sessions rail/detail, Analytics, PRs and mobile Overview/Sessions under `prototype/lifting/qa/out/port/` in the main checkout.
+
+Caveats: the E2E fixture uses mock PRs/volume data (Back Squat may read “No record”; the Analytics volume hero can be empty), and the production API was not running locally. The branch is PR-ready for review but **not merge-ready until P6 cleanup and a production-data gate**.
