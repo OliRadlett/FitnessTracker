@@ -7,14 +7,14 @@
  * above the fold: charts live in Trends, per docs/review-vs-act.md.
  */
 
-import { ArrowRight, Bike, Dumbbell, HeartPulse, Moon, TriangleAlert } from 'lucide-react';
+import { ArrowRight, Bike, Dumbbell, HeartPulse, Moon } from 'lucide-react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SectionLabel } from '@/components/ui/SectionLabel';
 import { DashboardRefresh } from '@/components/dashboard/DashboardRefresh';
 import { WeatherWidget } from '@/components/dashboard/WeatherWidget';
-import { deriveLastSyncedAt, deriveStaleProviders } from '@/lib/athlete/selectors';
+import { deriveLastSyncedAt } from '@/lib/athlete/selectors';
 import { readDayContext, readStance, readEngines, engineTally, type Stance } from '@/lib/dashboard/stance';
 import type { DashboardPageData } from '@/lib/dashboard/useDashboardPage';
 import { getGreeting } from '@/lib/utils';
@@ -64,7 +64,6 @@ export function TodayView({ page }: { page: DashboardPageData }) {
   const tally = engineTally(engines);
   const planActive = engines.some((e) => e.key === 'projection' && e.state === 'contributing');
 
-  const stale = deriveStaleProviders(connections);
   const lastSynced = deriveLastSyncedAt(connections);
 
   const recent = [
@@ -115,15 +114,17 @@ export function TodayView({ page }: { page: DashboardPageData }) {
           </>
         }
         status={
-          stale.length > 0 ? (
-            <span className="inline-flex items-center gap-1 rounded-md border border-warning/40 bg-warning/10 px-1.5 py-0.5 text-[11px] text-warning">
-              <TriangleAlert size={11} /> {stale[0].provider} needs re-auth
-            </span>
-          ) : (
-            <span className="text-[11px] text-muted">
-              {lastSynced ? `synced ${new Date(lastSynced).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}` : 'sync unknown'}
-            </span>
-          )
+          // Freshness only. The app shell's AuthStaleBanner already owns "why is it
+          // stale and what do I do" — repeating it here put two red re-auth alerts on
+          // one screen (fetch.ts: the banner is the single source of truth).
+          <span className="text-[11px] text-muted">
+            {lastSynced
+              ? `synced ${new Date(lastSynced).toLocaleTimeString('en-GB', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}`
+              : 'sync unknown'}
+          </span>
         }
       />
 

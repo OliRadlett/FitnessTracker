@@ -272,7 +272,16 @@ async def _call_gemini(prompt: str, truncation_label: str) -> str:
                     contents=prompt,
                     config=types.GenerateContentConfig(
                         temperature=0.7,
-                        max_output_tokens=4096,
+                        max_output_tokens=8192,
+                        # These prompts are writing tasks over stats that are already
+                        # computed, not reasoning tasks. Left on, the model spent
+                        # ~7,900 of an 8,192-token budget thinking and returned ~325
+                        # tokens of answer with `finish_reason=MAX_TOKENS` — every
+                        # analysis was cut off mid-section, which is what the
+                        # dashboard's "truncated" log line was reporting. With the
+                        # budget at zero the same prompt finishes cleanly (9,359
+                        # chars) and uses ~85% less quota.
+                        thinking_config=types.ThinkingConfig(thinking_budget=0),
                         http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_S * 1000),
                     ),
                 )
