@@ -61,6 +61,8 @@ services:
     image: ghcr.io/${GHCR_OWNER:-oliradlett}/${GHCR_REPO:-fitnesstracker}/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     mem_limit: 200m
+    environment:
+      NODE_ENV: production
 
   caddy:
     restart: unless-stopped
