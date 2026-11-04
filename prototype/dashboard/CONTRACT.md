@@ -9,8 +9,8 @@
 > 2. **Q2 → three zones:** Today · Trends · **History** (not two).
 > 3. **Q3 → keep the analyses**, but render the markdown properly *and* re-run on a schedule.
 >    Verified: a weekly job already exists (`weekly-llm-analysis`, Sundays 05:00 UTC,
->    `scheduler.py:291`); the fixture's analyses are 74 days old, so the first question is
->    whether that job fires, not whether to add one. Recorded as pre-condition P4.
+>    `scheduler.py:291`) and it fires. It was starved by an empty prepay balance, not broken —
+>    resolved 2026-11-04 with a free-tier key (P4).
 
 ```
 ARTIFACT:        One contact sheet of TWO competing /dashboard candidates — "The Answer" (A,
@@ -180,10 +180,10 @@ rules) and the current page drops it into a `<div>`, which is why the asterisks 
 A parser renders headings, bullets, numbered items, rules and bold runs, with no HTML path.
 Each analysis carries its age and a staleness banner; both are collapsed by default, so the
 page does not grow. **On the schedule:** a weekly job already exists —
-`weekly-llm-analysis`, Sundays 05:00 UTC (`backend/app/tasks/scheduler.py:291`) — and the
-fixture's newest analysis is **74 days old**, so the open question is whether that job has
-been firing, not whether to add one. Recorded as pre-condition P4; verifying it needs the
-worker log or a one-shot run, and neither belongs in a visual overhaul.
+`weekly-llm-analysis`, Sundays 05:00 UTC (`backend/app/tasks/scheduler.py:291`). It was firing
+all along; the fixture's 74-day gap came from an empty prepay balance on the billed project.
+Fixed for free on 2026-11-04 (P4): a free-tier key in the account's unbilled project, verified
+through both the weekly task and the live on-demand endpoint. Nothing was added.
 
 ---
 
@@ -207,9 +207,14 @@ worker log or a one-shot run, and neither belongs in a visual overhaul.
   not fix it.
 - **P2** — `lifting_sessions` stops at 2026-08-22 while strength activities run to 2026-11-03.
 - **P3** — `session_class` / `session_lift` are `NULL` on all rows, so `session_mix` cannot speak.
-- **P4** — the weekly analysis job (`weekly-llm-analysis`, Sundays 05:00 UTC) exists but the newest
-  stored analysis is 74 days old. Verify it fires before relying on it; if it does, Q3's "re-run on
-  schedule" is already satisfied and only the display changes are new work.
+- **P4 — RESOLVED 2026-11-04.** The weekly job (`weekly-llm-analysis`, Sundays 05:00 UTC) fires
+  correctly; it was starved, not broken. The billed project's prepay balance is empty
+  (`402 RESOURCE_EXHAUSTED`). A free-tier key was created in the account's unbilled project
+  (`gen-lang-client-0668027195`, `billingEnabled=False`) and verified end to end against
+  `gemini-3.6-flash`; the weekly task and the live on-demand endpoint both return 200. No credits
+  spent. Q3's "re-run on schedule" was already satisfied in code — the display changes are the
+  remaining work. The **health** analysis is produced by a different path and stays stale until
+  its button is pressed.
 - **P5** — `/api/v1/cross-domain` uses 404 for "not analysed yet", so an empty state is
   indistinguishable from a failure.
 - **P6** — `dashboard.spec.ts` addresses tabs by emoji that the lucide pass removed, and every test

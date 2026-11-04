@@ -254,21 +254,48 @@ queries. On prod latency, a 9-request page is roughly three round-trip waves ins
 
 ### 7.1 Order (each step ends somewhere verifiable)
 
-1. ~~**Verify the analysis job (P4).**~~ **Done 2026-11-04 — resolved, and not what we assumed.**
+1. ~~**Verify the analysis job (P4).**~~ **Done 2026-11-04 — root cause found, and fixed for free.**
    The job exists (`scheduler.py:291`, Sundays 05:00 UTC) and fires fine. Running it once by hand
-   returns `402 RESOURCE_EXHAUSTED: "Your prepayment credits are depleted"` from Gemini, three
-   retries, no row written (`llm_analyses` stays at 7 rows, newest 2026-08-24).
-   **The analyses are 74 days stale because the API key has no credit, not because the schedule
-   is broken.** Consequences for this plan:
-   - Do **not** add a second job, a retry loop, or a "run now" that will fail the same way.
-     Q3's "re-run on schedule" is satisfied by code that already exists.
-   - The age badge and the staleness banner are not a nicety — with no credit they are the only
-     honest thing the page can say. They ship.
-   - Surface the failure in the UI: when `run_llm_analysis` raises, the analysis card shows
-     *"the last run failed — credits exhausted"* rather than a silent old date. That is a
-     frontend change (§4.2), not a new backend one.
-   - **A billing decision, not an engineering one:** top up the key, or accept the analyses are
-     archival. Ask before spending.
+   returned `402 RESOURCE_EXHAUSTED: "Your prepayment credits are depleted"` from Gemini, three
+   retries, no row written.
+   **The analyses were stale because the billed project's prepay balance is empty, not because the
+   schedule is broken.**
+
+   **Resolution (2026-11-04): a free-tier key, no credits spent.**
+   `fitness-tracker-505713` has billing attached (that is the exhausted prepay). The account's
+   other project, `gen-lang-client-0668027195` ("Default Gemini Project"), has
+   `billingEnabled = False` — so a key there runs on the Gemini API **free tier**, and there is no
+   billing account to charge. That project already had `generativelanguage.googleapis.com`
+   enabled and no keys.
+
+   1. `gcloud services api-keys create --project gen-lang-client-0668027195 --api-target
+      service=generativelanguage.googleapis.com` — an `AIza…` key, restricted to the one API.
+   2. Verified directly: `generateContent` on **`gemini-3.6-flash`** (the model `llm_base.py:23`
+      actually requests) returns 200.
+   3. `GEMINI_API_KEY` in `.env` swapped to the free key; `.env` is gitignored, and the swap
+      asserted that no other line changed.
+   4. End-to-end, no fixture: `weekly_llm_analysis()` → `users_analyzed: 1, users_failed: 0`, a
+      new `llm_analyses` row dated 2026-11-04. Then `POST /api/v1/cycling/llm-analysis/on-demand`
+      on the **running** backend → `HTTP 200`, 5 065 chars — the path the dashboard's button uses.
+   5. `docker compose restart` does **not** reload env; `python fittrack.py up backend worker`
+      recreates the containers. Both now report a 39-char key.
+
+   Consequences for this plan:
+   - Nothing to add. Q3's "re-run on schedule" is satisfied by a job that already existed; it was
+     starved, not broken.
+   - The age badge and staleness banner still ship — they are what made this diagnosable, and the
+     free tier is rate-limited rather than unlimited, so a 429 is a normal future state.
+   - The **error**-state half of §4.2 still stands: when `run_llm_analysis` raises, the card must
+     say *"the last run failed"* rather than showing a silently old date.
+   - **Free-tier limits apply instead of spend.** Per-project per-minute and per-day quotas; the
+     existing retry-with-backoff (`Gemini transient error (attempt 1/3)`) handles a 429 the same
+     way it handled the 402. If a quota is hit the analysis is skipped, not corrupted.
+   - The old key in `fitness-tracker-505713` is untouched and still 402s. Flipping back to paid is
+     a one-line `.env` change plus a container recreate — no code path knows the difference.
+   - `weekly_llm_analysis` refreshes the **cycling** analysis only. The dashboard also shows the
+     **health** analysis, last written 2026-08-21 by the `Analyze Now` mutation, not by this job —
+     so that one stays stale until the button is pressed. Worth a follow-up: either add health to
+     the weekly job or drop the second card.
 2. ✅ **`_headline` fix** (§4.1) + its test — **`4947b4c`**. Four tests; the guard fails if plan
    presence stops changing the string. `test_today_verdict.py`: 30 passed.
 3. **`AnalysisProse` + tests.** Independent of the page. *Not started.*
