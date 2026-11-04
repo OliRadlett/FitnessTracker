@@ -1141,6 +1141,15 @@ async def _recalculate_pr_after_set_change(
         .limit(1)
     )
     existing_pr = result.scalar_one_or_none()
+    # A PR with no session or activity was entered manually. Recalculation is
+    # derived from logged sets, so it must not delete or overwrite a manual
+    # record with a lower set-derived e1RM — that is how the 150 kg squat and
+    # 125 kg bench entries vanished when a set on those exercises changed.
+    is_manual = (
+        existing_pr is not None
+        and getattr(existing_pr, "session_id", None) is None
+        and getattr(existing_pr, "activity_id", None) is None
+    )
 
     # Find the best remaining set across all sessions for this exercise.
     # Only low-rep working sets contend for 1RM records (see
@@ -1166,21 +1175,19 @@ async def _recalculate_pr_after_set_change(
     best_set = best_set_result.scalar_one_or_none()
 
     if best_set is None:
-        # No sets remain for this exercise — delete the PR.
-        #
-        # The original "Bench Press PR" notification is an *out-of-band* effect
-        # of the achievement, so deleting the record alone leaves it standing.
-        # Worse, its dedup_key is what suppresses a future notification: re-log
-        # the same lift on the same date and `notify` dedups against the stale
-        # row, so the record can never be re-announced. One delete fixes both —
-        # see revoke_pr_notification.
-        if existing_pr:
+        # No sets remain. A manual PR is independent of sets, so keep it; a
+        # set-derived PR has lost its source and is removed.
+        if existing_pr and not is_manual:
             await _revoke_pr_notification(db, user_id, existing_pr)
             await db.delete(existing_pr)
             await db.flush()
-        return None
+        return existing_pr if is_manual else None
 
     best_1rm = brzycki_1rm(best_set.weight_kg, best_set.reps)
+
+    if existing_pr and is_manual and best_1rm <= (existing_pr.estimated_1rm or 0):
+        # The manual entry is still the best e1RM; leave it untouched.
+        return existing_pr
 
     if existing_pr:
         # Update the existing PR with the new best
