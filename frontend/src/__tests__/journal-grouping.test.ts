@@ -3,6 +3,7 @@ import type { Activity } from '@/lib/api';
 import {
   buildListParams,
   buildSummaryParams,
+  describeActivity,
   groupByWeek,
   journalStartDate,
 } from '@/lib/journal';
@@ -54,16 +55,35 @@ describe('groupByWeek', () => {
   it('computes day totals', () => {
     const weeks = groupByWeek(activities, NOW);
     const wed = weeks[0].days[0];
-    expect(wed.activities).toHaveLength(2);
+    expect(wed.rows).toHaveLength(2);
     expect(wed.tss).toBe(130);
     expect(wed.distanceMeters).toBe(20000);
     expect(wed.durationSeconds).toBe(5400);
   });
 
-  it('builds a Monday-first weekly rhythm from TSS', () => {
+  it('builds a Monday-first week shape from session durations', () => {
     const weeks = groupByWeek(activities, NOW);
-    expect(weeks[0].rhythm).toEqual([50, 0, 130, 0, 0, 0, 0]);
-    expect(weeks[1].rhythm).toEqual([80, 0, 0, 0, 0, 0, 0]);
+    expect(weeks[0].strip).toHaveLength(7);
+    // Monday 12th carries the run; Wednesday 14th carries the ride + lift.
+    expect(weeks[0].strip[0].seconds).toBe(1500);
+    expect(weeks[0].strip[2].seconds).toBe(5400);
+    expect(weeks[0].strip[2].sessions).toBe(2);
+    expect(weeks[0].strip[1].sessions).toBe(0);
+  });
+
+  it('groups by the local calendar date, not the UTC slice', () => {
+    // A late-evening UTC timestamp is the next day in a positive-offset zone.
+    // The key must follow the user's calendar, which is what the adjacent
+    // labels already use.
+    const iso = '2026-10-14T23:30:00Z';
+    const local = new Date(iso);
+    const expected = `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(
+      local.getDate(),
+    ).padStart(2, '0')}`;
+
+    const weeks = groupByWeek([act({ start_date: iso })], new Date('2026-10-20T12:00:00'));
+
+    expect(weeks[0].days[0].date).toBe(expected);
   });
 
   it('labels today and yesterday', () => {
@@ -80,6 +100,78 @@ describe('groupByWeek', () => {
 
   it('returns nothing for an empty list', () => {
     expect(groupByWeek([], NOW)).toEqual([]);
+  });
+});
+
+describe('describeActivity', () => {
+  it('names a ride after its route when the name is usable', () => {
+    const row = describeActivity(act({ route_name: 'Geneva Vineyard Route', name: 'Cycling' }));
+    expect(row.title).toBe('Geneva Vineyard Route');
+  });
+
+  it('ignores a route that merely repeats the activity title', () => {
+    // 16 of 22 named routes in production are literally "Cycling".
+    const row = describeActivity(act({ route_name: 'Cycling', name: 'Cycling', ride_type: 'tempo' }));
+    expect(row.title).toBe('Tempo ride');
+  });
+
+  it('falls back to the ride type, then to "Ride"', () => {
+    expect(describeActivity(act({ ride_type: 'threshold' })).title).toBe('Threshold ride');
+    expect(describeActivity(act({})).title).toBe('Ride');
+  });
+
+  it('names a lift after the exercise it trained, not the activity', () => {
+    const row = describeActivity(
+      act({
+        sport_type: 'strength',
+        name: 'Evening Weight Training',
+        linked_lifting_session: {
+          id: 's1',
+          session_date: '2026-10-14',
+          focus: 'Push',
+          set_count: 16,
+          total_volume_kg: 5326,
+          top_exercise: 'Bench Press',
+          top_weights: [90, 90, 70],
+        },
+      }),
+    );
+
+    expect(row.title).toBe('Bench Press');
+    expect(row.meta).toContain('Push day');
+    expect(row.secondary).toContain('5,326 kg');
+    expect(row.glyph).toEqual({ kind: 'lift', weights: [90, 90, 70] });
+  });
+
+  it('says so when a lift has no set log', () => {
+    const row = describeActivity(
+      act({ sport_type: 'strength', name: 'Evening Weight Training', average_heartrate: 113 }),
+    );
+
+    expect(row.title).toBe('Weight training');
+    expect(row.meta).toContain('no set log');
+    expect(row.secondary).toBe('113 bpm avg');
+  });
+
+  it('shows ride metrics for a ride and lift metrics for a lift', () => {
+    const ride = describeActivity(act({ distance_meters: 55632, duration_seconds: 11552, tss: 115 }));
+    expect(ride.secondary).toBe('55.6 km · 115 TSS');
+
+    const lift = describeActivity(
+      act({
+        sport_type: 'strength',
+        duration_seconds: 4200,
+        linked_lifting_session: {
+          id: 's1',
+          session_date: '2026-10-14',
+          set_count: 12,
+          total_volume_kg: 4000,
+          top_exercise: 'Squat',
+          top_weights: [120],
+        },
+      }),
+    );
+    expect(lift.secondary).toBe('4,000 kg · 12 sets');
   });
 });
 
@@ -112,16 +204,23 @@ describe('query builders', () => {
     expect(params.get('start_date_after')).toBe('2026-09-14');
   });
 
+  it('sends a sport family as sport_group, because provider strings vary', () => {
+    const params = buildListParams({ days: 30, sport: 'lift', q: '', sort: 'date' }, 50, 0, NOW);
+    expect(params.get('sport_group')).toBe('lift');
+    expect(params.has('sport_type')).toBe(false);
+  });
+
   it('omits sport and q when empty', () => {
     const params = buildListParams({ days: 30, sport: '', q: '', sort: 'date' }, 50, 0);
     expect(params.has('sport_type')).toBe(false);
+    expect(params.has('sport_group')).toBe(false);
     expect(params.has('q')).toBe(false);
     expect(params.get('sort_by')).toBe('start_date');
   });
 
   it('builds summary params without sort or paging', () => {
-    const params = buildSummaryParams({ days: 30, sport: 'running', q: 'park', sort: 'tss' });
-    expect(params.get('sport_type')).toBe('running');
+    const params = buildSummaryParams({ days: 30, sport: 'lift', q: 'park', sort: 'tss' });
+    expect(params.get('sport_group')).toBe('lift');
     expect(params.get('q')).toBe('park');
     expect(params.has('sort_by')).toBe(false);
     expect(params.has('limit')).toBe(false);

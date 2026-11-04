@@ -172,6 +172,7 @@ export interface ActivitySummary {
   total_distance_meters: number;
   total_duration_seconds: number;
   total_tss: number;
+  total_volume_kg: number;
 }
 
 export interface LinkedActivity {
@@ -193,6 +194,12 @@ export interface LinkedLiftingSessionSummary {
   focus?: string;
   set_count: number;
   total_volume_kg?: number;
+  /** Exercise with the most sets — the row's title, because `Activity.name` is constant. */
+  top_exercise?: string | null;
+  top_weight_kg?: number | null;
+  /** Heaviest few sets, for the row's shape. */
+  top_weights?: number[];
+  estimated_tss?: number | null;
 }
 
 // ─── Activity Context (connections + analytical summary) ─────────────────────

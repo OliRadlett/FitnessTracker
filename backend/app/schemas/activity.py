@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # ── Linked Lifting Session Summary ────────────────────────────────────────────
 
@@ -15,6 +15,16 @@ class LinkedLiftingSessionSummary(BaseModel):
     focus: str | None = None
     set_count: int = 0
     total_volume_kg: float | None = None
+    # The journal names a lift after the exercise that was actually trained,
+    # because every activity's own name is "… Weight Training". Computed from
+    # the already-loaded sets (the list query eager-loads them), not stored, so
+    # there is no denormalised column to drift (see AGENTS.md pitfall 37).
+    top_exercise: str | None = None
+    top_weight_kg: float | None = None
+    # Heaviest few sets, so a row can draw the session's shape instead of
+    # printing a number. Same derivation, same zero-query cost.
+    top_weights: list[float] = Field(default_factory=list)
+    estimated_tss: float | None = None
 
     model_config = {"from_attributes": True}
 
@@ -120,6 +130,9 @@ class ActivitySummary(BaseModel):
     total_distance_meters: float
     total_duration_seconds: float
     total_tss: float
+    # Sum of linked lifting volume. Distances and TSS cannot express a lift, so
+    # a period total without this makes a lifter's training invisible.
+    total_volume_kg: float = 0.0
 
 
 # ── Activity Stream ───────────────────────────────────────────────────────────
