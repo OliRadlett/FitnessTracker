@@ -326,6 +326,16 @@ class TrainingPlanSummary(BaseModel):
     event_id: uuid.UUID | None = None
     day_count: int = 0
     completed_days: int = 0
+    # Coverage — the plan's written extent against its claimed span.
+    #
+    # `day_count` / `completed_days` count *authored* days, so a plan whose content
+    # stopped weeks before its `end_date` reads as nearly finished. These four say
+    # the other thing, and let a list of plans show geometry without loading every
+    # plan's days.
+    weeks_written: int = 0
+    total_weeks: int = 0
+    uncovered_weeks: int = 0
+    last_planned_date: date | None = None
     updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
@@ -726,6 +736,32 @@ class SwapDayRequest(BaseModel):
     """
 
     target_day_id: uuid.UUID
+
+
+class TrainingPlanExtendRequest(BaseModel):
+    """Carry the plan's weekday pattern forward to ``until``.
+
+    ``source_week`` selects the pattern; omitting it uses the last week that has
+    any days. Only dates with no day at all are filled, so the call is idempotent
+    and can never overwrite authored work.
+    """
+
+    until: date
+    source_week: int | None = Field(
+        default=None,
+        ge=1,
+        description="1-based plan week to copy the weekday pattern from",
+    )
+
+
+class TrainingPlanExtendResponse(BaseModel):
+    """What changed. The caller refetches the plan for everything else."""
+
+    plan_id: uuid.UUID
+    created: int
+    until: date
+    end_date: date
+    source_week: int
 
 
 class UnplannedActivity(BaseModel):

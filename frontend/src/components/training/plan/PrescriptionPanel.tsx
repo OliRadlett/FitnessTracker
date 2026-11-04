@@ -108,7 +108,7 @@ function ExpandableRouteMatch({
             <span className="text-xs">{expanded ? '▼' : '▶'}</span>
             <p className="text-sm font-medium text-foreground truncate">{match.route_name}</p>
           </div>
-          <div className="flex flex-wrap gap-3 text-[11px] text-muted mt-1 ml-5">
+          <div className="flex flex-wrap gap-3 text-xs text-muted mt-1 ml-5">
             <span className="inline-flex items-center gap-1">
               <Ruler className="w-3 h-3" />
               {formatDistance(match.distance_meters)}
@@ -131,7 +131,7 @@ function ExpandableRouteMatch({
         </div>
         <div className="text-right shrink-0 ml-3">
           <div className={`text-lg font-bold ${scoreColor}`}>{Math.round(match.match_score * 100)}%</div>
-          <div className="text-[10px] text-muted">{match.is_estimated ? 'estimated' : 'historical'}</div>
+          <div className="text-xs text-muted">{match.is_estimated ? 'estimated' : 'historical'}</div>
         </div>
       </button>
 
@@ -140,18 +140,18 @@ function ExpandableRouteMatch({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {match.avg_tss != null && (
               <div className="bg-surface/60 rounded-lg p-2 text-center">
-                <div className="text-[10px] text-muted">Avg TSS</div>
+                <div className="text-xs text-muted">Avg TSS</div>
                 <div className="text-sm font-semibold text-blue-400">{Math.round(match.avg_tss)}</div>
               </div>
             )}
             {match.avg_power != null && (
               <div className="bg-surface/60 rounded-lg p-2 text-center">
-                <div className="text-[10px] text-muted">Avg Power</div>
+                <div className="text-xs text-muted">Avg Power</div>
                 <div className="text-sm font-semibold text-yellow-400">{Math.round(match.avg_power)}W</div>
               </div>
             )}
             <div className="bg-surface/60 rounded-lg p-2 text-center">
-              <div className="text-[10px] text-muted">Type</div>
+              <div className="text-xs text-muted">Type</div>
               <div className="text-sm font-semibold text-foreground">
                 {match.is_loop ? (
                   <>
@@ -167,7 +167,7 @@ function ExpandableRouteMatch({
               </div>
             </div>
             <div className="bg-surface/60 rounded-lg p-2 text-center">
-              <div className="text-[10px] text-muted">Confidence</div>
+              <div className="text-xs text-muted">Confidence</div>
               <div className="text-sm font-semibold text-foreground">{Math.round(match.confidence * 100)}%</div>
             </div>
           </div>
@@ -251,19 +251,19 @@ export function PrescriptionPanel({ day, onAssignRoute }: PrescriptionPanelProps
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <p className="text-[10px] font-medium text-muted uppercase tracking-wide">Matching routes</p>
+        <p className="text-xs font-medium text-muted uppercase tracking-wide">Matching routes</p>
         <button
           onClick={findRoutes}
           disabled={busy}
-          className="ml-auto text-[10px] text-accent hover:text-accent/80 disabled:opacity-50 inline-flex items-center gap-1"
+          className="ml-auto text-xs text-accent hover:text-accent/80 disabled:opacity-50 inline-flex items-center gap-1"
         >
           <MapPin className="w-3 h-3" />
           {busy ? 'Finding…' : 'Find matching routes'}
         </button>
       </div>
-      {error && <p className="text-[11px] text-warning">{error}</p>}
+      {error && <p className="text-xs text-warning">{error}</p>}
       {matches && matches.length === 0 && (
-        <p className="text-[11px] text-muted">No routes fit this workout — try a different duration.</p>
+        <p className="text-xs text-muted">No routes fit this workout — try a different duration.</p>
       )}
       {matches && matches.length > 0 && (
         <div className="space-y-2">

@@ -239,6 +239,20 @@ plus an undoable plan-day delete. Supersedes the *scope* of
 [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (whose V3 widgets are reused;
 its prod deploy is still open). The remaining/deferred register is §15 of the redesign plan.
 
+**2026-11 — the surface was rebuilt around coverage.** The redesign above fixed the editor and
+left the measuring stick: every phase's acceptance criterion was behavioural, so `PlanSpine` shipped
+printing `47/49 · 96%` — a denominator of *authored* days — for a plan whose written content had
+stopped nineteen days earlier. [`plans/training-overhaul-2026-11.md`](plans/training-overhaul-2026-11.md)
+records the rebuild: **Week · Plan** replaces the four-mode switch, the spine states the plan's
+*written extent*, the week is rows (one per session, so two sports on a date never overwrite), and
+conformity/adaptive/week-ahead collapse into one reconciled "What should change" panel.
+`WeeklyView`, `WeekMasterBar`, `DayCell`, `PlanSpine`, `ModeSwitch`, `LoadStrip`,
+`ConformitySummaryCard`, `ConformityTrendCard`, `LintPanel`, `UnplannedStrip` and `WeatherForecast`
+are deleted. Two e2e-harness bugs surfaced while verifying it: `playwright.config.ts` reuses port
+3000 (`reuseExistingServer`), so it can silently test *another checkout's* build; and the PWA
+service worker escapes `page.route()`, so mocked API calls leak to the real backend unless
+`serviceWorkers: 'block'`.
+
 **Jev strength-session classification** — three specs. [`plans/jev-strength-session-classification.md`](plans/jev-strength-session-classification.md)
 defines the label producer: Jev classifies **every** lifting session (note or not) into three typed axes —
 `session_split` (push/pull/legs/upper/lower/full_body), `session_lift` (squat/bench/deadlift/overhead_press/accessory)

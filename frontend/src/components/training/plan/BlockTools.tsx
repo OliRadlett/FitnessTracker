@@ -141,7 +141,7 @@ export function BlockTools({ planId, week, planStart, weekDays, onDone }: BlockT
         <div className="px-3 pb-3 space-y-3">
           {/* Duplicate week → range */}
           <div className="flex flex-wrap items-end gap-2">
-            <label className="text-[10px] text-muted">
+            <label className="text-xs text-muted">
               <span className="block mb-0.5">Copy week {week} to (e.g. 3-6)</span>
               <input
                 type="text"
@@ -169,12 +169,12 @@ export function BlockTools({ planId, week, planStart, weekDays, onDone }: BlockT
             >
               <TrendingDown className="w-3 h-3" /> Make this week a deload
             </button>
-            <span className="text-[10px] text-muted">−1 RPE, −10% load (kept manual)</span>
+            <span className="text-xs text-muted">−1 RPE, −10% load (kept manual)</span>
           </div>
 
           {/* Bulk edit */}
           <div className="flex flex-wrap items-end gap-2">
-            <label className="text-[10px] text-muted">
+            <label className="text-xs text-muted">
               <span className="block mb-0.5">All cycle days → type</span>
               <select
                 value={bulkType}
@@ -195,7 +195,7 @@ export function BlockTools({ planId, week, planStart, weekDays, onDone }: BlockT
             >
               Apply to rides
             </button>
-            <label className="text-[10px] text-muted">
+            <label className="text-xs text-muted">
               <span className="block mb-0.5">All strength days → RPE</span>
               <input
                 type="number"

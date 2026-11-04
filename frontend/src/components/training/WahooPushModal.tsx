@@ -95,7 +95,7 @@ export function WahooPushModal({ open, onClose, planId, day }: WahooPushModalPro
       </p>
 
       {!inWindow && (
-        <div className="mb-4 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 text-[11px] text-warning">
+        <div className="mb-4 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 text-xs text-warning">
           This day is outside Wahoo&apos;s on-device window (today to 6 days out).
           It will be scheduled now but only appear on your ELEMNT once in range.
         </div>
@@ -114,7 +114,7 @@ export function WahooPushModal({ open, onClose, planId, day }: WahooPushModalPro
             <span className="block text-sm text-foreground font-medium">
               Structured workout
             </span>
-            <span className="block text-[11px] text-muted">
+            <span className="block text-xs text-muted">
               {hasWorkoutTarget
                 ? `Power/zone targets from your planned ${
                     day.planned_zone ? day.planned_zone.toUpperCase() : 'power'
@@ -141,7 +141,7 @@ export function WahooPushModal({ open, onClose, planId, day }: WahooPushModalPro
           />
           <span className="min-w-0">
             <span className="block text-sm text-foreground font-medium">Route</span>
-            <span className="block text-[11px] text-muted">
+            <span className="block text-xs text-muted">
               {canPushRoute
                 ? 'Upload the assigned route as a FIT course'
                 : 'Assign a route to this day first'}
@@ -151,7 +151,7 @@ export function WahooPushModal({ open, onClose, planId, day }: WahooPushModalPro
       </div>
 
       {error && (
-        <div className="mb-3 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 text-[11px] text-warning whitespace-pre-wrap">
+        <div className="mb-3 rounded-lg bg-warning/10 border border-warning/30 px-3 py-2 text-xs text-warning whitespace-pre-wrap">
           {error.message}
         </div>
       )}
@@ -179,7 +179,7 @@ export function WahooPushModal({ open, onClose, planId, day }: WahooPushModalPro
         )}
       </div>
       {nothingSelected && (
-        <p className="mt-2 text-[11px] text-muted">
+        <p className="mt-2 text-xs text-muted">
           Select the workout and/or route to push.
         </p>
       )}

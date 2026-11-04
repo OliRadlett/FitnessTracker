@@ -206,8 +206,15 @@ export interface TrainingPlanSummary {
   plan_type: string;
   status: string;
   event_id?: string | null;
+  /** Authored days. NOT progress — a plan can be "all done" and still unwritten. */
   day_count: number;
   completed_days: number;
+  /** Weeks with at least one day, out of the Monday-aligned span. */
+  weeks_written?: number;
+  total_weeks?: number;
+  uncovered_weeks?: number;
+  /** Last date with any authored day — where the written plan stops. */
+  last_planned_date?: string | null;
   updated_at?: string;
 }
 
@@ -433,6 +440,15 @@ export interface TrainingWeekResponse {
   week_end: string;
   readiness?: WeekReadiness | null;
   days: TrainingWeekDay[];
+}
+
+/** What `POST /training-plans/{id}/extend` changed. */
+export interface ExtendPlanResponse {
+  plan_id: string;
+  created: number;
+  until: string;
+  end_date: string;
+  source_week: number;
 }
 
 /** Partial single-day PATCH body — only provided fields are applied. */

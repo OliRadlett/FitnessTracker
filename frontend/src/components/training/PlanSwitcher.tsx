@@ -85,7 +85,7 @@ export function PlanSwitcher({
                 className={`h-1.5 w-1.5 rounded-full shrink-0 ${STATUS_DOT[p.status] ?? 'bg-muted'}`}
               />
               <span className="flex-1 truncate">{p.name}</span>
-              <span className="text-[10px] text-muted shrink-0 capitalize">{p.status}</span>
+              <span className="text-xs text-muted shrink-0 capitalize">{p.status}</span>
             </button>
           ))}
           <button
