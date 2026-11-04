@@ -26,7 +26,7 @@ Nothing was pushed or merged. The dirty checkout in `C:\Projects\fitness-tracker
 
 ## Verification
 
-- Backend unit: **1773 passed**, 796 deselected.
+- Backend unit: **1780 passed**, 796 deselected.
 - Frontend unit: **741 passed** across 76 files.
 - Lifting API integration: **21 passed**.
 - Multi-sport/training-plan integration: **24 passed** (includes the foreign-session case).
@@ -35,6 +35,13 @@ Nothing was pushed or merged. The dirty checkout in `C:\Projects\fitness-tracker
 - `ruff check backend/`: clean, including `F821`.
 - `tsc --noEmit`: clean.
 - E2E tab case was added but **not executed** (no server was started in this session).
+
+## P2 follow-up (same PR)
+
+- **AUD-08** — a failed sessions query now renders `ErrorState` + Retry instead of an infinite skeleton; the E2E error test asserts that state.
+- **AUD-09** — the sessions query asks for 200 rows, reads `X-Total-Count`, and the rail reports shown-of-total with an explicit truncation note. `s_split` / `s_class` / `s_ex` are applied; search includes exercise names.
+- **AUD-10** — the edit panel is keyed by session id, so switching between cached sessions remounts the inputs instead of showing the previous session's values.
+- **AUD-12** — `day_status` checks `completed` before the date, factored into `day_status_for()` with a parametrized test.
 
 ## Remaining
 
