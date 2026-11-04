@@ -67,8 +67,9 @@ plan", conformity said "87%", and the week under all of it was empty.
 - **e2e:** `e2e/training.spec.ts` — **12/12 passing** against a locally started
   build (`npx next start -p 3010`, `playwright.local.config.ts`), including both
   empty-week actions and their POST bodies.
-- **Backend:** `tests/test_plan_extend.py` — 8 passing; `test_multi_sport_days.py`
-  and `test_plan_review.py` still green (43 total). `ruff` clean.
+- **Backend:** `tests/test_plan_extend.py` — 8 passing; `tests/integration/test_extend_plan.py`
+  — 4 passing against Postgres; `test_multi_sport_days.py` and `test_plan_review.py` still
+  green (35 total). `ruff` clean.
 - **Rendered and reviewed** at 1440×900 and 390×844, both surfaces. Screenshots:
   `frontend/e2e/out/*.png` (gitignored), captured by `e2e/capture-training.spec.ts`.
 - **Type floor closed:** the smallest computed font on all five captured frames is
@@ -131,8 +132,17 @@ empty-week actions: copy the last written week's weekday pattern into every empt
 date up to `until`. Fill-only-empty, so it is idempotent and cannot overwrite
 authored work; it also raises `end_date` when asked to go past it. Service in
 `services/training_plan.extend_plan`, endpoint + schemas, 8 unit tests in
-`tests/test_plan_extend.py`. The plan-level `completed` column is never copied,
-and neither are the actual links or the Wahoo ids.
+`tests/test_plan_extend.py` and **4 integration tests against real Postgres** in
+`tests/integration/test_extend_plan.py`. The plan-level `completed` column is never
+copied, and neither are the actual links or the Wahoo ids.
+
+The integration suite earned its place immediately: against a stub the endpoint
+looked idempotent, and against Postgres a retry re-created two days it had just
+written. `extend_plan` had derived the pattern, the last written date and the
+occupied dates from `plan.days` — an identity-mapped relationship, so a session
+that had already loaded the plan kept serving the pre-write collection. It now
+reads the days with an explicit query, and the guarantee no longer depends on
+identity-map behaviour.
 
 **Still open:** coverage as a first-class field on the plan summary
 (`weeks_written`, `last_session_date`). It is derived client-side from the full
