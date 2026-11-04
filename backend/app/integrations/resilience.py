@@ -13,6 +13,7 @@ until a later run observes a success.
 """
 
 import time
+from collections.abc import Callable
 
 
 class ModalCircuitBreaker:
@@ -30,34 +31,56 @@ class ModalCircuitBreaker:
     """
 
     def __init__(
-        self, failures_before_open: int = 3, cooldown_seconds: float = 600.0
+        self,
+        failures_before_open: int = 3,
+        cooldown_seconds: float = 600.0,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.failures_before_open = failures_before_open
         self.cooldown_seconds = cooldown_seconds
+        self._clock = clock
         self._failures: dict[str, int] = {}
         self._opened_at: dict[str, float] = {}
+        self._half_open: set[str] = set()
 
     def allow(self, task: str) -> bool:
-        """Whether a Modal call for ``task`` may proceed."""
+        """Whether a Modal call for ``task`` may proceed.
+
+        A half-open state grants exactly one trial; other callers wait for its
+        outcome. A failed trial re-arms the cooldown.
+        """
         failures = self._failures.get(task, 0)
         if failures < self.failures_before_open:
             return True
+        if task in self._half_open:
+            return False
         opened = self._opened_at.get(task, 0.0)
-        # Half-open: one trial per cooldown window.
-        return (time.monotonic() - opened) >= self.cooldown_seconds
+        if (self._clock() - opened) < self.cooldown_seconds:
+            return False
+        self._half_open.add(task)
+        return True
 
     def record(self, task: str, ok: bool) -> None:
         """Record a Modal call outcome for ``task``."""
+        self._half_open.discard(task)
         if ok:
             self._failures[task] = 0
             self._opened_at.pop(task, None)
         else:
             self._failures[task] = self._failures.get(task, 0) + 1
             if self._failures[task] >= self.failures_before_open:
-                self._opened_at.setdefault(task, time.monotonic())
+                # Re-arm on every failed trial, not only the first failure.
+                self._opened_at[task] = self._clock()
 
     def state(self, task: str) -> str:
         """Human-readable state for logging: closed/open/half-open."""
         if self._failures.get(task, 0) < self.failures_before_open:
             return "closed"
-        return "half-open" if self.allow(task) else "open"
+        if task in self._half_open:
+            return "half-open"
+        opened = self._opened_at.get(task, 0.0)
+        return (
+            "half-open"
+            if (self._clock() - opened) >= self.cooldown_seconds
+            else "open"
+        )

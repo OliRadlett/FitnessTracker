@@ -35,6 +35,10 @@ Status: **closed**. PRs #352, #358 and #361 are merged to `main`; CI was green o
 | AUD-22 | Volume chart scales to its own maximum. | `VolumeTrendChart.tsx` |
 | AUD-23 | Webhook auth failures stay pending/deferred and continue the queue. | `webhook_queue.py`; `test_webhook_queue.py` |
 
+## Re-audit finding (new after the first close)
+
+- **AUD-24** — the Modal circuit breaker's half-open state let every caller through and `record(False)` did not re-arm the cooldown (it used `setdefault`). Now exactly one trial is claimed per window, a failed trial resets `opened_at`, and success clears the claim. `test_resilience.py` is deterministic (injected clock) and covers one-trial, re-arm, and reset.
+
 ## Accepted with a decision
 
 | ID | Decision |
@@ -44,7 +48,7 @@ Status: **closed**. PRs #352, #358 and #361 are merged to `main`; CI was green o
 
 ## Verification
 
-- Backend unit: **1789 passed**, 799 deselected.
+- Backend unit: **1790 passed**, 799 deselected.
 - Frontend unit: **741 passed** across 76 files.
 - Affected integration: **30 passed** (account, taper, lifting API); webhook queue **6 passed**; health **2 passed**.
 - Migration 104: upgrade -> downgrade 103 -> upgrade head, clean.
