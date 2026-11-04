@@ -99,20 +99,26 @@ export default function Relive3DPage() {
   const ghostRide = ghostId ? ghostQuery.data?.ride ?? null : null;
 
   return (
-    <Relive3D
-      ride={ride}
-      backHref={`/activities/${activityId}`}
-      eyebrowLabel={`RELIVE · ${sport.toUpperCase()}`}
-      mapBudget={{
-        allowed: response.map_allowed,
-        used: response.map_used,
-        limit: response.map_limit,
-      }}
-      ghost={ghostRide}
-      ghosts={ghosts}
-      ghostId={ghostId}
-      onGhostChange={setGhostId}
-      ghostLoading={Boolean(ghostId) && ghostQuery.isPending}
-    />
+    // The viewer's own root is a fixed-position div, so it needs a landmark
+    // around it: leaving the (app) group also left behind the <main> the shell
+    // used to provide, and axe flags every overlay as "not contained by
+    // landmarks".
+    <main className={styles.stage}>
+      <Relive3D
+        ride={ride}
+        backHref={`/activities/${activityId}`}
+        eyebrowLabel={`RELIVE · ${sport.toUpperCase()}`}
+        mapBudget={{
+          allowed: response.map_allowed,
+          used: response.map_used,
+          limit: response.map_limit,
+        }}
+        ghost={ghostRide}
+        ghosts={ghosts}
+        ghostId={ghostId}
+        onGhostChange={setGhostId}
+        ghostLoading={Boolean(ghostId) && ghostQuery.isPending}
+      />
+    </main>
   );
 }
