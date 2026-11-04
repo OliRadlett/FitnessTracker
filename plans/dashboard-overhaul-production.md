@@ -269,16 +269,22 @@ queries. On prod latency, a 9-request page is roughly three round-trip waves ins
      frontend change (§4.2), not a new backend one.
    - **A billing decision, not an engineering one:** top up the key, or accept the analyses are
      archival. Ask before spending.
-2. **`_headline` fix** (§4.1) + its test. Independent, ships first, no UI dependency.
-3. **`AnalysisProse` + tests.** Independent of the page.
-4. **`stance.ts` + `engines.ts` + tests.** Pure functions, no JSX.
+2. ✅ **`_headline` fix** (§4.1) + its test — **`4947b4c`**. Four tests; the guard fails if plan
+   presence stops changing the string. `test_today_verdict.py`: 30 passed.
+3. **`AnalysisProse` + tests.** Independent of the page. *Not started.*
+4. ✅ **`stance.ts` + `engines.ts` + tests** — **`fe437a8`**, merged into one module
+   (`lib/dashboard/stance.ts`, 19 tests). `tsc --noEmit` clean across `frontend/`. This is the
+   honesty gate, so it went first.
 5. **`useDashboardPage`** (§5) + a test that it issues exactly the 9 requests for `view=today`
-   and that a single failed section does not flip `status` to `error`.
+   and that a single failed section does not flip `status` to `error`. **Next up.**
 6. **Zones, in order: Today → Trends → History.** Today first because it is the fold.
 7. **Delete the old files.** Only after each replacement is on screen. `git rm` per file, never
    a bulk script (repo rule 10).
 8. **Rewrite `dashboard.spec.ts`** (§8.2).
 9. **Re-run the gate on the real page** (§8.1).
+
+**Branch state:** `feature/dashboard-overhaul` off `origin/main` (`b8f65c8`), three commits,
+working tree clean, in the worktree `C:\Projects\fitness-tracker-dashboard`.
 
 ### 7.2 Rollout
 
