@@ -45,9 +45,18 @@ def _plan(days: list[TrainingPlanDay]) -> TrainingPlan:
 
 
 def _db_returning(plan: TrainingPlan) -> tuple[AsyncMock, list[TrainingPlanDay]]:
-    """A stubbed session that records the rows the service adds."""
+    """A stubbed session that answers both reads the service makes.
+
+    ``extend_plan`` calls ``execute`` twice — once for the plan, once for the
+    plan's days. It does not trust ``plan.days``, because that relationship is
+    identity-mapped and goes stale after a write in the same session, which made
+    a retry re-create days it had just written.
+    """
     db = AsyncMock()
-    db.execute.return_value.scalar_one_or_none = MagicMock(return_value=plan)
+    result = MagicMock()
+    result.scalar_one_or_none = MagicMock(return_value=plan)
+    result.scalars.return_value.all.return_value = list(plan.days)
+    db.execute = AsyncMock(return_value=result)
     added: list[TrainingPlanDay] = []
     db.add = MagicMock(side_effect=added.append)
     return db, added

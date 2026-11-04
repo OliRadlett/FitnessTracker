@@ -2967,13 +2967,25 @@ async def extend_plan(
     if until < plan.start_date:
         raise ValueError("until is before the plan start")
 
+    # Read the days explicitly rather than through ``plan.days``. The relationship
+    # is identity-mapped, so a session that loaded the plan before this call keeps
+    # serving the pre-write collection — and both the "fill only empty" guarantee
+    # and the pattern depend on seeing the rows as they are *now*. With the stale
+    # collection a retry re-created days it had just written.
+    existing_rows = await db.execute(
+        select(TrainingPlanDay)
+        .where(TrainingPlanDay.plan_id == plan.id)
+        .order_by(TrainingPlanDay.day_date)
+    )
+    existing_days = list(existing_rows.scalars().all())
+
     week1_start = plan.start_date - timedelta(days=plan.start_date.weekday())
 
     def week_of(d: date) -> int:
         return (d - week1_start).days // 7 + 1
 
     days_by_week: dict[int, list[TrainingPlanDay]] = {}
-    for day in plan.days:
+    for day in existing_days:
         days_by_week.setdefault(week_of(day.day_date), []).append(day)
 
     written = sorted(w for w, ds in days_by_week.items() if ds)
@@ -2985,12 +2997,12 @@ async def extend_plan(
         raise ValueError(f"Week {src} has no days to copy from")
 
     pattern = days_by_week[src]
-    last_written = max(d.day_date for d in plan.days)
+    last_written = max(d.day_date for d in existing_days)
 
     # Extend the claimed range first: the days created below must fall inside it.
     plan.end_date = max(plan.end_date, until)
 
-    existing_dates = {d.day_date for d in plan.days}
+    existing_dates = {d.day_date for d in existing_days}
     created = 0
     cursor = last_written + timedelta(days=1)
     while cursor <= until:
