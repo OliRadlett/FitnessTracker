@@ -1,0 +1,14 @@
+import { readFileSync } from "node:fs";
+import { chromium } from "@playwright/test";
+const session = JSON.parse(readFileSync("../../.tmp/qa-session.json", "utf8"));
+const browser = await chromium.launch();
+const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+await ctx.addCookies([{ name: session.name, value: session.value, domain: "localhost", path: "/", httpOnly: true, sameSite: "Lax" }]);
+const page = await ctx.newPage();
+await page.goto("http://localhost:3000/fittrack/activities?activity=8c24a0f6-f069-4c4e-bc68-61e8f6a867fb", { waitUntil: "domcontentloaded" });
+await page.waitForTimeout(12000);
+const body = await page.locator("body").innerText();
+console.log("detail opened:", /Watch in Relive 3D|Open 3D Replay|Overview\s*\|?\s*Replay/i.test(body));
+console.log("shows ride:", /18.94 km|18.9 km/.test(body));
+await page.screenshot({ path: "qa/out/frontend-back-target.png" });
+await browser.close();
