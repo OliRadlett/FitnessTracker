@@ -2330,6 +2330,23 @@ async def update_plan_day(
     return day
 
 
+def day_status_for(day: TrainingPlanDay, today: date) -> str:
+    """The status the week grid should show for one plan day.
+
+    Completion comes before the date: today's linked session is done as soon
+    as it is linked, not "pending" until tomorrow. Rest stays exclusive first.
+    """
+    if day.sport == "rest":
+        return "rest"
+    if day.completed:
+        return "completed"
+    if day.day_date >= today:
+        return "pending"
+    if day.activity_id is not None or day.lifting_session_id is not None:
+        return "partial"
+    return "missed"
+
+
 async def get_plan_week(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -2566,16 +2583,7 @@ async def get_plan_week(
         )
 
         # Compute day_status for visual indicators
-        if day.sport == "rest":
-            day_status = "rest"
-        elif day.day_date >= today:
-            day_status = "pending"
-        elif day.completed:
-            day_status = "completed"
-        elif day.activity_id is not None or day.lifting_session_id is not None:
-            day_status = "partial"
-        else:
-            day_status = "missed"
+        day_status = day_status_for(day, today)
 
         # FL1 staleness flag — cheap: profile already loaded, no extra
         # queries per day. Only upcoming uncompleted days can be stale.
