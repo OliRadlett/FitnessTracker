@@ -741,7 +741,7 @@ export default function LiftingPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
-                    <CardTitle>{sessionDetail.focus || 'Session Detail'}</CardTitle>
+                    <CardTitle>{sessionDetail.focus?.trim() || 'Session'}</CardTitle>
                     <p className="text-sm text-muted mt-1 flex items-center gap-1 flex-wrap">
                       <span>{new Date(sessionDetail.session_date).toLocaleDateString(getActiveLocale())}</span>
                       {(() => {
