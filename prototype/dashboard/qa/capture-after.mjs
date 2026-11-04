@@ -40,6 +40,11 @@ for (const frame of FRAMES) {
   const context = await browser.newContext({
     viewport: { width: frame.vp[0], height: frame.vp[1] },
     deviceScaleFactor: 1,
+    // The production build registers a service worker, and a worker's fetches do not
+    // go through `page.route` — so the connections intercept below was being bypassed
+    // and the worker followed the proxy's cross-origin 307 instead, surfacing as a
+    // 503. The E2E config blocks workers for the same reason.
+    serviceWorkers: 'block',
   });
   await context.addCookies([
     {
@@ -52,21 +57,44 @@ for (const frame of FRAMES) {
     },
   ]);
   const page = await context.newPage();
+  // First-run UI must not appear in the artifact: the onboarding wizard auto-opens
+  // after auth and would cover every frame. Same keys the E2E fixture seeds.
+  await page.addInitScript(() => {
+    try {
+      localStorage.setItem('fittrack-onboarding-done', 'true');
+      localStorage.setItem('fittrack-routes-tips', 'done');
+      localStorage.setItem('fittrack-install-dismissed', String(Date.now()));
+    } catch {
+      /* storage unavailable — ignore */
+    }
+  });
   const errors = [];
   page.on('console', (m) => {
     if (m.type() === 'error') errors.push(m.text());
   });
+  page.on('response', (r) => {
+    if (r.status() >= 400) errors.push(`${r.status()} ${new URL(r.url()).pathname}`);
+  });
   page.on('pageerror', (e) => errors.push(String(e)));
 
   // Same dev-server quirk as before: the trailing-slash 308 -> FastAPI 307 to the
-  // absolute :8000 URL drops the Authorization header. Serve it directly.
+  // absolute :8000 URL drops the Authorization header. Serve this one path directly.
+  //
+  // Fetched Node-side, not with `route.fetch`: that runs inside the page's origin, so
+  // an Authorization header makes it a cross-origin request and the backend's CORS
+  // allowlist (which knows :3000, not the capture port) answers 503. Node has no
+  // origin, so the header is sent as written.
   if (TOKEN) {
-    await page.route(/\/api\/v1\/connections\/?(\?.*)?$/, (route) =>
-      route.fetch({
-        url: 'http://localhost:8000/api/v1/connections/',
+    await page.route(/\/api\/v1\/connections\/?(\?.*)?$/, async (route) => {
+      const res = await fetch('http://localhost:8000/api/v1/connections/', {
         headers: { Authorization: `Bearer ${TOKEN}` },
-      }).then((r) => route.fulfill({ response: r })),
-    );
+      });
+      route.fulfill({
+        status: res.status,
+        contentType: 'application/json',
+        body: await res.text(),
+      });
+    });
   }
 
   await page.goto(`${BASE}${frame.path}`, { waitUntil: 'domcontentloaded', timeout: 120_000 });

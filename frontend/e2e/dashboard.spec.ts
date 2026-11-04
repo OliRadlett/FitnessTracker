@@ -94,6 +94,29 @@ test.describe('Dashboard — zones and deep links', () => {
     // dropped into a div.
     await expect(page.locator('main')).not.toContainText('**');
   });
+
+  test('each analysis refreshes its own producer', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/dashboard?view=trends');
+    await expect(page.getByRole('heading', { name: 'Trends' })).toBeVisible({ timeout: 15_000 });
+
+    const posts: string[] = [];
+    page.on('request', (r) => {
+      if (r.method() === 'POST') posts.push(r.url());
+    });
+
+    // The first cut wired both cards to the cycling endpoint, so "Re-analyse" on the
+    // Health card silently regenerated the performance analysis instead.
+    await page.getByText('Health analysis').click();
+    await page.getByRole('button', { name: /Re-analyse/i }).click();
+
+    await expect
+      .poll(() => posts.some((u) => u.includes('metrics/health-ai-analysis')), { timeout: 15_000 })
+      .toBe(true);
+    expect(
+      posts.some((u) => u.includes('cycling/llm-analysis')),
+      'the Health card must not post to the cycling producer',
+    ).toBe(false);
+  });
 });
 
 test.describe('Dashboard — failure and layout', () => {
