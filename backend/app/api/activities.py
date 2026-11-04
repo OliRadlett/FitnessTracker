@@ -37,13 +37,30 @@ from app.schemas.activity import (
     SleepLogSummary,
     TimeseriesResponse,
 )
+from app.schemas.replay import GhostCandidate, GhostListResponse, ReplayResponse
 from app.services.activity_context import context_to_ride_metrics
 from app.services.auth import get_current_user
+from app.services.cache import get_json, set_json
 from app.services.charts import ChartService
+from app.services.map_budget import claim_map_open
+from app.services.replay import (
+    ReplayUnavailable,
+    activity_timezone,
+    build_replay,
+)
 from app.services.ride_classification import ride_type_from_context
 from app.services.sport_filter import allowed_sport_types, is_allowed_sport
 
 logger = logging.getLogger(__name__)
+
+# How many past rides on a route the ghost picker offers. Enough to find the one
+# you remember, few enough that the picker stays a row of chips.
+GHOST_CANDIDATE_LIMIT = 8
+
+# Replay payloads are pure functions of the ride's stored streams, so a 15-minute
+# cache removes the stream load + transform from repeat opens of the same ride
+# without ever serving a stale ride for long.
+REPLAY_CACHE_TTL_S = 15 * 60
 
 router = APIRouter()
 
@@ -1608,6 +1625,142 @@ async def get_activity_context(
 
 
 # ── Dynamic /{activity_id} routes ────────────────────────────────────────────────
+
+
+@router.get("/{activity_id}/replay", response_model=ReplayResponse)
+async def get_activity_replay(
+    activity_id: uuid.UUID,
+    claim_map: bool = True,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Get a normalized replay payload for the 3D viewer.
+
+    ``claim_map=0`` is for follow-up payloads fetched into an *already open*
+    map — a ghost ride's streams. Those cost no Google load, so charging them
+    against the monthly map budget would burn the cap on page furniture.
+
+    The built payload is cached under a key that includes the activity's
+    ``updated_at``, so a re-sync that changes the ride invalidates it without any
+    explicit purge; the TTL is the backstop for a stream rewrite that leaves the
+    parent row untouched.
+    """
+    stamp = await db.execute(
+        select(Activity.updated_at).where(
+            Activity.id == activity_id,
+            Activity.user_id == current_user.id,
+        )
+    )
+    updated_at = stamp.scalar_one_or_none()
+    if updated_at is None:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    cache_key = f"fittrack:replay:v1:{activity_id}:{int(updated_at.timestamp())}"
+    payload = await get_json(cache_key)
+    if payload is None:
+        result = await db.execute(
+            select(Activity)
+            .options(
+                selectinload(Activity.streams),
+                selectinload(Activity.sources),
+                selectinload(Activity.route),
+            )
+            .where(
+                Activity.id == activity_id,
+                Activity.user_id == current_user.id,
+            )
+        )
+        activity = result.scalar_one_or_none()
+        if not activity:
+            raise HTTPException(status_code=404, detail="Activity not found")
+        try:
+            payload = build_replay(activity)
+        except ReplayUnavailable as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        await set_json(cache_key, payload, REPLAY_CACHE_TTL_S)
+
+    # Budget fields are per-open and must never be cached.
+    payload = dict(payload)
+    if claim_map:
+        budget = await claim_map_open(current_user.id)
+        payload["map_allowed"] = budget["allowed"]
+        payload["map_used"] = budget["used"]
+        payload["map_limit"] = budget["limit"]
+    return ReplayResponse.model_validate(payload)
+
+
+@router.get("/{activity_id}/ghosts", response_model=GhostListResponse)
+async def get_activity_ghosts(
+    activity_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List past rides on the same route, for ghost racing.
+
+    Matching is on the stored ``route_id`` — the same route the app already
+    groups rides by. A ride with no route (never matched, or a one-off) has no
+    history to race, so it reports a reason rather than an empty picker.
+    """
+    result = await db.execute(
+        select(Activity)
+        .options(selectinload(Activity.route))
+        .where(
+            Activity.id == activity_id,
+            Activity.user_id == current_user.id,
+        )
+    )
+    activity = result.scalar_one_or_none()
+    if not activity:
+        raise HTTPException(status_code=404, detail="Activity not found")
+
+    if activity.route_id is None:
+        return GhostListResponse(
+            reason="This ride is not matched to a route, so there is no history to race.",
+        )
+
+    candidates = await db.execute(
+        select(Activity)
+        .where(
+            Activity.user_id == current_user.id,
+            Activity.route_id == activity.route_id,
+            Activity.id != activity.id,
+        )
+        .order_by(Activity.start_date.desc())
+        .limit(GHOST_CANDIDATE_LIMIT)
+    )
+    rows = candidates.scalars().all()
+
+    # The PB is the quickest *moving* time on the route, including this ride, so
+    # the picker can mark the one to beat even when it is not in the list.
+    pb = await db.execute(
+        select(Activity.id)
+        .where(
+            Activity.user_id == current_user.id,
+            Activity.route_id == activity.route_id,
+            Activity.duration_seconds.is_not(None),
+        )
+        .order_by(Activity.duration_seconds.asc())
+        .limit(1)
+    )
+
+    return GhostListResponse(
+        route_id=activity.route_id,
+        route_name=activity.route.name if activity.route else None,
+        candidates=[
+            GhostCandidate(
+                activity_id=row.id,
+                name=row.name,
+                start_date=row.start_date,
+                timezone=activity_timezone(row),
+                distance_m=float(row.distance_meters or 0.0),
+                moving_s=int(row.duration_seconds or 0),
+                avg_speed_mps=float(row.average_speed) if row.average_speed else None,
+            )
+            for row in rows
+        ],
+        reason=None if rows else "No other rides on this route yet.",
+        pb_activity_id=pb.scalar_one_or_none(),
+    )
 
 
 @router.get("/{activity_id}", response_model=ActivityDetailRead)

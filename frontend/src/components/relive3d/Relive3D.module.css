@@ -1,0 +1,384 @@
+.root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background: #07111d;
+  color: #e6edf7;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.map > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.poster {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.posterSvg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.posterVignette {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(7, 17, 29, 0) 30%, rgba(7, 17, 29, 0.55) 100%),
+    linear-gradient(to bottom, rgba(7, 17, 29, 0.35), rgba(7, 17, 29, 0.1) 45%, rgba(7, 17, 29, 0.75));
+  pointer-events: none;
+}
+
+.mapBadge {
+  position: absolute;
+  left: 24px;
+  top: 190px;
+  z-index: 1;
+  padding: 5px 9px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 999px;
+  background: rgba(11, 18, 32, 0.72);
+  color: #fbbf24;
+  font-size: 9px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  max-width: 460px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  backdrop-filter: blur(10px);
+}
+
+.mapAttribution {
+  position: absolute;
+  right: 18px;
+  bottom: 214px;
+  z-index: 1;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(11, 18, 32, 0.72);
+  color: #93a4bb;
+  font-size: 8px;
+  text-decoration: none;
+  backdrop-filter: blur(10px);
+}
+
+.mapAttribution:hover {
+  color: #e6edf7;
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #93a4bb;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+}
+
+.back:hover {
+  color: #e6edf7;
+}
+
+.titleCard {
+  position: absolute;
+  left: 24px;
+  top: 22px;
+  z-index: 2;
+  width: 282px;
+  padding: 14px 16px;  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(11, 18, 32, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.eyebrow {
+  color: #f59e0b;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+
+.titleCard h1 {
+  margin: 4px 0 4px;
+  font-size: 22px;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.meta {
+  color: #cbd5e1;
+  font-size: 10px;
+}
+
+.weather {
+  margin-top: 2px;
+  color: #7f8fa6;
+  font-size: 9px;
+}
+
+.hint {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  max-width: 52vw;
+  overflow: hidden;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  background: rgba(11, 18, 32, 0.68);
+  color: #93a4bb;
+  font-size: 9px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(10px);
+}
+
+.telemetry {
+  position: absolute;
+  right: 18px;
+  top: 64px;
+  z-index: 2;
+  display: grid;
+  gap: 3px;
+  min-width: 170px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(11, 18, 32, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.telemetry div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.telemetry span {
+  color: #6b7c93;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.telemetry b {
+  color: #e6edf7;
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.dock {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 16px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.presetBar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(11, 18, 32, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.preset,
+.play,
+.follow,
+.data,
+.speed {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: transparent;
+  color: #cfd9e6;
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+
+.preset:hover,
+.play:hover,
+.follow:hover,
+.data:hover,
+.speed:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e6edf7;
+}
+
+.active {
+  background: #f59e0b !important;
+  border-color: #f59e0b !important;
+  color: #0b1220 !important;
+  font-weight: 700;
+}
+
+.play {
+  border-color: rgba(245, 158, 11, 0.55);
+  color: #f59e0b;
+  font-weight: 700;
+}
+
+.sep {
+  flex: 0 0 1px;
+  align-self: stretch;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 0 2px;
+}
+
+.ghostLabel {
+  padding: 0 4px 0 2px;
+  color: #8fa3bd;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.ghostGroup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.pb {
+  margin-right: 4px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: rgba(245, 158, 11, 0.22);
+  color: #fbbf24;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.active .pb {
+  background: rgba(11, 18, 32, 0.18);
+  color: #0b1220;
+}
+
+.ghostNote {
+  color: #8fa3bd;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.speed {
+  background: rgba(255, 255, 255, 0.04);
+  font-variant-numeric: tabular-nums;
+}
+
+.speed option {
+  background: #0b1220;
+}
+
+.timeline {
+  padding: 7px 11px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  background: rgba(11, 18, 32, 0.82);
+  backdrop-filter: blur(14px);
+}
+
+.timeline input {
+  width: 100%;
+  accent-color: #f59e0b;
+}
+
+.timelineMeta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 2px;
+  color: #6b7c93;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phone: the dock's controls are the whole interaction surface, so give them a
+   thumb-sized hit area and let the rows scroll rather than squeeze. */
+@media (max-width: 767px) {
+  .preset,
+  .play,
+  .follow,
+  .data,
+  .speed {
+    min-height: 38px;
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .titleCard {
+    left: 12px;
+    top: 12px;
+    width: calc(100% - 24px);
+    max-width: 320px;
+  }
+
+  .telemetry {
+    top: 12px;
+    right: 12px;
+  }
+
+  /* Eight ghost chips wrapped onto four rows swallowed the phone screen. Keep
+     them on one scrollable row instead. `min-width: 0` is load-bearing: a flex
+     item defaults to its content width, so the row would push the whole dock
+     wider than the viewport instead of scrolling inside it. */
+  .ghostGroup {
+    flex-wrap: nowrap;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .ghostGroup::-webkit-scrollbar {
+    display: none;
+  }
+
+  .ghostGroup > * {
+    flex: 0 0 auto;
+  }
+
+  /* The telemetry card, keyboard hint and map-budget pill all compete for the
+     same few hundred pixels as the title card. The story panel already shows
+     speed/HR/grade, so drop the duplicates on a phone. */
+  .telemetry,
+  .hint,
+  .mapBadge {
+    display: none;
+  }
+}

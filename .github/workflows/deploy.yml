@@ -89,6 +89,10 @@ jobs:
           no-cache: true
           tags: ${{ steps.meta-frontend.outputs.tags }}
           labels: ${{ steps.meta-frontend.outputs.labels }}
+          # Next inlines NEXT_PUBLIC_* at build time; see frontend/Dockerfile.
+          build-args: |
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.GOOGLE_MAPS_API_KEY }}
+            NEXT_PUBLIC_RELIVE3D=${{ vars.NEXT_PUBLIC_RELIVE3D }}
 
       - name: Extract metadata for worker/beat (same as backend)
         id: meta-worker

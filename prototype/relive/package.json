@@ -1,0 +1,28 @@
+{
+  "name": "relive-prototype",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5199",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1 --port 5199",
+    "typecheck": "tsc --noEmit",
+    "qa:shots": "playwright test",
+    "qa:sheet": "python qa/contact_sheet.py"
+  },
+  "dependencies": {
+    "cesium": "^1.146.0",
+    "maplibre-gl": "^6.16.0",
+    "three": "^0.185.1",
+    "vite-plugin-cesium": "^1.2.23"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/geojson": "^7946.0.16",
+    "@types/node": "^26.6.6",
+    "@types/three": "^0.185.4",
+    "typescript": "^5.9.3",
+    "vite": "^6.0.0"
+  }
+}

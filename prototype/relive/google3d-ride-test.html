@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google 3D ride test</title>
+    <style>
+      html,
+      body,
+      gmp-map-3d {
+        height: 100%;
+        margin: 0;
+        background: #0b1220;
+      }
+    </style>
+  </head>
+  <body>
+    <gmp-map-3d
+      id="map"
+      center="46.5073,6.6323"
+      range="50"
+      tilt="75"
+      heading="45"
+      mode="SATELLITE"
+    ></gmp-map-3d>
+    <script type="module">
+      const key = new URLSearchParams(location.search).get('key');
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=beta&libraries=maps3d&loading=async`;
+      script.async = true;
+      script.onload = async () => {
+        await customElements.whenDefined('gmp-map-3d');
+        const map = document.querySelector('gmp-map-3d');
+        map.defaultUIHidden = true;
+        map.mode = 'SATELLITE';
+
+        const line = document.createElement('gmp-polyline-3d');
+        line.setAttribute('stroke-color', '#f59e0b');
+        line.setAttribute('stroke-width', '5');
+        line.setAttribute('outer-color', '#0b1220');
+        line.setAttribute('outer-width', '1');
+        line.setAttribute('altitude-mode', 'CLAMP_TO_GROUND');
+        line.setAttribute('draws-occluded-segments', 'true');
+        line.path = [
+          { lat: 46.2109, lng: 6.1388, altitude: 400 },
+          { lat: 46.3833, lng: 6.2397, altitude: 400 },
+          { lat: 46.4583, lng: 6.3333, altitude: 400 },
+          { lat: 46.5117, lng: 6.4986, altitude: 400 },
+          { lat: 46.5197, lng: 6.6323, altitude: 400 },
+          { lat: 46.4628, lng: 6.8417, altitude: 400 },
+          { lat: 46.4312, lng: 6.9107, altitude: 400 },
+        ];
+        map.append(line);
+
+        const model = document.createElement('gmp-model-3d');
+        map.append(model);
+        const modelUrl =
+          'https://modelviewer.dev/shared-assets/models/Astronaut.glb';
+        console.log('model url', modelUrl);
+        model.src = modelUrl;
+        model.position = new google.maps.LatLngAltitude({
+          lat: 46.5073,
+          lng: 6.6323,
+          altitude: 450,
+        });
+        model.orientation = new google.maps.Orientation3D({
+          heading: 45,
+          tilt: 0,
+          roll: 0,
+        });
+        model.scale = 10;
+        model.altitudeMode = google.maps.maps3d.AltitudeMode.ABSOLUTE;
+
+        const marker = document.createElement('gmp-marker-3d');
+        marker.setAttribute('position', '46.2109,6.1388,400');
+        marker.setAttribute('altitude-mode', 'CLAMP_TO_GROUND');
+        marker.setAttribute('label', 'START');
+        map.append(marker);
+
+        window.__ready = true;
+        console.log('ride test ready');
+      };
+      script.onerror = (error) => console.error('loader failed', error);
+      document.head.appendChild(script);
+    </script>
+  </body>
+</html>

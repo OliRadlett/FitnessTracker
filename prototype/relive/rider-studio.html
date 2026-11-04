@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Relive — 3D rider studio</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b1220;
+        color: #e6edf7;
+        font-family: ui-sans-serif, system-ui, sans-serif;
+      }
+      #studio {
+        position: fixed;
+        inset: 0;
+      }
+      .studio-title {
+        position: fixed;
+        left: 24px;
+        top: 22px;
+        pointer-events: none;
+      }
+      .studio-title .eyebrow {
+        color: #f59e0b;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+      }
+      .studio-title h1 {
+        margin: 4px 0 2px;
+        font-size: 22px;
+      }
+      .studio-title p {
+        margin: 0;
+        color: #93a4bb;
+        font-size: 12px;
+      }
+      .panel {
+        position: fixed;
+        left: 24px;
+        bottom: 22px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 12px;
+        background: rgba(11, 18, 32, 0.72);
+        backdrop-filter: blur(12px);
+        font-size: 12px;
+      }
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .presets {
+        gap: 6px;
+      }
+      button,
+      select {
+        appearance: none;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: 7px;
+        background: rgba(255, 255, 255, 0.05);
+        color: #cfd9e6;
+        padding: 6px 9px;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:hover,
+      select:hover {
+        background: rgba(255, 255, 255, 0.1);
+      }
+      button.active {
+        background: #f59e0b;
+        border-color: #f59e0b;
+        color: #0b1220;
+      }
+      label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        color: #93a4bb;
+      }
+      input[type='range'] {
+        width: 110px;
+        accent-color: #f59e0b;
+      }
+      #speed-value,
+      #lean-value {
+        color: #e6edf7;
+        font-variant-numeric: tabular-nums;
+        min-width: 46px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="studio"></div>
+    <div class="studio-title">
+      <div class="eyebrow">RELIVE · RIDER LAB</div>
+      <h1>Cube Agree C62</h1>
+      <p>Three.js overlay rig · real scale · wheel blur · lean</p>
+    </div>
+    <div class="panel">
+      <div class="row presets">
+        <button data-preset="hero" class="active">Hero</button>
+        <button data-preset="close">Close</button>
+        <button data-preset="follow">Follow</button>
+        <button data-preset="climb">Climb</button>
+        <button data-preset="side">Side</button>
+        <button data-preset="front">Front</button>
+      </div>
+      <div class="row">
+        <label>Speed <input id="speed" type="range" min="0" max="12" step="0.1" value="8" /><span id="speed-value">8.0 m/s</span></label>
+      </div>
+      <div class="row">
+        <label>Lean <input id="lean" type="range" min="-0.42" max="0.42" step="0.01" value="0.08" /><span id="lean-value">5°</span></label>
+      </div>
+      <div class="row">
+        <label><input id="ghost" type="checkbox" /> Ghost bike</label>
+        <label>Light <select id="lighting">
+          <option value="daylight" selected>Daylight</option>
+          <option value="relive">Relive ride</option>
+          <option value="studio">Studio</option>
+        </select></label>
+      </div>
+    </div>
+    <script type="module" src="/src/rider/studio.ts"></script>
+  </body>
+</html>
