@@ -21,23 +21,23 @@ Nothing was pushed or merged. The dirty checkout in `C:\Projects\fitness-tracker
 | AUD-04 | Added one ownership helper for route/session/template IDs; `save_plan_days` and `add_plan_day` use it; `update_plan_day` now also checks `warmup_template_id`. | `backend/app/services/training_plan.py`; foreign-session integration test returns 404 and stores no row |
 | AUD-05 | Removed the base frontend `ports`; moved 3000 to the dev override; set `NODE_ENV=production` in the prod override. | `docker-compose*.yml`; `docker compose config` shows no 3000 in prod, 3000 in dev |
 | AUD-07 | The weather task now awaits `aanalyze_weather_on_modal`; added a scheduler-wiring test alongside the existing wrapper test. | `scheduler.py`; `backend/tests/test_weather_modal_async.py` |
+| AUD-06 | Deploy now starts `db`/`redis`, runs `alembic upgrade head` in a one-shot backend, and only then starts the app. Startup fails closed on migration failure. `/health` reports `db_revision`, `db_head`, and `schema`, and returns 503 on a mismatch. | `.github/workflows/deploy.yml`; `backend/app/main.py`; local `/health` returned 503 with `db_revision=102`, `db_head=103` |
+| AUD-23 | On `PermanentAuthError`, the webhook drain keeps the event pending, records the error, counts it as `deferred`, and continues with other events. Each loop re-reads the event with `populate_existing` so a rollback from the previous iteration cannot expire the queue. | `webhook_queue.py`; `test_webhook_queue.py` (6 passed) |
 
 ## Verification
 
-- Backend unit: **1759 passed**, 796 deselected.
+- Backend unit: **1773 passed**, 796 deselected.
 - Frontend unit: **741 passed** across 76 files.
 - Lifting API integration: **21 passed**.
 - Multi-sport/training-plan integration: **24 passed** (includes the foreign-session case).
 - Weather/wrapper + integration set: **47 passed**.
+- `/health` exercised locally: 503 with `db_revision=102`, `db_head=103`, `schema=error`; the two schema cases are unit-tested in `backend/tests/test_health_schema.py`.
 - `ruff check backend/`: clean, including `F821`.
 - `tsc --noEmit`: clean.
 - E2E tab case was added but **not executed** (no server was started in this session).
 
-## Remaining P0/P1
+## Remaining
 
-| ID | Why it is open |
-|---|---|
-| AUD-06 | Migrations still run after containers start, startup still logs and continues, `/health` still checks only `SELECT 1`. This needs a deploy-workflow change and a migration-head health check; it was not attempted without a release run. |
-| AUD-23 | The webhook drain still marks an auth-failed event `failed` and `break`s. Fixing it changes the existing `test_auth_failure_aborts_remaining_events` semantics; it needs a deliberate decision about `pending` vs a new `deferred` status. |
+No P0/P1 code item remains. The release gate still needs a real deploy run to prove `AUD-06` end to end: a failed migration must stop the release before `up -d`, and `/health` must return 200 only when `db_revision == db_head`.
 
-The P2 register in [AUDIT.md](AUDIT.md) is unchanged. The next release gate should be re-run with the verifier after these two are addressed; the verifier's snapshot checks for AUD-03/AUD-04 still describe the pre-fix code, so use the tests above as the fix evidence rather than expecting the snapshot to flip.
+The P2 register in [AUDIT.md](AUDIT.md) is unchanged. The verifier's snapshot checks for AUD-03/AUD-04/AUD-06/AUD-23 still describe the pre-fix code, so use the tests above as the fix evidence rather than expecting the snapshot to flip.

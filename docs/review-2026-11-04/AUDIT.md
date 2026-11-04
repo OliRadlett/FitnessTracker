@@ -3,7 +3,7 @@
 **Target:** `origin/main` @ `d2a7fd0` (clean export; the working checkout is 42 commits behind and has another session's dirty tree)
 **Owner:** feature lead, this session
 **Status:** artifact complete; release gate **FAIL** (9 open P0/P1)
-**Post-audit fixes:** branch `fix/audit-p0-2026-11-04` — 7 of 9 P0/P1 fixed, AUD-06/AUD-23 open; see [FIXES.md](FIXES.md).
+**Post-audit fixes:** branch `fix/audit-p0-2026-11-04` — all 9 P0/P1 fixed in code; the deploy path still needs a release run to verify; see [FIXES.md](FIXES.md).
 **Recommendation:** **iterate** — fix the P0/P1 set before building anything new
 
 ---

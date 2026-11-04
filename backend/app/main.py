@@ -1,9 +1,12 @@
 import logging
 import uuid
 from contextlib import asynccontextmanager
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.config import get_settings
@@ -42,12 +45,13 @@ async def lifespan(app: FastAPI):
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=60)
         if proc.returncode != 0:
             logger.error("Alembic migration failed: %s", stderr.decode())
-        else:
-            logger.info("Alembic migrations applied successfully")
-            if stdout.strip():
-                logger.info("Alembic output: %s", stdout.decode().strip())
+            raise RuntimeError("Alembic migration failed; refusing to serve")
+        logger.info("Alembic migrations applied successfully")
+        if stdout.strip():
+            logger.info("Alembic output: %s", stdout.decode().strip())
     except Exception as e:
         logger.error("Failed to run Alembic migrations: %s", e)
+        raise
 
     yield
     await engine.dispose()
@@ -131,17 +135,43 @@ def _get_redis_client() -> aioredis.Redis:
     return _redis_client
 
 
+@lru_cache(maxsize=1)
+def _migration_head() -> str | None:
+    """The revision the shipped migration files expect.
+
+    Cached: the files do not change inside a running container. A missing or
+    unreadable head is reported as a schema failure, not silently ignored.
+    """
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        ini = Path(__file__).resolve().parents[1] / "alembic.ini"
+        return ScriptDirectory.from_config(Config(str(ini))).get_current_head()
+    except Exception:
+        logger.warning("Could not read the Alembic head", exc_info=True)
+        return None
+
+
 @app.get("/health")
 async def health_check():
-    """Health check that verifies database and Redis connectivity."""
+    """Health check that verifies DB, Redis, and the schema revision."""
     db_ok = False
     redis_ok = False
+    db_revision: str | None = None
 
-    # Database ping
+    # Database ping + revision
     try:
         async with async_session_factory() as session:
             await session.execute(text("SELECT 1"))
             db_ok = True
+            try:
+                db_revision = (
+                    await session.execute(text("SELECT version_num FROM alembic_version"))
+                ).scalar_one_or_none()
+            except Exception:
+                # Fresh/empty DB or a missing alembic_version table.
+                db_revision = None
     except Exception:
         pass
 
@@ -155,15 +185,20 @@ async def health_check():
         global _redis_client
         _redis_client = None
 
-    if db_ok and redis_ok:
-        return {"status": "ok", "db": "ok", "redis": "ok"}
+    head = _migration_head()
+    schema_ok = bool(db_ok and head and db_revision == head)
+    payload = {
+        "status": "ok" if db_ok and redis_ok and schema_ok else "degraded",
+        "db": "ok" if db_ok else "error",
+        "redis": "ok" if redis_ok else "error",
+        "db_revision": db_revision,
+        "db_head": head,
+        "schema": "ok" if schema_ok else "error",
+    }
+    if db_ok and redis_ok and schema_ok:
+        return payload
 
-    return Response(
-        content='{"status":"degraded","db":"%s","redis":"%s"}'
-        % ("ok" if db_ok else "error", "ok" if redis_ok else "error"),
-        status_code=503,
-        media_type="application/json",
-    )
+    return JSONResponse(content=payload, status_code=503)
 
 
 # ── Prometheus metrics ───────────────────────────────────────────────
