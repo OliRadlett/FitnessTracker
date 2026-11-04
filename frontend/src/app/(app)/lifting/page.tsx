@@ -51,7 +51,7 @@ import { usePageTitle } from '@/lib/usePageTitle';
 import { LiftingAnalysisCard } from '@/components/lifting/LiftingAnalysisCard';
 import { SessionAiAnalysisCard } from '@/components/lifting/SessionAiAnalysisCard';
 import { PRCelebration, type PREvent } from '@/components/ui/PRCelebration';
-import { Dumbbell, Link2, Clock, TriangleAlert, Pencil, Trash2 } from 'lucide-react';
+import { Dumbbell, Link2, Clock, TriangleAlert, Pencil, Trash2, Zap } from 'lucide-react';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -590,9 +590,11 @@ export default function LiftingPage() {
             </button>
             <Link
               href="/lifting/live"
-              className="hidden sm:inline-flex min-h-[44px] items-center px-4 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light"
+              className="inline-flex min-h-[44px] items-center gap-1.5 px-5 py-2 bg-surface-light hover:bg-surface text-muted hover:text-foreground text-sm font-medium rounded-lg transition-colors border border-surface-light"
             >
-              Start live
+              <Zap className="h-4 w-4 sm:hidden" aria-hidden />
+              <span className="sm:hidden">Live</span>
+              <span className="hidden sm:inline">Start live</span>
             </Link>
             <button
               onClick={() => {
