@@ -82,11 +82,21 @@ export function TrendsView({
   const { authFetch } = useAuthFetch();
   const queryClient = useQueryClient();
 
-  const refresh = useMutation({
+  // Two analyses, two producers. The first cut wired both cards to the cycling
+  // endpoint, so "Re-analyse" on the Health card silently regenerated the
+  // performance analysis and left health untouched.
+  const refreshCycling = useMutation({
     mutationFn: () =>
       authFetch<unknown>('/api/v1/cycling/llm-analysis/on-demand', { method: 'POST' }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['cycling', 'llm-analysis', 'latest'] });
+    },
+  });
+
+  const refreshHealth = useMutation({
+    mutationFn: () => authFetch<unknown>('/api/v1/metrics/health-ai-analysis', { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['metrics', 'health-ai-analysis'] });
     },
   });
 
@@ -194,14 +204,14 @@ export function TrendsView({
           <AnalysisCard
             title="Performance analysis"
             analysis={cyclingAnalysis.data}
-            onRefresh={() => refresh.mutate()}
-            isRefreshing={refresh.isPending}
+            onRefresh={() => refreshCycling.mutate()}
+            isRefreshing={refreshCycling.isPending}
           />
           <AnalysisCard
             title="Health analysis"
             analysis={healthAnalysis.data}
-            onRefresh={() => refresh.mutate()}
-            isRefreshing={refresh.isPending}
+            onRefresh={() => refreshHealth.mutate()}
+            isRefreshing={refreshHealth.isPending}
           />
         </div>
       </Card>
