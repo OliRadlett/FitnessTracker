@@ -6,6 +6,7 @@ import json
 import logging
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -39,6 +40,11 @@ from app.tasks.sync import (
     sync_all_withings_data,
 )
 from app.tasks.videos import aggregate_video_analyses_weekly
+
+if TYPE_CHECKING:
+    # Imported lazily inside the tasks that use it; the annotations below are
+    # evaluated by type checkers, not at runtime.
+    from app.models.training_plan import TrainingPlanDay
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +105,11 @@ def sync_all_strava_activities() -> dict:
     from app.database import task_session
     from app.integrations.errors import PermanentAuthError, TransientSyncError
     from app.models.user import OAuthConnection
-    from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH
+    from app.services.connection_health import (
+        CONNECTION_STATUS_NEEDS_REAUTH,
+        handle_sync_http_error,
+        mark_connection_reauth,
+    )
     from app.services.merge_service import backfill_activity_route_links
     from app.services.strava import link_all_unlinked_activities, sync_activities
 
@@ -1266,7 +1276,7 @@ def analyze_weather_performance_weekly() -> dict:
         from app.integrations.weather_analysis import (
             MIN_RIDES_TOTAL,
             _modal_configured,
-            analyze_weather_on_modal,
+            aanalyze_weather_on_modal,
             is_weather_sample_sufficient,
         )
 
@@ -1428,8 +1438,8 @@ def analyze_weather_performance_weekly() -> dict:
                         }
                         rides.append(ride)
 
-                    # Call Modal
-                    results = analyze_weather_on_modal(rides)
+                    # Call Modal without blocking the async task's event loop.
+                    results = await aanalyze_weather_on_modal(rides)
                     modal_ok = True
                     _MODAL_BREAKER.record(
                         "analyze_weather_performance_weekly", True

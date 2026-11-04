@@ -1,4 +1,4 @@
-﻿# Development overrides â€” automatically included by fittrack.py in dev mode.
+# Development overrides â€” automatically included by fittrack.py in dev mode.
 # Adds hot-reload: source bind mounts + npm install && npm run dev for frontend.
 #
 # IMPORTANT: dev volume mounts live here, NOT in the base file. Docker Compose
@@ -24,6 +24,10 @@ services:
       - ./backend/alembic:/app/alembic
 
   frontend:
+    # Dev only: publish 3000 for the browser. Production reaches the frontend
+    # through Caddy on the compose network and must not expose it.
+    ports:
+      - "3000:3000"
     entrypoint: ""
     command: sh -c "npm install && npm run dev"
     volumes:

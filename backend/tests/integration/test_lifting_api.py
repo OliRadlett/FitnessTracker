@@ -55,6 +55,46 @@ class TestCreateLiftingSession:
         assert data["sets"][0]["exercise_name"] == "Bench Press"
         assert "id" in data
         assert "created_at" in data
+        # The create path must write the derived load, not leave it for the
+        # next PATCH or the weekly backfill.
+        assert data["estimated_tss"] is not None
+
+    async def test_add_and_delete_set_refresh_estimated_tss(self, client):
+        """Set CRUD keeps the session's derived load in sync immediately."""
+        create = await client.post(
+            "/api/v1/lifting/sessions",
+            json={
+                "session_date": "2026-08-21",
+                "focus": "squat",
+                "duration_seconds": 3600,
+                "sets": [],
+            },
+        )
+        assert create.status_code == 201
+        session_id = create.json()["id"]
+        initial = create.json()["estimated_tss"]
+        assert initial is not None
+
+        added = await client.post(
+            f"/api/v1/lifting/sessions/{session_id}/sets",
+            json={
+                "exercise_name": "Back Squat",
+                "set_number": 1,
+                "weight_kg": 120.0,
+                "reps": 3,
+                "rpe": 9.0,
+            },
+        )
+        assert added.status_code == 201
+        detail = await client.get(f"/api/v1/lifting/sessions/{session_id}")
+        after_add = detail.json()["estimated_tss"]
+        assert after_add is not None
+        assert after_add != initial
+
+        deleted = await client.delete(f"/api/v1/lifting/sets/{added.json()['id']}")
+        assert deleted.status_code == 204
+        detail = await client.get(f"/api/v1/lifting/sessions/{session_id}")
+        assert detail.json()["estimated_tss"] == initial
 
     async def test_create_empty_session(self, client):
         """A session without sets still returns 201."""

@@ -87,16 +87,14 @@ services:
   frontend:
     image: node:20-alpine
     working_dir: /app
-    ports:
-      - "3000:3000"
     env_file:
       - .env
     depends_on:
       - backend
     environment:
-      - WATCHPACK_POLLING=true
-      - INTERNAL_API_URL=http://backend:8000
-      - NODE_ENV=development
+      WATCHPACK_POLLING: "true"
+      INTERNAL_API_URL: http://backend:8000
+      NODE_ENV: development
 
   caddy:
     image: caddy:2-alpine

@@ -89,6 +89,18 @@ test.describe('Lifting Page', () => {
     await expect(page.getByText(/120|140|160/).first()).toBeVisible();
   });
 
+  test('tabs stay selected after choosing a session', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+
+    const sessionButton = page.locator('main button').filter({ hasText: /bench day/i }).first();
+    await sessionButton.click();
+    await page.getByRole('tab', { name: 'Overview' }).click();
+
+    await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   // ── Add Exercise Form ───────────────────────────────────────────────────
 
   test('add exercise button is present in detail view', async ({ authenticatedPage: page }) => {
@@ -159,7 +171,7 @@ test.describe('Lifting Page', () => {
   // ── Loading States ──────────────────────────────────────────────────────
 
   test('shows loading state while sessions load', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/lifting/sessions', async (route) => {
+    await page.route('**/api/v1/lifting/sessions*', async (route) => {
       await new Promise((r) => setTimeout(r, 2000));
       route.fulfill({ status: 200, body: JSON.stringify(mockData.mockLiftingSessions) });
     });
@@ -175,7 +187,7 @@ test.describe('Lifting Page', () => {
   // ── Error States ────────────────────────────────────────────────────────
 
   test('handles API errors gracefully', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/lifting/sessions', (route) => {
+    await page.route('**/api/v1/lifting/sessions*', (route) => {
       route.fulfill({ status: 500, body: JSON.stringify({ detail: 'Server error' }) });
     });
 
@@ -184,12 +196,14 @@ test.describe('Lifting Page', () => {
     await page.waitForTimeout(1000);
 
     await expect(page.locator('main h1')).toContainText('Lifting');
+    await expect(page.getByText("Couldn't load lifting sessions")).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
   });
 
   // ── Empty States ────────────────────────────────────────────────────────
 
   test('handles empty sessions list', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/lifting/sessions', (route) => {
+    await page.route('**/api/v1/lifting/sessions*', (route) => {
       route.fulfill({ status: 200, body: JSON.stringify([]) });
     });
     await page.route('**/api/v1/lifting/prs', (route) => {

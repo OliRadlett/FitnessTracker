@@ -14,6 +14,7 @@ Run with:  pytest tests/integration/test_multi_sport_days.py -m integration
 
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
@@ -759,3 +760,53 @@ class TestSportChangeOnASharedDate:
 
         rows = await _rows_on(db_session, plan, shared)
         assert [(r.sport, r.planned_type) for r in rows] == [("strength", "moderate")]
+
+
+async def test_foreign_lifting_session_id_is_refused(
+    client, test_user, db_session
+):
+    """A plan day may not point at another user's lifting session.
+
+    The week reader embeds the referenced session's date/focus/volume, so
+    storing a foreign id is both a write-integrity bug and an information leak.
+    """
+    from sqlalchemy import select
+
+    from app.models.lifting import LiftingSession
+    from app.models.training_plan import TrainingPlanDay
+    from app.models.user import User
+
+    other = User(
+        id=uuid.uuid4(),
+        email=f"foreign-{uuid.uuid4().hex[:8]}@example.com",
+        name="Foreign",
+    )
+    db_session.add(other)
+    await db_session.flush()
+    foreign_session = LiftingSession(
+        user_id=other.id,
+        session_date=TODAY + timedelta(days=2),
+        focus="squat",
+        duration_seconds=3600,
+    )
+    db_session.add(foreign_session)
+    await db_session.flush()
+
+    plan = await _make_plan(db_session, test_user, [])
+    resp = await client.post(
+        f"/api/v1/training-plans/{plan.id}/days",
+        json={
+            "day_date": (TODAY + timedelta(days=2)).isoformat(),
+            "sport": "strength",
+            "planned_type": "moderate",
+            "lifting_session_id": str(foreign_session.id),
+        },
+    )
+    assert resp.status_code == 404
+
+    stored = (
+        await db_session.execute(
+            select(TrainingPlanDay).where(TrainingPlanDay.plan_id == plan.id)
+        )
+    ).scalars().all()
+    assert stored == []
