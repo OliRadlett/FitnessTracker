@@ -1,7 +1,8 @@
 # Training overhaul — production port (2026-11)
 
-> Status: **implemented on `feature/training-page-overhaul`; NOT verified end-to-end
-> and NOT ready to merge.** See "Unverified" below before reviewing.
+> Status: **shipped to production 2026-11-04** (#350, merged to `main` and deployed to
+> `prod`). Verified end-to-end before release — see "Verified" — and confirmed on the
+> live page against the owner's real plan after deploy.
 >
 > Supersedes the *surface* described in [`training-redesign-plan.md`](training-redesign-plan.md)
 > Phases 0–4. That plan's problem statement (§2.3) was right and its editor work is
@@ -116,12 +117,12 @@ plan", conformity said "87%", and the week under all of it was empty.
 - **Backend gaps** (§"Backend gaps" above) are the only substantive work left before this can be
   considered finished rather than merely shipped.
 
-## Docs still to update (do this in the same PR)
+## Docs — done
 
-- `frontend/src/CODEMAP.md` `/training` row — still describes WeeklyView, the
-  mode switch and the load-strip header.
-- `AGENTS.md` — the "Training page overhaul" bullet in *Active Planning*.
-- `training-redesign-plan.md` §15 — mark Phases 0–4 superseded by this port.
+- `frontend/src/CODEMAP.md` `/training` row — rewritten.
+- `AGENTS.md` — the "Training page overhaul" bullet records this port and the two
+  e2e-harness traps.
+- `training-redesign-plan.md` §15 — marked superseded in part.
 
 ## Backend gaps
 
