@@ -458,10 +458,15 @@ class TestLinking:
 
 
 class TestSavePlanDays:
-    async def test_payload_for_one_sport_leaves_the_other_row_alone(
+    async def test_payload_for_one_sport_replaces_the_whole_day_set(
         self, client, test_user, db_session
     ):
-        """A full-array save naming one sport must not delete the other's row."""
+        """PATCH /{id} is a full-array replace, not a per-day merge.
+
+        The contract is destructive by design: the targeted /days endpoints are
+        the non-destructive editor path. This test names the behaviour it
+        actually asserts, and checks the omitted other date is deleted too.
+        """
         shared = TODAY + timedelta(days=2)
         other = TODAY + timedelta(days=3)
         plan = await _make_plan(
@@ -490,6 +495,7 @@ class TestSavePlanDays:
 
         rows = await _rows_on(db_session, plan, shared)
         assert [(r.sport, r.planned_type) for r in rows] == [("strength", "hard")]
+        assert await _rows_on(db_session, plan, other) == []
 
     async def test_duplicate_pair_in_the_payload_is_refused(
         self, client, test_user, db_session

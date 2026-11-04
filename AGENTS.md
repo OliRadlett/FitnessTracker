@@ -220,7 +220,7 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from 104** — the head is `103`, `096` is `undo_logs`, and the
+**New migrations continue from 105** — the head is `104`, `096` is `undo_logs`, and the
 branch was renumbered mid-flight once already (pitfall 34).
 
 **Training page overhaul** — [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md)

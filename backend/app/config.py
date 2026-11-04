@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     # Backend
     secret_key: str = _DEFAULT_SECRET_KEY
     debug: bool = False
+    # Explicit opt-in for the repo-published default SECRET_KEY. Without this,
+    # a debug deployment cannot boot with a forgeable JWT signing key.
+    allow_insecure_defaults: bool = False
     allowed_origins: str = "http://localhost:3000,https://localhost"
     public_url: str = "https://localhost"
     frontend_url: str = "https://localhost/fittrack"
@@ -234,16 +237,18 @@ class Settings(BaseSettings):
                 "and that the variable is set in the container environment"
             )
 
-        # Existing SECRET_KEY check
+        # A default signing key is never safe, even in debug: HS256 JWTs are
+        # forgeable by anyone who can read this repo. Require an explicit opt-in.
         if self.secret_key == _DEFAULT_SECRET_KEY:
-            if not self.debug:
+            if not self.allow_insecure_defaults:
                 raise ValueError(
-                    "SECRET_KEY must be set to a non-default value when DEBUG is false. "
+                    "SECRET_KEY must be set to a non-default value. "
                     "Set SECRET_KEY in your .env file."
                 )
             warnings.warn(
-                "SECRET_KEY is using the default value. "
-                "Set a random SECRET_KEY in your .env file for security.",
+                "SECRET_KEY is using the default value because "
+                "ALLOW_INSECURE_DEFAULTS is set. Do not use this outside a "
+                "throwaway environment.",
                 stacklevel=2,
             )
 

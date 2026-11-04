@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.activities import _enrich_activity_read
 from app.database import get_db
-from app.models.lifting import LiftingSession
+from app.models.lifting import LiftingSession, LiftingSet
 from app.models.user import User
 from app.schemas.activity import ActivityRead
 from app.schemas.lifting import (
@@ -273,12 +273,18 @@ async def backfill_links(
 async def add_set(
     session_id: uuid.UUID,
     data: LiftingSetCreate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     lifting_set = await lifting_service.add_set(db, session_id, current_user.id, data)
     if not lifting_set:
         raise HTTPException(status_code=404, detail="Session not found")
+    background_tasks.add_task(
+        jev_classification.classify_lifting_session_by_id,
+        session_id,
+        current_user.id,
+    )
     return LiftingSetRead.model_validate(lifting_set)
 
 
@@ -286,24 +292,49 @@ async def add_set(
 async def update_set(
     set_id: uuid.UUID,
     data: LiftingSetUpdate,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     lifting_set = await lifting_service.update_set(db, set_id, current_user.id, data)
     if not lifting_set:
         raise HTTPException(status_code=404, detail="Set not found")
+    background_tasks.add_task(
+        jev_classification.classify_lifting_session_by_id,
+        lifting_set.session_id,
+        current_user.id,
+    )
     return LiftingSetRead.model_validate(lifting_set)
 
 
 @router.delete("/sets/{set_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_set(
     set_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Resolve the owning session before the row disappears, so the classifier
+    # can be re-run after the commit.
+    session_id = (
+        await db.execute(
+            select(LiftingSet.session_id)
+            .join(LiftingSession)
+            .where(
+                LiftingSet.id == set_id,
+                LiftingSession.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
     deleted = await lifting_service.delete_set(db, set_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Set not found")
+    if session_id is not None:
+        background_tasks.add_task(
+            jev_classification.classify_lifting_session_by_id,
+            session_id,
+            current_user.id,
+        )
 
 
 # ── Personal Records ──────────────────────────────────────────────────────────

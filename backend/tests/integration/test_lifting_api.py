@@ -7,6 +7,7 @@ Run with:  pytest tests/integration/test_lifting_api.py -m integration
 from __future__ import annotations
 
 import uuid as _uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -226,6 +227,24 @@ class TestSetManagement:
         data = resp.json()
         assert data["exercise_name"] == "Back Squat"
         assert data["set_number"] == 4
+
+    async def test_add_set_schedules_label_refresh(self, client, test_lifting_session):
+        with patch(
+            "app.api.lifting.jev_classification.classify_lifting_session_by_id",
+            new=AsyncMock(),
+        ) as classify:
+            resp = await client.post(
+                f"/api/v1/lifting/sessions/{test_lifting_session.id}/sets",
+                json={
+                    "exercise_name": "Back Squat",
+                    "set_number": 9,
+                    "weight_kg": 100.0,
+                    "reps": 5,
+                    "rpe": 8.0,
+                },
+            )
+        assert resp.status_code == 201
+        classify.assert_awaited_once()
 
     async def test_add_set_to_nonexistent_session(self, client):
         resp = await client.post(

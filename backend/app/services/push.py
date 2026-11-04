@@ -43,9 +43,16 @@ async def register_subscription(
     p256dh: str,
     auth: str,
 ) -> PushSubscription:
-    """Upsert a device subscription for a user (idempotent by endpoint)."""
+    """Upsert a device subscription for the owning user.
+
+    The key includes ``user_id``: keying on the endpoint alone let a leaked
+    endpoint reassign another user's device row.
+    """
     result = await db.execute(
-        select(PushSubscription).where(PushSubscription.endpoint == endpoint)
+        select(PushSubscription).where(
+            PushSubscription.user_id == user_id,
+            PushSubscription.endpoint == endpoint,
+        )
     )
     sub = result.scalar_one_or_none()
     if sub is None:
@@ -57,7 +64,6 @@ async def register_subscription(
         )
         db.add(sub)
     else:
-        sub.user_id = user_id
         sub.p256dh = p256dh
         sub.auth = auth
         sub.consecutive_failures = 0
