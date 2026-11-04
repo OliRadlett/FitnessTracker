@@ -13,6 +13,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_OPTIONS=--max-old-space-size=2048
+# NEXT_PUBLIC_* values are inlined into the client bundle at build time, so they
+# have to arrive as build args. Setting them on the running container does
+# nothing — a flag "turned on" in the Droplet's .env would still ship a bundle
+# built with it off.
+ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=""
+ARG NEXT_PUBLIC_RELIVE3D=""
+ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
+ENV NEXT_PUBLIC_RELIVE3D=${NEXT_PUBLIC_RELIVE3D}
 RUN npm run build && echo "Build completed" && ls -la .next/ && test -f .next/standalone/server.js && echo "server.js exists" || (echo "server.js NOT FOUND" && exit 1)
 
 # Production image, copy all the files and run next

@@ -116,6 +116,13 @@ hard cap; if Google exposes a limit later, set 100/day.
 
 - Production frontend: `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` (or a viewer-specific
   env), restricted as above.
+- **It has to be a build arg, not a runtime env var.** Next inlines
+  `NEXT_PUBLIC_*` into the client bundle, so a key (or the `RELIVE3D` flag)
+  added to the Droplet's `.env` after the image is built changes nothing. The
+  deploy workflow passes `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` from the
+  `GOOGLE_MAPS_API_KEY` repo secret and `NEXT_PUBLIC_RELIVE3D` from the repo
+  variable of the same name; `frontend/Dockerfile` declares both as `ARG`s
+  before `npm run build`. Re-running Deploy is what picks a change up.
 - Frontend dev page: `http://localhost:3000/fittrack/dev/relive3d` (use
   localhost, not 127.0.0.1, for the key's 3000/3001 referrers).
 - Prototype: `prototype/relive/.env.local` (gitignored) for verification.
