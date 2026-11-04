@@ -100,6 +100,27 @@ test.describe('Lifting Page', () => {
     await expect(addExerciseBtn).toBeVisible();
   });
 
+  test('edit panel opens at the top of the detail and saves on blur', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(800);
+
+    await page.getByRole('button', { name: 'Edit session' }).click();
+    const panel = page.locator('div[aria-label="Edit session"]');
+    await expect(panel).toBeVisible();
+    await expect(panel).toBeInViewport();
+
+    const focus = panel.locator('input[placeholder="e.g. Upper Body"]');
+    const patch = page.waitForRequest(
+      (req) => req.method() === 'PATCH' && req.url().includes('/api/v1/lifting/sessions/'),
+    );
+    await focus.fill('Edited Focus');
+    await focus.blur();
+    await patch;
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText('Saved')).toBeVisible();
+  });
+
   // ── Exercise Groups ─────────────────────────────────────────────────────
 
   test('exercise groups display correctly', async ({ authenticatedPage: page }) => {

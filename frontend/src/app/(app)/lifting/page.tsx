@@ -144,6 +144,7 @@ export default function LiftingPage() {
   const [showManualPR, setShowManualPR] = useState(false);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showEditSession, setShowEditSession] = useState(false);
+  const editFormRef = useRef<HTMLDivElement>(null);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
@@ -459,7 +460,6 @@ export default function LiftingPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
       queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
-      setShowEditSession(false);
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to update session'),
   });
@@ -510,6 +510,17 @@ export default function LiftingPage() {
       setSelectedSessionId(sessions[0].id);
     }
   }, [sessions, selectedSessionId]);
+
+  // The edit panel opens under the header; bring it into view so the pencil
+  // action has an obvious result even when the detail is scrolled.
+  useEffect(() => {
+    if (!showEditSession) return;
+    const timer = window.setTimeout(
+      () => editFormRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+      60,
+    );
+    return () => window.clearTimeout(timer);
+  }, [showEditSession]);
 
   // Previous same-focus session — the delta basis for the set ladder.
   const previousSession = useMemo(
@@ -869,17 +880,26 @@ export default function LiftingPage() {
                 </div>
               </div>
 
-              {/* Set ladder — read-only review layer, separate from logging/editing */}
-              {sessionDetail.sets && sessionDetail.sets.length > 0 && (
-                <div className="mb-4 rounded-lg border border-surface-light/50 p-3 sm:p-4">
-                  <SetLadder session={sessionDetail} previous={previousSession} />
-                </div>
-              )}
-
-              {/* Edit Session Form */}
+              {/* Edit Session Form — directly under the summary, above the ladder */}
               {showEditSession && (
-                <div className="mb-4 p-4 bg-surface-light/30 rounded-lg space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div
+                  ref={editFormRef}
+                  className="mb-4 rounded-lg border border-accent/40 bg-surface-light/30 p-4"
+                  aria-label="Edit session"
+                >
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-accent">Edit session</p>
+                      <p className="mt-0.5 text-[12px] text-muted">Changes save when you leave each field.</p>
+                    </div>
+                    <button
+                      onClick={() => setShowEditSession(false)}
+                      className="inline-flex h-11 items-center rounded-lg px-3 text-[13px] font-medium text-muted hover:bg-surface-light/40 hover:text-foreground"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
                       <label className="block text-xs text-muted mb-1">Date</label>
                       <input
@@ -932,7 +952,24 @@ export default function LiftingPage() {
                       />
                     </div>
                   </div>
-                  <button onClick={() => setShowEditSession(false)} className="px-3 py-1.5 text-muted hover:text-foreground text-sm transition-colors">Done</button>
+                  <div className="mt-2 min-h-[18px] text-[12px]" aria-live="polite">
+                    {updateSessionMutation.isPending && <span className="text-muted">Saving…</span>}
+                    {updateSessionMutation.isError && (
+                      <span role="alert" className="text-warning">
+                        Couldn&apos;t save — {updateSessionMutation.error instanceof Error ? updateSessionMutation.error.message : 'try again.'}
+                      </span>
+                    )}
+                    {updateSessionMutation.isSuccess && !updateSessionMutation.isPending && (
+                      <span className="text-positive">Saved</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Set ladder — read-only review layer, separate from logging/editing */}
+              {sessionDetail.sets && sessionDetail.sets.length > 0 && (
+                <div className="mb-4 rounded-lg border border-surface-light/50 p-3 sm:p-4">
+                  <SetLadder session={sessionDetail} previous={previousSession} />
                 </div>
               )}
 
