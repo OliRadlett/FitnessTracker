@@ -33,6 +33,9 @@ export function StreamChart({ watts, hr }: { watts: number[]; hr: number[] }) {
   const W = 820;
   const H = 172;
 
+  const hasPower = watts.length > 1;
+  const hasHeart = hr.length > 1;
+
   const power = useMemo(() => rollingMean(bucketMeans(watts)), [watts]);
   const heart = useMemo(() => rollingMean(bucketMeans(hr), 6), [hr]);
   const powerLine = useMemo(() => seriesLine(power, W, H, 0, undefined, 8), [power]);
@@ -46,20 +49,26 @@ export function StreamChart({ watts, hr }: { watts: number[]; hr: number[] }) {
   return (
     <div>
       <div className="mb-2 flex items-center gap-4 text-[9.5px] uppercase tracking-[0.12em] text-muted/50">
-        <span className="flex items-center gap-1.5">
-          <span className="h-[2px] w-3 rounded bg-accent" /> Power
+        {hasPower && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-[2px] w-3 rounded bg-accent" /> Power
+          </span>
+        )}
+        {hasHeart && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-[2px] w-3 rounded bg-slate-500" /> Heart rate
+          </span>
+        )}
+        <span className="ml-auto tabular-nums text-muted/35">
+          {hasPower ? `peak ${Math.round(peak)} W` : `peak ${Math.round(maxHr)} bpm`}
         </span>
-        <span className="flex items-center gap-1.5">
-          <span className="h-[2px] w-3 rounded bg-slate-500" /> Heart rate
-        </span>
-        <span className="ml-auto tabular-nums text-muted/35">peak {Math.round(peak)} W</span>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="h-[172px] w-full"
         preserveAspectRatio="none"
         role="img"
-        aria-label="Power and heart rate over the ride"
+        aria-label={hasPower ? 'Power and heart rate over the ride' : 'Heart rate over the ride'}
       >
         {[0.2, 0.4, 0.6, 0.8].map((p) => (
           <line
@@ -74,15 +83,17 @@ export function StreamChart({ watts, hr }: { watts: number[]; hr: number[] }) {
             vectorEffect="non-scaling-stroke"
           />
         ))}
-        <path d={powerArea} fill="rgb(var(--accent) / 0.09)" />
-        <path
-          d={powerLine}
-          fill="none"
-          stroke="rgb(var(--accent))"
-          strokeWidth={1.3}
-          strokeOpacity={0.95}
-          vectorEffect="non-scaling-stroke"
-        />
+        {hasPower && <path d={powerArea} fill="rgb(var(--accent) / 0.09)" />}
+        {hasPower && (
+          <path
+            d={powerLine}
+            fill="none"
+            stroke="rgb(var(--accent))"
+            strokeWidth={1.3}
+            strokeOpacity={0.95}
+            vectorEffect="non-scaling-stroke"
+          />
+        )}
         <path
           d={hrLine}
           fill="none"
@@ -93,8 +104,11 @@ export function StreamChart({ watts, hr }: { watts: number[]; hr: number[] }) {
         />
       </svg>
       <div className="mt-1.5 flex justify-between text-[9.5px] tabular-nums text-muted/35">
-        <span>smoothed · {heart.length ? `${Math.round(avgHr)} bpm avg` : '—'}</span>
-        <span>{Math.round(maxHr)} bpm peak · scales independent</span>
+        <span>smoothed · {hasHeart ? `${Math.round(avgHr)} bpm avg` : '—'}</span>
+        <span>
+          {hasHeart ? `${Math.round(maxHr)} bpm peak` : `${Math.round(peak)} W peak`}
+          {hasPower && hasHeart ? ' · scales independent' : ''}
+        </span>
       </div>
     </div>
   );

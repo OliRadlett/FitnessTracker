@@ -16,6 +16,12 @@ import { useAuthFetch } from '@/lib/api';
 import type { ActivityDetail, LiftingSession, RideAnalysis } from '@/lib/api';
 import { describeActivity, formatRowDuration, formatVolumeKg } from '@/lib/journal';
 import { isStrengthType } from '@/lib/sportUtils';
+import {
+  ALTITUDE_STREAM_TYPES,
+  HEARTRATE_STREAM_TYPES,
+  POWER_STREAM_TYPES,
+  getStreamValues,
+} from '@/lib/streams';
 import { seriesArea } from '@/lib/route-shape';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { RouteShape } from '@/components/activity/RouteShape';
@@ -76,10 +82,11 @@ function ZoneBars({ zones }: { zones: RideAnalysis['power_zones'] }) {
   );
 }
 
-function streamValues(streams: ActivityDetail['streams'], type: string): number[] {
-  const found = streams?.find((stream) => stream.stream_type === type);
-  const data = found?.data?.data;
-  return Array.isArray(data) ? (data as number[]) : [];
+/** A stream can be 8k points; an SVG path does not need them all. */
+function decimate(values: number[], max: number): number[] {
+  if (values.length <= max) return values;
+  const step = values.length / max;
+  return Array.from({ length: max }, (_, i) => values[Math.floor(i * step)]);
 }
 
 function byExercise(sets: LiftingSession['sets']) {
@@ -136,9 +143,26 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
   const groups = useMemo(() => (lifting ? byExercise(lifting.sets) : []), [lifting]);
   const maxVolume = Math.max(1, ...groups.map((group) => group.volume));
 
-  const altitude = streamValues(activity?.streams, 'altitude');
+  // Stream names differ by provider ("watts" from Strava, "power" from FIT), so
+  // the alias lists in lib/streams are the only correct lookup. A ride without a
+  // power meter still has heart rate, altitude and velocity — and must still
+  // chart them rather than claiming it has no streams.
+  const watts = useMemo(
+    () => getStreamValues(activity?.streams, ...POWER_STREAM_TYPES),
+    [activity?.streams],
+  );
+  const heartrate = useMemo(
+    () => getStreamValues(activity?.streams, ...HEARTRATE_STREAM_TYPES),
+    [activity?.streams],
+  );
+  const altitude = useMemo(
+    () => getStreamValues(activity?.streams, ...ALTITUDE_STREAM_TYPES),
+    [activity?.streams],
+  );
+  const hasStreams = watts.length > 1 || heartrate.length > 1;
+
   const elevation = useMemo(
-    () => (altitude.length > 1 ? seriesArea(altitude, 820, 64) : null),
+    () => (altitude.length > 1 ? seriesArea(decimate(altitude, 700), 820, 64) : null),
     [altitude],
   );
 
@@ -172,6 +196,69 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
   const row = describeActivity(activity);
   const rawSource = activity.sources?.[0]?.provider ?? activity.source;
   const source = rawSource.charAt(0).toUpperCase() + rawSource.slice(1);
+  // Only rows that have a value: a ride without a power meter has no IF, zones
+  // or decoupling, and a column of em dashes says less than nothing.
+  const contextRows: { label: string; value: string }[] = [];
+  const addContext = (label: string, value: string | null | undefined) => {
+    if (value) contextRows.push({ label, value });
+  };
+  addContext('Variability', analysis?.variability_index ? analysis.variability_index.toFixed(2) : null);
+  addContext('Efficiency', analysis?.efficiency_factor ? analysis.efficiency_factor.toFixed(2) : null);
+  addContext(
+    'Decoupling',
+    analysis?.decoupling?.decoupling_pct != null ? `${analysis.decoupling.decoupling_pct.toFixed(1)}%` : null,
+  );
+  addContext('VAM', analysis?.vam ? `${Math.round(analysis.vam)} m/h` : null);
+  addContext(
+    'Max gradient',
+    analysis?.climbing_analysis?.max_gradient_pct
+      ? `${analysis.climbing_analysis.max_gradient_pct.toFixed(1)}%`
+      : null,
+  );
+  if (contextRows.length > 0) contextRows.push({ label: 'Source', value: source });
+
+  // Only the metrics that exist. A ride without a power meter used to show
+  // three em dashes where a number should be.
+  const metrics: { label: string; value: string; sub?: string }[] = [];
+  const addMetric = (label: string, value: string | null | undefined, sub?: string) => {
+    if (value) metrics.push({ label, value, sub });
+  };
+  const durationLabel = activity.duration_seconds ? formatRowDuration(activity.duration_seconds) : null;
+  const heartLabel = activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : null;
+  const caloriesLabel = activity.calories ? `${Math.round(activity.calories)} kcal` : null;
+
+  if (isEndurance) {
+    addMetric('Distance', activity.distance_meters ? formatDistance(activity.distance_meters, 1) : null);
+    addMetric('Moving', durationLabel);
+    addMetric('Elevation', activity.elevation_gain_meters ? `${Math.round(activity.elevation_gain_meters)} m` : null);
+    addMetric('Load', activity.tss ? String(Math.round(activity.tss)) : null, activity.tss ? 'TSS' : undefined);
+    if (isRide) {
+      addMetric('Avg power', activity.average_power ? `${Math.round(activity.average_power)} W` : null);
+      addMetric('Normalised', activity.normalized_power ? `${Math.round(activity.normalized_power)} W` : null);
+      addMetric(
+        'Intensity',
+        analysis?.intensity_factor ? analysis.intensity_factor.toFixed(2) : null,
+        analysis?.intensity_factor ? 'IF' : undefined,
+      );
+    }
+    addMetric('Avg HR', heartLabel);
+    addMetric('Calories', caloriesLabel);
+  } else if (lifting) {
+    addMetric('Volume', lifting.total_volume_kg ? formatVolumeKg(lifting.total_volume_kg) : null);
+    addMetric('Sets', String(lifting.sets.length));
+    addMetric('Duration', durationLabel);
+    addMetric(
+      'Est. load',
+      lifting.estimated_tss ? lifting.estimated_tss.toFixed(1) : null,
+      lifting.estimated_tss ? 'TSS' : undefined,
+    );
+    addMetric('Avg HR', heartLabel);
+    addMetric('Calories', caloriesLabel);
+  } else {
+    addMetric('Duration', durationLabel);
+    addMetric('Avg HR', heartLabel);
+    addMetric('Calories', caloriesLabel);
+  }
   const date = new Date(activity.start_date);
   const dateLabel = date.toLocaleDateString(getActiveLocale(), {
     weekday: 'short',
@@ -204,9 +291,6 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
         .filter(Boolean)
         .join('  ·  ');
 
-  const watts = streamValues(activity.streams, 'watts');
-  const heartrate = streamValues(activity.streams, 'heartrate');
-
   return (
     <div className="mx-auto w-full max-w-[880px] pb-16">
       <Link href="/journal" className="inline-flex min-h-[32px] items-center gap-1.5 text-[11px] text-muted/60 transition-colors hover:text-foreground">
@@ -224,55 +308,9 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
       </header>
 
       <dl className="mt-6 grid grid-cols-3 gap-x-5 gap-y-5 border-y border-white/[0.06] py-5 sm:grid-cols-4">
-        {isRide ? (
-          <>
-            <Metric label="Distance" value={formatDistance(activity.distance_meters, 1)} />
-            <Metric label="Moving" value={formatRowDuration(activity.duration_seconds)} />
-            <Metric
-              label="Elevation"
-              value={activity.elevation_gain_meters ? `${Math.round(activity.elevation_gain_meters)} m` : '—'}
-            />
-            <Metric label="Load" value={activity.tss ? String(Math.round(activity.tss)) : '—'} sub={activity.tss ? 'TSS' : undefined} />
-            <Metric label="Avg power" value={activity.average_power ? `${Math.round(activity.average_power)} W` : '—'} />
-            <Metric label="Normalised" value={activity.normalized_power ? `${Math.round(activity.normalized_power)} W` : '—'} />
-            <Metric label="Intensity" value={analysis?.intensity_factor ? analysis.intensity_factor.toFixed(2) : '—'} sub="IF" />
-            <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
-          </>
-        ) : isEndurance ? (
-          // Non-cycling endurance (run / swim / hike): distance, time, terrain
-          // and heart rate. Power and zones would be a wall of em dashes.
-          <>
-            <Metric label="Distance" value={formatDistance(activity.distance_meters, 1)} />
-            <Metric label="Moving" value={formatRowDuration(activity.duration_seconds)} />
-            <Metric
-              label="Elevation"
-              value={activity.elevation_gain_meters ? `${Math.round(activity.elevation_gain_meters)} m` : '—'}
-            />
-            <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
-            <Metric label="Calories" value={activity.calories ? `${Math.round(activity.calories)} kcal` : '—'} />
-          </>
-        ) : lifting ? (
-          <>
-            <Metric label="Volume" value={lifting.total_volume_kg ? formatVolumeKg(lifting.total_volume_kg) : '—'} />
-            <Metric label="Sets" value={String(lifting.sets.length)} />
-            <Metric label="Duration" value={formatRowDuration(activity.duration_seconds)} />
-            <Metric
-              label="Est. load"
-              value={lifting.estimated_tss ? lifting.estimated_tss.toFixed(1) : '—'}
-              sub={lifting.estimated_tss ? 'TSS' : undefined}
-            />
-            <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
-            <Metric label="Calories" value={activity.calories ? `${Math.round(activity.calories)} kcal` : '—'} />
-          </>
-        ) : (
-          // No linked set log: only the fields that actually exist, rather than
-          // a band of em dashes pretending the session has six metrics.
-          <>
-            <Metric label="Duration" value={formatRowDuration(activity.duration_seconds)} />
-            <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
-            <Metric label="Calories" value={activity.calories ? `${Math.round(activity.calories)} kcal` : '—'} />
-          </>
-        )}
+        {metrics.map((metric) => (
+          <Metric key={metric.label} label={metric.label} value={metric.value} sub={metric.sub} />
+        ))}
       </dl>
 
       {isEndurance ? (
@@ -345,38 +383,27 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
             )}
           </section>
 
-          <div className={`mt-9 grid gap-8 ${isRide ? 'lg:grid-cols-[minmax(0,1fr)_260px]' : ''}`}>
+          <div className={`mt-9 grid gap-8 ${contextRows.length > 0 ? 'lg:grid-cols-[minmax(0,1fr)_260px]' : ''}`}>
             <section>
               <SectionTitle>Streams</SectionTitle>
-              {watts.length > 1 ? (
+              {hasStreams ? (
                 <StreamChart watts={watts} hr={heartrate} />
               ) : (
                 <p className="text-[11.5px] text-muted/50">No per-second streams stored for this session.</p>
               )}
             </section>
 
-            {/* Power context is a cycling surface; on a run every row would be "—". */}
-            {isRide && (
+            {/* Only rows with a value: a ride without a power meter has no IF,
+                no zones and no decoupling, and six em dashes say less than
+                nothing. */}
+            {contextRows.length > 0 && (
               <aside>
-              <SectionTitle>Context</SectionTitle>
-              <dl>
-                <ContextRow label="Variability" value={analysis?.variability_index ? analysis.variability_index.toFixed(2) : '—'} />
-                <ContextRow label="Efficiency" value={analysis?.efficiency_factor ? analysis.efficiency_factor.toFixed(2) : '—'} />
-                <ContextRow
-                  label="Decoupling"
-                  value={analysis?.decoupling?.decoupling_pct != null ? `${analysis.decoupling.decoupling_pct.toFixed(1)}%` : '—'}
-                />
-                <ContextRow label="VAM" value={analysis?.vam ? `${Math.round(analysis.vam)} m/h` : '—'} />
-                <ContextRow
-                  label="Max gradient"
-                  value={
-                    analysis?.climbing_analysis?.max_gradient_pct
-                      ? `${analysis.climbing_analysis.max_gradient_pct.toFixed(1)}%`
-                      : '—'
-                  }
-                />
-                <ContextRow label="Source" value={source} />
-              </dl>
+                <SectionTitle>Context</SectionTitle>
+                <dl>
+                  {contextRows.map((row) => (
+                    <ContextRow key={row.label} label={row.label} value={row.value} />
+                  ))}
+                </dl>
               </aside>
             )}
           </div>
