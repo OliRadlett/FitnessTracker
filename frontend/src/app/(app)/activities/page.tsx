@@ -548,12 +548,19 @@ export default function ActivitiesPage() {
   const router = useRouter();
   const { getParam, setParam } = useDeepLink();
 
-  /* V2: redirect bare /activities (listing) to /journal. Activity detail via
-     ?activity=<id>, replay via ?replay=<id>, and the advanced listing via
-     ?view=<mode> (linked from the Journal) still work. */
+  /* Compatibility: the journal owns activity detail now. Every existing
+     `?activity=<id>` link (dashboard, calendar, lifting, command palette, old
+     bookmarks) keeps working by redirecting to `/activity/<id>` rather than
+     mounting this page's 50-row list to show one session. `?replay=` and
+     `?view=` still belong here, and a bare `/activities` goes to the journal. */
   React.useEffect(() => {
     const search = new URLSearchParams(window.location.search);
-    if (!search.get('activity') && !search.get('replay') && !search.get('view')) {
+    const activityId = search.get('activity');
+    if (activityId) {
+      router.replace(`/activity/${activityId}`);
+      return;
+    }
+    if (!search.get('replay') && !search.get('view')) {
       router.replace('/journal');
     }
   }, [router]);
