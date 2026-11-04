@@ -21,7 +21,10 @@ export function useDeepLink() {
 
   const setParam = useCallback(
     (key: string, value: string | null) => {
-      const next = new URLSearchParams(params.toString());
+      // Read the live URL, not the render-time `params` closure: two setParam
+      // calls in one handler (week + view) must compose instead of the second
+      // rebuilding from the pre-first-call query string.
+      const next = new URLSearchParams(window.location.search);
       if (value === null || value === '') {
         next.delete(key);
       } else {
@@ -35,7 +38,7 @@ export function useDeepLink() {
       );
       setParams(next);
     },
-    [params],
+    [],
   );
 
   return { getParam, setParam };

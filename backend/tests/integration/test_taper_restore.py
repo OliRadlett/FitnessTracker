@@ -12,9 +12,14 @@ from datetime import date, timedelta
 import pytest
 
 from app.models.event import Event
-from app.schemas.training_plan import TrainingPlanDayUpdate, TrainingPlanUpdate
+from app.schemas.training_plan import (
+    TrainingPlanDayCreate,
+    TrainingPlanDayUpdate,
+    TrainingPlanUpdate,
+)
 from app.services.training_plan import (
     link_event_and_apply_taper,
+    save_plan_days,
     update_plan,
     update_plan_day,
 )
@@ -95,6 +100,34 @@ async def test_editing_a_tapered_day_survives_unlink(
         TrainingPlanUpdate(event_id=None),
     )
     assert next(d for d in restored.days if d.id == target.id).planned_tss == 77.0
+
+
+async def test_unchanged_full_save_keeps_the_taper_baseline(
+    db_session, test_user, test_training_plan
+):
+    event = await _event(db_session, test_user)
+    original = await _tss_by_day(test_training_plan)
+    plan = await link_event_and_apply_taper(
+        db_session, test_user.id, test_training_plan, event.id
+    )
+
+    payload = [
+        TrainingPlanDayCreate(
+            day_date=day.day_date,
+            sport=day.sport,
+            planned_type=day.planned_type,
+            planned_tss=day.planned_tss,
+        )
+        for day in plan.days
+    ]
+    plan = await save_plan_days(db_session, test_user.id, plan.id, payload)
+    restored = await update_plan(
+        db_session,
+        test_user.id,
+        plan.id,
+        TrainingPlanUpdate(event_id=None),
+    )
+    assert await _tss_by_day(restored) == original
 
 
 async def test_unlink_end_date_in_the_same_patch_wins(

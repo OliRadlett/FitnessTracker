@@ -15,7 +15,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.errors import PermanentAuthError, TransientSyncError
@@ -38,21 +38,19 @@ async def process_pending_strava_events(
 
     result = await db.execute(
         select(StravaWebhookEvent)
-        .outerjoin(
-            OAuthConnection,
-            and_(
-                OAuthConnection.provider == "strava",
-                OAuthConnection.provider_user_id == StravaWebhookEvent.owner_id,
-            ),
-        )
         .where(
             StravaWebhookEvent.status == "pending",
             # A revoked connection must not occupy the oldest-50 window forever.
             # Its pending events are skipped (not failed) until re-auth flips the
-            # connection back to active.
-            or_(
-                OAuthConnection.id.is_(None),
-                OAuthConnection.status != CONNECTION_STATUS_NEEDS_REAUTH,
+            # connection back to active. EXISTS avoids duplicating an event if
+            # two account rows ever share a Strava athlete id.
+            ~exists(
+                select(OAuthConnection.id).where(
+                    OAuthConnection.provider == "strava",
+                    OAuthConnection.provider_user_id
+                    == StravaWebhookEvent.owner_id,
+                    OAuthConnection.status == CONNECTION_STATUS_NEEDS_REAUTH,
+                )
             ),
         )
         .order_by(StravaWebhookEvent.received_at.asc())

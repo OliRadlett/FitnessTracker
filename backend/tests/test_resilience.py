@@ -46,6 +46,20 @@ def test_half_open_after_cooldown_allows_one_trial():
     assert br.state("task") == "half-open"
 
 
+def test_an_unrecorded_trial_claim_expires():
+    """A caller that claims a trial and never records must not wedge the task."""
+    now = 0.0
+    br = ModalCircuitBreaker(
+        failures_before_open=1, cooldown_seconds=10.0, clock=lambda: now
+    )
+    br.record("task", False)
+    now = 11.0
+    assert br.allow("task") is True
+    # No record(ok/fail): the claim itself ages out after one cooldown.
+    now = 21.5
+    assert br.allow("task") is True
+
+
 def test_failed_half_open_trial_rearms_the_cooldown():
     now = 0.0
     br = ModalCircuitBreaker(
