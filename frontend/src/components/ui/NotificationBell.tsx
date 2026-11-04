@@ -172,13 +172,13 @@ export function NotificationBell() {
                         {n.title}
                       </p>
                       <span
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${SEVERITY_BADGE[n.severity] ?? SEVERITY_BADGE.info}`}
+                        className={`px-1.5 py-0.5 rounded text-xs font-medium uppercase ${SEVERITY_BADGE[n.severity] ?? SEVERITY_BADGE.info}`}
                       >
                         {n.severity}
                       </span>
                     </div>
                     <p className="text-xs text-muted mt-0.5 line-clamp-2">{displayNotificationBody(n)}</p>
-                    <p className="text-[10px] text-muted/70 mt-1">
+                    <p className="mt-1 text-xs text-muted/70">
                       {n.created_at ? relativeTime(n.created_at) : ''}
                     </p>
                   </div>

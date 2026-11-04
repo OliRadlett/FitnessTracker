@@ -213,7 +213,7 @@ export function MobileBottomNav() {
           {unread > 0 && (
             <span
               aria-hidden="true"
-              className="absolute top-1 right-2 min-w-[18px] h-[18px] px-1 rounded-full bg-warning text-white text-[10px] font-bold flex items-center justify-center"
+              className="absolute right-2 top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-warning px-1 text-xs font-bold text-white"
             >
               {unread > 99 ? '99+' : unread}
             </span>
