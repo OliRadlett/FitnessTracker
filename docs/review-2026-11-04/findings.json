@@ -871,6 +871,18 @@
         }
       ],
       "fixed": true
+    },
+    {
+      "id": "AUD-24",
+      "severity": "P2",
+      "primary": false,
+      "area": "backend / reliability",
+      "title": "The Modal circuit breaker's half-open state let every caller through and did not re-arm after a failed trial",
+      "confidence": "high",
+      "impact": "allow() returned True for every caller once the cooldown elapsed, so a recovering Modal outage still sent the full per-user loop into the remote call. record(False) used setdefault, so a failed half-open trial left the original opened_at in place and the next call was allowed immediately instead of waiting another cooldown.",
+      "fix": "Track a claimed half-open trial per task, confirm it only once per window, clear the claim on success, and reset opened_at on every failure. Added an injectable clock and deterministic tests for the one-trial and re-arm behavior.",
+      "verify": "test_resilience.py: one trial per cooldown, failed trial re-arms, success resets.",
+      "fixed": true
     }
   ]
 }

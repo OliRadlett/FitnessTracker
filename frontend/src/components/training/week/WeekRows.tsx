@@ -83,7 +83,7 @@ export function WeekRows({
   goals: Goal[];
   onOpenRoutePicker: () => void;
   onOpenWahooPush: () => void;
-  onMoveMissed: (date: string) => void;
+  onMoveMissed: (dayId: string, date: string) => void;
   onAddOn: (date: string) => void;
 }) {
   const byDate = new Map<string, TrainingWeekDay[]>();
@@ -181,7 +181,7 @@ export function WeekRows({
             {r.status === 'missed' ? (
               <button
                 type="button"
-                onClick={() => onMoveMissed(date)}
+                onClick={() => day && onMoveMissed(day.id, date)}
                 className="rounded-md px-2 py-1 text-xs font-medium text-accent hover:bg-accent/10"
               >
                 Move

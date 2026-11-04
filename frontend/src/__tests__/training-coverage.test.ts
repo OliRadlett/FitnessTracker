@@ -333,6 +333,54 @@ describe('planVerdict', () => {
     expect(v.conflict).toBeNull();
   });
 
+  it('does not call the week healthy when recovery warns', () => {
+    const v = planVerdict(
+      live({
+        fatigue: 'balanced',
+        axes: [
+          {
+            key: 'recovery',
+            title: 'Recovery',
+            stance: 'rest',
+            severity: 'warning',
+            guidance: 'Latest recovery is 22/100 — consider rest.',
+          },
+        ],
+      }),
+      snapshot({ adaptive: { summary: null, fatigue: 'rest', axes: [], suggestions: [] } as PlanReviewResponse['adaptive'] }),
+    );
+    expect(v.headline).not.toContain('Nothing to change');
+    expect(v.headline.toLowerCase()).toContain('back off');
+    expect(v.tone).toBe('caution');
+  });
+
+  it('backs off when the load axis stance is recover', () => {
+    const v = planVerdict(
+      live({
+        fatigue: 'fatigued',
+        axes: [
+          {
+            key: 'load',
+            title: 'Fitness vs fatigue',
+            stance: 'recover',
+            severity: 'warning',
+            guidance: 'TSB is below the recovery threshold.',
+          },
+        ],
+      }),
+      undefined,
+    );
+    expect(v.headline).toBe('Back off this week');
+    expect(v.tone).toBe('caution');
+  });
+
+  it('does not claim a healthy load when the live engine is silent', () => {
+    const v = planVerdict(undefined, snapshot());
+    expect(v.headline).not.toContain('Nothing to change');
+    expect(v.tone).toBe('pending');
+    expect(v.source).toContain('waiting');
+  });
+
   it('names a disagreement once instead of printing two verdicts', () => {
     const v = planVerdict(live({}), snapshot());
     expect(v.conflict).not.toBeNull();

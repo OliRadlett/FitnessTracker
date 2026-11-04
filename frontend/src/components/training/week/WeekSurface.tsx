@@ -4,6 +4,8 @@ import React, { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 
+import { ErrorState } from '@/components/ui/ErrorState';
+
 import {
   extendPlan,
   getAdaptiveSuggestions,
@@ -74,17 +76,6 @@ export function WeekSurface({
   const [pickingFor, setPickingFor] = useState<string | null>(null);
   const [extendError, setExtendError] = useState<string | null>(null);
 
-  // `?day=` (goal cards link here): open that day and bring it into view. The
-  // effect runs after the week payload resolves, so a deep link that lands before
-  // the data still expands the day — the bug the old view shipped.
-  React.useEffect(() => {
-    if (!highlightDate) return;
-    const el = document.getElementById(`plan-day-${highlightDate}`);
-    if (!el) return;
-    setExpandedDate(highlightDate);
-    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [highlightDate, weekNumber]);
-
   const weekQuery = useQuery<TrainingWeekResponse>({
     queryKey: ['plan-week', plan.id, weekNumber],
     queryFn: () => getPlanWeek(authFetch, plan.id, weekNumber, { includeWeather: false }),
@@ -131,6 +122,17 @@ export function WeekSurface({
   }, [weekQuery.data?.week_start, plan.start_date, weekNumber]);
   const days = weekQuery.data?.days ?? [];
   const written = days.length > 0;
+
+  // `?day=` (goal cards link here): open that day and bring it into view. The
+  // effect must re-run when the week payload lands — on a cold load the rows do
+  // not exist yet, so a mount-only effect scrolls nothing.
+  React.useEffect(() => {
+    if (!highlightDate) return;
+    const el = document.getElementById(`plan-day-${highlightDate}`);
+    if (!el) return;
+    setExpandedDate(highlightDate);
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [highlightDate, weekNumber, days.length]);
   const sessions = days.filter((d) => d.sport !== 'rest').length;
   const missed = days.filter((d) => d.day_status === 'missed').length;
   const expandedDay = expandedDate ? days.find((d) => d.day_date.slice(0, 10) === expandedDate) : undefined;
@@ -165,8 +167,8 @@ export function WeekSurface({
     }
   };
 
-  const moveMissed = (date: string) => {
-    const day = days.find((d) => d.day_date.slice(0, 10) === date);
+  const moveMissed = (dayId: string, date: string) => {
+    const day = days.find((d) => d.id === dayId);
     if (!day) return;
     // Next date in this week that has no plan entry at all.
     const target = dates.find((d) => d > date && !days.some((x) => x.day_date.slice(0, 10) === d));
@@ -218,6 +220,12 @@ export function WeekSurface({
             <div key={i} className="h-14 animate-pulse rounded-xl bg-surface-light/30" />
           ))}
         </div>
+      ) : weekQuery.isError ? (
+        <ErrorState
+          title="Couldn't load this week"
+          message="Check your connection and try again."
+          onRetry={() => weekQuery.refetch()}
+        />
       ) : !written ? (
         <EmptyWeek
           weekNumber={weekNumber}

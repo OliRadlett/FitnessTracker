@@ -224,14 +224,20 @@ jobs:
             # Read domain from .env so Caddy routes to the correct site block.
             # Uses -k for self-signed/local certs, -L to follow HTTPS redirect.
             DEPLOY_DOMAIN=$(grep -E '^DOMAIN=' .env 2>/dev/null | cut -d= -f2- || echo "localhost")
+            HTTP_CODE=000
             for i in $(seq 1 60); do
-              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k -L -H "Host: ${DEPLOY_DOMAIN}" "https://localhost/health" || true)
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -k --resolve "${DEPLOY_DOMAIN}:443:127.0.0.1" "https://${DEPLOY_DOMAIN}/health" || true)
               if [ "$HTTP_CODE" = "200" ]; then
                 echo "  ✓ Backend healthy after ${i}s"
                 break
               fi
               sleep 2
             done
+            if [ "$HTTP_CODE" != "200" ]; then
+              echo "::error::Backend did not become healthy (last status ${HTTP_CODE})"
+              docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 backend || true
+              exit 1
+            fi
 
             echo "▸ Deploy complete ✓"
 

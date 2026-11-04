@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -20,6 +22,7 @@ import pytest_asyncio
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.models.user import OAuthConnection, User
 from app.models.webhook_event import StravaWebhookEvent
 from app.services.strava.webhook_queue import MAX_ATTEMPTS
 
@@ -246,6 +249,72 @@ class TestDrainBounds:
 
         async with test_session_factory() as s:
             await s.execute(delete(StravaWebhookEvent))
+            await s.commit()
+
+    async def test_needs_reauth_events_do_not_starve_live_users(
+        self, test_engine, test_session_factory
+    ):
+        """A revoked connection with a 50-event backlog must not block the window."""
+        from app.services.strava.webhook_queue import process_pending_strava_events
+
+        session = await _new_session(test_engine)
+        dead_user = User(
+            id=uuid.uuid4(),
+            email=f"dead-{uuid.uuid4().hex[:8]}@example.com",
+            name="Dead",
+        )
+        session.add(dead_user)
+        await session.flush()
+        session.add(
+            OAuthConnection(
+                user_id=dead_user.id,
+                provider="strava",
+                access_token="token",
+                provider_user_id="100",
+                status="needs_reauth",
+            )
+        )
+        old = datetime.now(UTC) - timedelta(days=1)
+        session.add_all(
+            [
+                StravaWebhookEvent(
+                    aspect_type="create",
+                    object_type="activity",
+                    object_id=str(i),
+                    owner_id="100",
+                    raw_data={},
+                    received_at=old,
+                )
+                for i in range(51)
+            ]
+        )
+        session.add(
+            StravaWebhookEvent(
+                aspect_type="create",
+                object_type="activity",
+                object_id="999",
+                owner_id="200",
+                raw_data={},
+                received_at=datetime.now(UTC),
+            )
+        )
+        await session.commit()
+
+        with patch(
+            "app.services.strava.webhooks.handle_strava_event",
+            new=AsyncMock(return_value=None),
+        ):
+            result = await process_pending_strava_events(session)
+        await session.close()
+
+        assert result["processed"] == 1
+
+        async with test_session_factory() as s:
+            await s.execute(delete(StravaWebhookEvent))
+            await s.execute(
+                delete(OAuthConnection).where(OAuthConnection.user_id == dead_user.id)
+            )
+            await s.execute(delete(User).where(User.id == dead_user.id))
             await s.commit()
 
     async def test_auth_failure_defers_events_and_continues(

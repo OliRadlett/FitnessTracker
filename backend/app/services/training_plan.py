@@ -952,7 +952,13 @@ async def save_plan_days(
             # Only apply fields the caller actually sent — untouched columns
             # (completed flags, linked activity/lifting sessions) survive.
             for field, value in day_data.model_dump(exclude_unset=True).items():
+                previous = getattr(row, field, None)
                 setattr(row, field, value)
+                if field == "planned_tss" and value != previous:
+                    # A real edit becomes the new authored baseline. A
+                    # full-array save echoing the current tapered value must
+                    # not wipe the snapshot.
+                    row.pre_taper_tss = None
 
     for key, row in list(existing_by_key.items()):
         if key not in incoming_keys:
@@ -1173,8 +1179,11 @@ async def update_plan(
     if event_id:
         plan = await link_event_and_apply_taper(db, user_id, plan, event_id)
     elif "event_id" in update_fields and plan.taper_event_id is not None:
-        # Explicit null is an unlink: restore the plan before returning it.
+        # Explicit null is an unlink: restore the plan before returning it, but
+        # let an end_date sent in the same PATCH win over the stored baseline.
         _restore_taper(plan)
+        if "end_date" in update_fields:
+            plan.end_date = update_fields["end_date"]
         plan.event_id = None
         await db.flush()
 
@@ -2360,7 +2369,11 @@ async def update_plan_day(
             updates["planned_volume_kg"] = None
 
     for key, value in updates.items():
+        previous = getattr(day, key, None)
         setattr(day, key, value)
+        if key == "planned_tss" and value != previous:
+            # An explicit edit becomes the new authored baseline.
+            day.pre_taper_tss = None
     await db.flush()
     return day
 
@@ -3068,9 +3081,11 @@ async def extend_plan(
     the rest except authoring every day by hand.
 
     The pattern comes from ``source_week`` when given, else from the last week
-    that has any days. Every date after the last written day up to ``until``
-    receives that weekday's sessions from the pattern. Dates that already hold a
-    day are skipped, so the call is idempotent and can never overwrite work.
+    that has any days. Every empty date from the first written day up to
+    ``until`` receives that weekday's sessions from the pattern. Starting at
+    the first written day (not after the last one) is what fills a hole such as
+    weeks 1–2 written, 3 empty, 4 written. Dates that already hold a day are
+    skipped, so the call is idempotent and can never overwrite work.
 
     Returns a summary rather than the plan: the caller invalidates and refetches,
     and a 49-day plan serialised twice would be a waste.
@@ -3081,6 +3096,11 @@ async def extend_plan(
 
     if until < plan.start_date:
         raise ValueError("until is before the plan start")
+    # A plan is a training block, not an open-ended calendar. Cap the forward
+    # extent so a bad client date cannot stage millions of rows and pin the
+    # event loop (the API is single-process).
+    if until > plan.start_date + timedelta(days=730):
+        raise ValueError("until is more than two years past the plan start")
 
     # Read the days explicitly rather than through ``plan.days``. The relationship
     # is identity-mapped, so a session that loaded the plan before this call keeps
@@ -3112,14 +3132,16 @@ async def extend_plan(
         raise ValueError(f"Week {src} has no days to copy from")
 
     pattern = days_by_week[src]
-    last_written = max(d.day_date for d in existing_days)
 
     # Extend the claimed range first: the days created below must fall inside it.
     plan.end_date = max(plan.end_date, until)
 
     existing_dates = {d.day_date for d in existing_days}
     created = 0
-    cursor = last_written + timedelta(days=1)
+    # Start at the first written day, not after the last one: the common shape
+    # is a hole between two written blocks, and a tail-only cursor can never
+    # reach it.
+    cursor = min(existing_dates)
     while cursor <= until:
         if cursor not in existing_dates:
             for template in pattern:

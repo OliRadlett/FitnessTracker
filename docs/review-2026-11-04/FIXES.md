@@ -35,18 +35,42 @@ Status: **closed**. PRs #352, #358 and #361 are merged to `main`; CI was green o
 | AUD-22 | Volume chart scales to its own maximum. | `VolumeTrendChart.tsx` |
 | AUD-23 | Webhook auth failures stay pending/deferred and continue the queue. | `webhook_queue.py`; `test_webhook_queue.py` |
 
+## Re-audit findings (new after the first close, all fixed)
+
+| ID | Finding | Fix |
+|---|---|---|
+| AUD-24 | Modal breaker's half-open let every caller through and a failed trial did not re-arm. | One claimed trial per window; failed trial resets `opened_at`; injected clock + deterministic tests. |
+| AUD-25 | `extend_plan` could not fill a hole (cursor started after the last written day). | Start at the first written day; test weeks 1–2 + 4 written, week 3 filled. |
+| AUD-26 | `extend_plan` accepted an unbounded `until`, staging millions of rows. | Reject `until` > plan start + 730 days; test. |
+| AUD-27 | Lifting page cached `{items,total}` under the shared `['lifting-sessions']` key. | Paginated query moved to `['lifting-sessions','page',200]`. |
+| AUD-28 | `planVerdict` claimed a healthy load with no live engine data. | Explicit `pending` verdict + guarded `shortDate`; test. |
+| AUD-29 | A failed week request rendered as an empty week. | `ErrorState` + Retry branch; test via E2E. |
+| AUD-30 | `?day=` deep link did not scroll when the payload arrived late. | Effect depends on `days.length`; E2E asserts `toBeInViewport`. |
+| AUD-31 | A post-taper TSS edit was overwritten on unlink; `{event_id:null,end_date:X}` lost X. | Editing `planned_tss` clears the stale baseline; explicit `end_date` wins on unlink; tests. |
+| AUD-32 | A revoked user with 50+ pending webhook events starved other users. | Selection excludes `needs_reauth` connections; test with 51 dead + 1 live event. |
+| AUD-33 | The deploy health loop could finish and still exit 0 with production down. | Non-200 now dumps backend logs and exits 1; backend healthcheck added. |
+| AUD-34 | The AUD-16 acceptance record named 14.2.35 while 14.2.15 is deployed. | Record corrected to the deployed pin and the patch-only option. |
+| AUD-35 | The deploy health probe sent SNI `localhost`, so it could never return 200 and would fail every release. | Probe the real domain with `--resolve host:443:127.0.0.1`. |
+| AUD-36 | Push validation accepted `127.1`/`2130706433`/`0x7f...` and Docker single-label names. | Strict provider allowlist (FCM/Mozilla/Windows/Apple); no host resolution at validation. |
+| AUD-37 | A lost half-open trial claim wedged a Modal task forever. | Claim is time-boxed; an unrecorded claim expires after one cooldown. |
+| AUD-38 | The pending verdict was followed by row 2's "nothing needs to change". | Row 2 is hidden while the verdict is pending. |
+| AUD-39 | A full-array save echoing current `planned_tss` wiped the taper baseline. | Clear only when the value actually changes; unchanged save keeps the snapshot. |
+| AUD-40 | Move on a two-session date acted on the alphabetically-first day. | Row passes its day id; handler looks up by id. |
+| AUD-41 | Two `setParam` calls in one handler lost the first (`w` then `view`). | `setParam` reads the live URL, so sequential writes compose. |
+| AUD-42 | `planVerdict` ignored recovery/conformity warning axes and load `recover`. | Warn axes and load recover/build drive the headline; healthy only for maintain + no warning. |
+
 ## Accepted with a decision
 
 | ID | Decision |
 |---|---|
-| AUD-16 | **Accepted residual risk, not fixed.** `next@14.2.35` still carries the advisory range; only Next 16.4.5 clears it, and Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image`, so the image-optimizer and middleware-bypass advisories are not reachable; the App Router DoS/cache classes remain. Revisit with a dedicated React 19 + Next 16 migration. |
+| AUD-16 | **Accepted residual risk, not fixed.** The deployed pin is `next@14.2.15`; a patch-only 14.2.35 upgrade is available but npm audit still flags the Next range, and only Next 16.4.5 clears it. Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image` import (the `/_next/image` endpoint exists but has an empty remote allowlist), so the middleware-bypass and image-optimizer advisories are not reachable; the App Router DoS/cache classes remain. Revisit with a dedicated React 19 + Next 16 migration. |
 | AUD-21 | **Accepted full-replace contract.** `PATCH /training-plans/{id}` with `days` replaces the day set; the targeted `/days` endpoints are the non-destructive editor path. The misleading test name was corrected and the omitted-date deletion is asserted. |
 
 ## Verification
 
-- Backend unit: **1789 passed**, 799 deselected.
-- Frontend unit: **741 passed** across 76 files.
-- Affected integration: **30 passed** (account, taper, lifting API); webhook queue **6 passed**; health **2 passed**.
+- Backend unit: **1797 passed**, 803 deselected.
+- Frontend unit: **765 passed** across 78 files.
+- Affected integration: taper **5**, extend **6**, webhook **7**, lifting **22**, account **6**, push **4**; health **2**.
 - Migration 104: upgrade -> downgrade 103 -> upgrade head, clean.
 - `ruff check backend/` clean, including F821.
 - `tsc --noEmit` clean.

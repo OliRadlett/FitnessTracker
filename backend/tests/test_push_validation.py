@@ -22,6 +22,10 @@ def _subscription(endpoint: str) -> PushSubscriptionCreate:
         "https://169.254.169.254/latest/meta-data",
         "https://localhost/push",
         "https://backend:8000/push",
+        "https://127.1/push",
+        "https://2130706433/push",
+        "https://0x7f.0.0.1/push",
+        "https://caddy/push",
         "https://user:pass@fcm.googleapis.com/wp/abc",
     ],
 )

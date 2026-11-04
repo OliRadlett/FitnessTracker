@@ -49,7 +49,9 @@ export function ChangesPanel({
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold sm:mt-0.5 ${
               v.tone === 'caution'
                 ? 'border-caution/30 bg-caution/10 text-caution'
-                : 'border-positive/30 bg-positive/10 text-positive'
+                : v.tone === 'pending'
+                  ? 'border-surface-light bg-surface-light/20 text-muted'
+                  : 'border-positive/30 bg-positive/10 text-positive'
             }`}
           >
             1
@@ -72,21 +74,23 @@ export function ChangesPanel({
           )}
         </div>
 
-        <div className="flex items-start gap-3 border-t border-white/[0.05] px-3 py-3">
-          <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-xs font-semibold text-muted">
-            2
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm text-foreground">
-              {v.action ? 'Nothing else needs to change this week.' : 'Nothing needs to change this week.'}
-            </p>
-            <p className="mt-0.5 text-sm text-muted">
-              {v.action
-                ? 'The load is in the healthy band, and the week as written is still the right week.'
-                : 'The week as written is still the right week.'}
-            </p>
+        {v.tone !== 'pending' && (
+          <div className="flex items-start gap-3 border-t border-white/[0.05] px-3 py-3">
+            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.03] text-xs font-semibold text-muted">
+              2
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm text-foreground">
+                {v.action ? 'Nothing else needs to change this week.' : 'Nothing needs to change this week.'}
+              </p>
+              <p className="mt-0.5 text-sm text-muted">
+                {v.action
+                  ? 'The load is in the healthy band, and the week as written is still the right week.'
+                  : 'The week as written is still the right week.'}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {v.conflict && (
           <p className="border-t border-white/[0.05] bg-white/[0.02] px-3 py-2 text-xs text-muted">

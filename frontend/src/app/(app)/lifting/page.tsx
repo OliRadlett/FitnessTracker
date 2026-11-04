@@ -223,7 +223,10 @@ export default function LiftingPage() {
     isError: sessionsError,
     refetch: refetchSessions,
   } = useQuery<{ items: LiftingSession[]; total: number }>({
-    queryKey: ['lifting-sessions'],
+    // Distinct from the array-shaped ['lifting-sessions'] used by
+    // AutoregulationCard / Live Lift / videos. Sharing that key with a
+    // `{items,total}` payload breaks those consumers for the stale window.
+    queryKey: ['lifting-sessions', 'page', 200],
     queryFn: async () => {
       const { data, headers } = await authFetchWithHeaders<LiftingSession[]>(
         '/api/v1/lifting/sessions?limit=200',
