@@ -3,6 +3,7 @@
  * Not part of the gate suite — this is the "look at it" step.
  */
 import { test } from './fixtures/authenticated-test';
+import { mockTrainingWeek } from './fixtures/mock-data';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -56,5 +57,23 @@ test.describe('training surface', () => {
     const a = await shot(page, '04-week-mobile', '/fittrack/training', true);
     const b = await shot(page, '05-plan-mobile', '/fittrack/training?view=plan', true);
     console.log('mobile audits', JSON.stringify({ a, b }));
+  });
+
+  test('empty week (the state the primary action exists for)', async ({
+    authenticatedPage: page,
+  }) => {
+    // The owner's real plan stops mid-way through its claimed range, so this is
+    // the most common state, not an edge case.
+    await page.route(/\/api\/v1\/training-plans\/[^/]+\/week\/\d+/, (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({ ...mockTrainingWeek, week_number: 3, days: [] }),
+      }),
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const a = await shot(page, '06-empty-week', '/fittrack/training?w=3');
+    await page.setViewportSize({ width: 390, height: 844 });
+    const b = await shot(page, '07-empty-week-mobile', '/fittrack/training?w=3', true);
+    console.log('empty-week audits', JSON.stringify({ a, b }));
   });
 });

@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 
 import {
+  extendPlan,
   getAdaptiveSuggestions,
   getPlanReview,
   getPlanWeek,
@@ -65,6 +66,7 @@ export function WeekSurface({
   onViewPlan: () => void;
 }) {
   const { authFetch, token } = useAuthFetch();
+  const queryClient = useQueryClient();
   const ops = usePlanDayOps(plan.id);
   const [expandedDate, setExpandedDate] = useState<string | null>(highlightDate ?? null);
   const [routePicker, setRoutePicker] = useState(false);
@@ -134,6 +136,23 @@ export function WeekSurface({
 
   const addOn = (date: string) => setPickingFor(date);
 
+  /**
+   * Fill the plan forward. One primitive serves both empty-week actions: the
+   * week, and the whole rest of the plan. The server fills only dates with no
+   * day, so this is safe to retry and cannot overwrite authored work.
+   */
+  const extend = useMutation({
+    mutationFn: (until: string) => extendPlan(authFetch, plan.id, until),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['training-plan', plan.id] });
+      queryClient.invalidateQueries({ queryKey: ['plan-week', plan.id] });
+      queryClient.invalidateQueries({ queryKey: ['training-plans'] });
+      queryClient.invalidateQueries({ queryKey: ['plan-unplanned', plan.id] });
+      queryClient.invalidateQueries({ queryKey: ['adaptive-suggestions', plan.id] });
+      queryClient.invalidateQueries({ queryKey: ['plan-review', plan.id] });
+    },
+  });
+
   const add = (date: string, sport: 'cycle' | 'strength' | 'rest') => {
     setPickingFor(null);
     if (sport === 'rest') {
@@ -201,11 +220,14 @@ export function WeekSurface({
           weekNumber={weekNumber}
           dates={dates}
           coverage={coverage}
+          planEnd={plan.end_date}
           unplannedCount={(unplannedQuery.data?.activities?.length ?? 0) + (unplannedQuery.data?.lifting_sessions?.length ?? 0)}
           unplannedDays={unplannedQuery.data?.days ?? 14}
           today={today}
-          busy={ops.addDay.isPending}
+          busy={ops.addDay.isPending || extend.isPending}
           onAdd={add}
+          onWriteWeek={() => extend.mutate(dates[6])}
+          onExtend={() => extend.mutate(plan.end_date)}
           onViewPlan={onViewPlan}
         />
       ) : (

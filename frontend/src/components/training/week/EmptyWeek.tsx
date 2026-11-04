@@ -24,30 +24,36 @@ type PlanSportChoice = AddableSport | 'rest';
  * header that had already said "no sessions". Here it is one sentence with the
  * reason and the numbers, then the seven days as a strip you can act on.
  *
- * Deliberately **not** offered: "Extend the plan" and "Write this week". Both need
- * endpoints that do not exist (`POST /{id}/extend`, `POST /{id}/weeks/{n}`) — a
- * button that cannot keep its promise is worse than no button. Adding one session
- * at a time works today via `POST /{id}/days`, so that is what this offers.
+ * Two ways to fill it, both one call:
+ *  - **Write this week** copies the last written week's weekday pattern into it.
+ *  - **Extend to ⟨plan end⟩** does the same for every empty week to the end.
+ * Both go through `POST /{id}/extend`, which fills only empty dates.
  */
 export function EmptyWeek({
   weekNumber,
   dates,
   coverage,
+  planEnd,
   unplannedCount,
   unplannedDays,
   today,
   busy,
   onAdd,
+  onWriteWeek,
+  onExtend,
   onViewPlan,
 }: {
   weekNumber: number;
   dates: string[];
   coverage: Coverage;
+  planEnd: string;
   unplannedCount: number;
   unplannedDays: number;
   today: string;
   busy: boolean;
   onAdd: (date: string, sport: PlanSportChoice) => void;
+  onWriteWeek: () => void;
+  onExtend: () => void;
   onViewPlan: () => void;
 }) {
   const [adding, setAdding] = useState<string | null>(null);
@@ -82,26 +88,39 @@ export function EmptyWeek({
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => setAdding(adding ? null : dates.find((d) => d >= today) ?? dates[0])}
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+            disabled={busy}
+            onClick={onWriteWeek}
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg bg-accent px-3 text-sm font-medium text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
           >
             <Plus className="h-4 w-4" />
-            Add a session
+            Write this week
+          </button>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onExtend}
+            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/10 px-3 text-sm font-medium text-foreground transition-colors hover:bg-white/[0.05] disabled:opacity-50"
+          >
+            <CalendarRange className="h-4 w-4" />
+            Extend to {fmtDayShort(planEnd)}
           </button>
           <button
             type="button"
             onClick={onViewPlan}
-            className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/10 px-3 text-sm font-medium text-foreground transition-colors hover:bg-white/[0.05]"
+            className="inline-flex min-h-[44px] items-center rounded-lg px-3 text-sm font-medium text-muted transition-colors hover:text-foreground"
           >
-            <CalendarRange className="h-4 w-4" />
             See the whole plan
           </button>
         </div>
+        <p className="mt-2 text-xs text-muted">
+          Both copy your last written week&apos;s weekday pattern and fill only the empty dates — no
+          authored day is touched. Or add one session at a time below.
+        </p>
       </div>
 
       <div className="mt-3">
         <span className="text-xs font-medium uppercase tracking-wider text-muted">
-          Add to a single day
+          Add one session
         </span>
         <div className="mt-2 grid grid-cols-7 gap-1.5">
           {dates.map((d) => {

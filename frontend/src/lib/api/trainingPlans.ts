@@ -19,6 +19,7 @@ import type {
   StrengthProgressionSuggestResponse,
   MaterialiseResponse,
   PlanReviewResponse,
+  ExtendPlanResponse,
 } from './types';
 
 type AuthFetch = <T>(path: string, options?: RequestInit) => Promise<T>;
@@ -185,6 +186,25 @@ export async function addDay(
   return authFetch<TrainingPlanDay>(`/api/v1/training-plans/${planId}/days`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * Carry the plan's weekday pattern forward to `until` (POST /{id}/extend).
+ *
+ * Only dates with no day at all are filled, so this is safe to retry and can
+ * never overwrite authored days. `sourceWeek` picks the pattern; omit it to use
+ * the last week that has any days.
+ */
+export async function extendPlan(
+  authFetch: AuthFetch,
+  planId: string,
+  until: string,
+  sourceWeek?: number
+): Promise<ExtendPlanResponse> {
+  return authFetch<ExtendPlanResponse>(`/api/v1/training-plans/${planId}/extend`, {
+    method: 'POST',
+    body: JSON.stringify({ until, ...(sourceWeek ? { source_week: sourceWeek } : {}) }),
   });
 }
 

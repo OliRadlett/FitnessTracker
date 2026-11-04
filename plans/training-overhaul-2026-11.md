@@ -49,10 +49,11 @@ plan", conformity said "87%", and the week under all of it was empty.
    the coverage strip. An event carries a result panel, an AI prep card and a PDF
    export — that is a surface, not a strip. Removing a working one to honour a
    drawing would be the wrong trade.
-2. **"Extend the plan" and "Write this week" are not offered.** Both need
-   endpoints that do not exist (`POST /{id}/extend`, `POST /{id}/weeks/{n}`). The
-   empty week offers **Add a session**, which works today via `POST /{id}/days`.
-   A button that cannot keep its promise is worse than no button.
+2. **"Extend the plan" and "Write this week" are now backed by a real endpoint.**
+   `POST /{id}/extend` copies the last written week's weekday pattern into empty
+   dates up to `until`. The empty week offers **Write this week** (until that
+   week's Sunday) and **Extend to ⟨plan end⟩**, both one call, plus a per-day
+   chooser for one-offs. Nothing is offered that cannot keep its promise.
 3. **The plan table drops logged TSS and volume.** The week payload carries
    actuals; the plan list does not, and fetching 20 week payloads to fill a table
    is the wrong trade. Columns are Week · Dates · Sessions · Planned · State.
@@ -63,8 +64,11 @@ plan", conformity said "87%", and the week under all of it was empty.
 
 - **`tsc --noEmit` clean**; `npm run build` succeeds.
 - **Unit tests:** `src/__tests__/training-coverage.test.ts` — 15 passing.
-- **e2e:** `e2e/training.spec.ts` — **10/10 passing** against a locally started
-  build (`npx next start -p 3010`, `playwright.local.config.ts`).
+- **e2e:** `e2e/training.spec.ts` — **12/12 passing** against a locally started
+  build (`npx next start -p 3010`, `playwright.local.config.ts`), including both
+  empty-week actions and their POST bodies.
+- **Backend:** `tests/test_plan_extend.py` — 8 passing; `test_multi_sport_days.py`
+  and `test_plan_review.py` still green (43 total). `ruff` clean.
 - **Rendered and reviewed** at 1440×900 and 390×844, both surfaces. Screenshots:
   `frontend/e2e/out/*.png` (gitignored), captured by `e2e/capture-training.spec.ts`.
 - **Type floor closed:** the smallest computed font on all five captured frames is
@@ -118,10 +122,20 @@ plan", conformity said "87%", and the week under all of it was empty.
 - `AGENTS.md` — the "Training page overhaul" bullet in *Active Planning*.
 - `training-redesign-plan.md` §15 — mark Phases 0–4 superseded by this port.
 
-## Backend gaps this port makes visible
+## Backend gaps
 
-1. `POST /training-plans/{id}/extend` — the common state is a plan that ran dry.
-2. `POST /training-plans/{id}/weeks/{n}` — writing a week is 7 partial calls today.
-3. Coverage on the plan summary (`weeks_written`, `last_session_date`) — it is
-   derived client-side from a full plan payload, which is correct only while that
-   payload stays small enough to send.
+**Closed (2026-11-04):** `POST /training-plans/{id}/extend` — the common state is a
+plan whose written content stops weeks before its `end_date`, and nothing could
+write the rest except authoring every day by hand. One primitive now serves both
+empty-week actions: copy the last written week's weekday pattern into every empty
+date up to `until`. Fill-only-empty, so it is idempotent and cannot overwrite
+authored work; it also raises `end_date` when asked to go past it. Service in
+`services/training_plan.extend_plan`, endpoint + schemas, 8 unit tests in
+`tests/test_plan_extend.py`. The plan-level `completed` column is never copied,
+and neither are the actual links or the Wahoo ids.
+
+**Still open:** coverage as a first-class field on the plan summary
+(`weeks_written`, `last_session_date`). It is derived client-side from the full
+plan payload, which is correct only while that payload stays small enough to send.
+`POST /{id}/weeks/{n}` turned out not to be needed — `extend` with `until` = the
+week's Sunday is the same operation, with one code path instead of two.

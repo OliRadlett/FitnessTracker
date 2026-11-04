@@ -34,6 +34,8 @@ from app.schemas.training_plan import (
     TrainingPlanDayCreate,
     TrainingPlanDayRead,
     TrainingPlanDayUpdate,
+    TrainingPlanExtendRequest,
+    TrainingPlanExtendResponse,
     TrainingPlanRead,
     TrainingPlanSummary,
     TrainingPlanUpdate,
@@ -555,9 +557,32 @@ async def add_plan_day(
     return TrainingPlanDayRead.model_validate(day)
 
 
-@router.delete("/{plan_id}/days/{day_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_plan_day(
+@router.post("/{plan_id}/extend", response_model=TrainingPlanExtendResponse)
+async def extend_plan(
     plan_id: uuid.UUID,
+    data: TrainingPlanExtendRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fill the plan forward to ``until``, copying a weekday pattern.
+
+    The page's primary action on its most common state — a plan whose written
+    content stops weeks before its ``end_date``. Only empty dates are filled, so
+    it is safe to retry and cannot overwrite authored days.
+    """
+    try:
+        result = await plan_service.extend_plan(
+            db, current_user.id, plan_id, data.until, data.source_week
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return TrainingPlanExtendResponse.model_validate(result)
+
+
+@router.delete("/{plan_id}/days/{day_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_plan_day(    plan_id: uuid.UUID,
     day_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

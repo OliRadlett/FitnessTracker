@@ -111,6 +111,81 @@ test.describe('Training Page — deep links', () => {
   });
 });
 
+test.describe('Training Page — filling an empty week', () => {
+  test('Write this week calls extend with the end of the viewed week', async ({
+    authenticatedPage: page,
+  }) => {
+    // The most common state on the owner's real plan: content stops mid-plan, so
+    // the week on screen is empty and the primary action used to do nothing.
+    await page.route(/\/api\/v1\/training-plans\/[^/]+\/week\/\d+/, (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({ ...mockData.mockTrainingWeek, week_number: 3, days: [] }),
+      }),
+    );
+    await page.route('**/api/v1/training-plans/*/extend', (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          plan_id: 'plan-1',
+          created: 7,
+          until: '2026-08-23',
+          end_date: '2026-09-12',
+          source_week: 1,
+        }),
+      }),
+    );
+
+    await page.goto('/fittrack/training?w=3');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.getByText(/has no sessions/i)).toBeVisible();
+
+    const [post] = await Promise.all([
+      page.waitForRequest(
+        (r) => r.method() === 'POST' && r.url().includes('/extend'),
+      ),
+      page.getByRole('button', { name: /write this week/i }).click(),
+    ]);
+
+    // `until` is the Sunday of the week being viewed — the pattern itself is the
+    // server's business, and a client that computed it would be a second source
+    // of truth for the plan's weekday shape.
+    expect(post.postDataJSON()).toEqual({ until: '2026-08-09' });
+  });
+
+  test('Extend fills to the plan end, not just one week', async ({ authenticatedPage: page }) => {
+    await page.route(/\/api\/v1\/training-plans\/[^/]+\/week\/\d+/, (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({ ...mockData.mockTrainingWeek, week_number: 3, days: [] }),
+      }),
+    );
+    await page.route('**/api/v1/training-plans/*/extend', (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          plan_id: 'plan-1',
+          created: 30,
+          until: '2026-09-12',
+          end_date: '2026-09-12',
+          source_week: 1,
+        }),
+      }),
+    );
+
+    await page.goto('/fittrack/training?w=3');
+    await page.waitForLoadState('networkidle');
+
+    const [post] = await Promise.all([
+      page.waitForRequest((r) => r.method() === 'POST' && r.url().includes('/extend')),
+      page.getByRole('button', { name: /extend to/i }).click(),
+    ]);
+
+    expect(post.postDataJSON()).toEqual({ until: '2026-09-12' });
+  });
+});
+
 test.describe('Training Page — capabilities that had to survive', () => {
   test('a custom plan with strength days renders strength suggestions', async ({
     authenticatedPage: page,

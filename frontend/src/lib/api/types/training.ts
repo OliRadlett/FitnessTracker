@@ -435,6 +435,15 @@ export interface TrainingWeekResponse {
   days: TrainingWeekDay[];
 }
 
+/** What `POST /training-plans/{id}/extend` changed. */
+export interface ExtendPlanResponse {
+  plan_id: string;
+  created: number;
+  until: string;
+  end_date: string;
+  source_week: number;
+}
+
 /** Partial single-day PATCH body — only provided fields are applied. */
 export interface UpdateTrainingPlanDayPayload {
   sport?: PlanSport;
