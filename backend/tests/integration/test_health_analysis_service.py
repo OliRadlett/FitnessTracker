@@ -19,7 +19,11 @@ from app.models.daily_metric import DailyMetric
 from app.models.health_alert import HealthAlert
 from app.models.lifting import LiftingSession
 from app.models.sleep import SleepLog
-from app.services.health_analysis import upsert_alert
+from app.services.health_analysis import (
+    collect_health_signals,
+    resolve_alert,
+    upsert_alert,
+)
 
 pytestmark = [pytest.mark.integration, pytest.mark.expensive]
 
@@ -371,3 +375,52 @@ class TestUpsertAlertQuietPeriod:
         rows = await _alerts(db_session, test_user.id)
         assert len(rows) == 2
         assert sum(1 for r in rows if r.status == "active") == 1
+
+class TestAlertResolution:
+    """A cleared signal must stop reading as a live alert."""
+
+    async def test_resolve_alert_marks_active_rows(self, db_session, test_user):
+        alert = HealthAlert(
+            user_id=test_user.id,
+            alert_type="overtraining",
+            severity="warning",
+            title="Old",
+            description="Old",
+            evidence={},
+            detected_date=date.today() - timedelta(days=60),
+            status="active",
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        assert await resolve_alert(db_session, test_user.id, "overtraining") == 1
+        await db_session.refresh(alert)
+        assert alert.status == "resolved"
+
+    async def test_upsert_none_resolves_without_creating(self, db_session, test_user):
+        alert = HealthAlert(
+            user_id=test_user.id,
+            alert_type="overtraining",
+            severity="warning",
+            title="Old",
+            description="Old",
+            evidence={},
+            detected_date=date.today() - timedelta(days=60),
+            status="active",
+        )
+        db_session.add(alert)
+        await db_session.flush()
+
+        created = await upsert_alert(
+            db_session,
+            test_user.id,
+            {"alert_type": "overtraining", "severity": "none"},
+        )
+        assert created is False
+        await db_session.refresh(alert)
+        assert alert.status == "resolved"
+
+    async def test_collect_read_only_leaves_alert_active(self, db_session, test_user, test_health_alert):
+        await collect_health_signals(db_session, test_user.id)
+        await db_session.refresh(test_health_alert)
+        assert test_health_alert.status == "active"
