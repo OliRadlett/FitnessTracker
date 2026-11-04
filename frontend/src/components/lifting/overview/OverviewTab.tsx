@@ -88,7 +88,7 @@ function TodayCard({
         <div>
           <Label>Today · {dayLong(today)}</Label>
           <h2 className="mt-2 text-[24px] font-semibold leading-none tracking-[-0.03em]">
-            {isStrength ? `${focus} day` : heroSession ? 'Rest day' : 'No sessions yet'}
+            {logged ? `${focusOf(logged)} logged` : isStrength ? `${focus} day` : heroSession ? 'Rest day' : 'No sessions yet'}
           </h2>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {isStrength && planDay?.planned_type ? <Badge>{initials(planDay.planned_type)}</Badge> : null}
@@ -128,12 +128,12 @@ function TodayCard({
             </>
           ) : (
             <>
-              <Label>Today</Label>
+              <Label>{logged ? 'Logged today' : 'Today'}</Label>
               <p className="mt-2 text-[12px] leading-relaxed text-muted">
-                No strength day planned.
+                {logged ? 'Session logged today; no strength day was planned. ' : 'No strength day planned. '}
                 {nextStrength
-                  ? ` Next: ${initials(nextStrength.planned_focus ?? 'strength')} on ${dayShort(nextStrength.day_date)}.`
-                  : ' The current plan week has no strength days.'}
+                  ? `Next: ${initials(nextStrength.planned_focus ?? 'strength')} on ${dayShort(nextStrength.day_date)}.`
+                  : 'The current plan week has no strength days.'}
               </p>
             </>
           )}
@@ -265,7 +265,7 @@ function WeekCard({
         </div>
         <div>
           <Label>TSS</Label>
-          <p className="mt-1 text-[20px] font-semibold leading-none">{amount(sumTss(sessions))}</p>
+          <p className="mt-1 text-[20px] font-semibold leading-none">{sumTss(sessions) > 0 ? amount(sumTss(sessions)) : '—'}</p>
         </div>
       </div>
     </Card>
@@ -301,7 +301,7 @@ function SessionRow({ session, prs, onClick }: { session: LiftingSession; prs: n
         <p className="truncate text-[12px] text-muted">{session.sets.length} sets</p>
       </div>
       <span className="text-right text-[12px] font-medium">{shortWeight(session.total_volume_kg)}</span>
-      <span className="hidden text-right text-[12px] text-muted sm:block">{amount(session.estimated_tss ?? 0)} TSS</span>
+      <span className="hidden text-right text-[12px] text-muted sm:block">{session.estimated_tss ? `${amount(session.estimated_tss)} TSS` : '— TSS'}</span>
       <ChevronRight className="hidden h-4 w-4 text-muted/60 sm:block" aria-hidden />
     </button>
   );
