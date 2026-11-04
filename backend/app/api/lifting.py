@@ -148,11 +148,18 @@ async def update_session(
         raise HTTPException(status_code=404, detail="Session not found")
     response = LiftingSessionRead.model_validate(session)
     sid = session.id
-    # No explicit commit: get_db commits at teardown, before BackgroundTasks
-    # run, so the Jev tagger sees the row. (BUG-015: one commit per request.)
-    background_tasks.add_task(
-        jev_tagging.tag_lifting_session_by_id, sid, current_user.id
-    )
+    # Commit before scheduling the background writers. They open their own
+    # sessions and UPDATE the same row; if the request transaction is still
+    # open they block on its row lock while the request waits for the
+    # background task to finish — a deadlock that left every later save
+    # queued behind it. get_db's teardown commit then becomes a no-op.
+    await db.commit()
+    # Only notes can change Jev's semantic tags. Re-running the AI tagger on a
+    # focus/time-only edit adds latency and another chance to hold this row.
+    if "notes" in data.model_fields_set:
+        background_tasks.add_task(
+            jev_tagging.tag_lifting_session_by_id, sid, current_user.id
+        )
     background_tasks.add_task(
         jev_classification.classify_lifting_session_by_id, sid, current_user.id
     )
