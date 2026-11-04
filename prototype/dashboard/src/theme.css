@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Tokens copied verbatim from frontend/src/app/globals.css (:root, dark).
+   The lab must look like the product or the artifact proves nothing. */
+:root {
+  --background: 9 14 14;
+  --surface: 18 24 24;
+  --surface-light: 30 41 41;
+  --accent: 16 185 129;
+  --accent-hover: 18 163 113;
+  --positive: 34 197 94;
+  --warning: 239 68 68;
+  --muted: 148 163 184;
+  --info: 56 189 248;
+  --caution: 245 158 11;
+  --foreground: 230 230 230;
+  --surface-border: 255 255 255 / 0.08;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: rgb(var(--background));
+  color: rgb(var(--foreground));
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  border-color: rgb(var(--surface-border));
+}
+
+/* One scrollbar look, so the artifact is judged on layout not chrome. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--surface-light));
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* The analysis renderer's prose: real markdown, real type. */
+.analysis {
+  font-size: 13px;
+  line-height: 1.65;
+  color: rgb(var(--foreground) / 0.86);
+}
+.analysis h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgb(var(--foreground));
+  margin: 18px 0 6px;
+  letter-spacing: 0.01em;
+}
+.analysis h3:first-child {
+  margin-top: 0;
+}
+.analysis p {
+  margin: 0 0 8px;
+}
+.analysis ul {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  list-style: disc;
+}
+.analysis li {
+  margin-bottom: 4px;
+}
+.analysis li::marker {
+  color: rgb(var(--muted) / 0.7);
+}
+.analysis strong {
+  color: rgb(var(--foreground));
+  font-weight: 600;
+}
+.analysis hr {
+  border: 0;
+  border-top: 1px solid rgb(var(--surface-border));
+  margin: 14px 0;
+}

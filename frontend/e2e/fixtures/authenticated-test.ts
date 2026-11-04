@@ -359,6 +359,35 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   ['api/v1/metrics/readiness', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockReadiness) });
   }],
+  // Dashboard Trends: the health analysis card reads this, not the alert endpoint.
+  ['api/v1/metrics/health-ai-analysis', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockLlmAnalysis) });
+  }],
+  // Dashboard Today: the day card quotes the top weakness' recommendation.
+  ['api/v1/deficiency', (route) => {
+    route.fulfill({
+      status: 200,
+      body: JSON.stringify({
+        weaknesses: [
+          {
+            category: 'cycling',
+            type: 'vo2max_ftp_mismatch',
+            metric: 'vo2max_ftp_mismatch',
+            value: 42.6,
+            unit: null,
+            bodyweight: 80,
+            level: null,
+            next_level_target: null,
+            severity: 'high',
+            detail: 'Both aerobic markers are below average.',
+            recommendation: 'Build aerobic base first — mostly Z2 riding',
+          },
+        ],
+        summary: { total_weaknesses: 1, critical: 0, high: 1, medium: 0, low: 0, strengths: 1 },
+        computed_at: '2026-01-01T00:00:00Z',
+      }),
+    });
+  }],
   ['api/v1/metrics/respiratory-rate', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRespiratoryRate) });
   }],

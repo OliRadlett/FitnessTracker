@@ -1,0 +1,1 @@
+{"chart_type":"bar","title":"Rest Day vs Training Day Recovery","labels":["Training Days","Rest Days"],"series":[{"name":"Avg Recovery %","data":[68.0,64.0],"color":"#3b82f6","y_axis":"left"}],"x_label":"Day Type","y_label":"Recovery %","insights":[],"reference_areas":[]}

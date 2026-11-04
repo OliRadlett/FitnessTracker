@@ -274,14 +274,24 @@ async def _session_mix_row(db: AsyncSession, user_id: uuid.UUID) -> EngineRow:
     )
 
 
-def _headline(should_rest: bool, consensus: list[EngineRow]) -> str:
+def _headline(should_rest: bool, consensus: list[EngineRow], plan_active: bool) -> str:
     """One sentence, driven by whichever engine actually voted.
 
     The headline names the winning engine rather than averaging the consensus
     into something no engine said. An averaged headline is the failure mode this
     whole section is about: it reads confident and nobody can act on it.
+
+    ``plan_active`` is the same ``plan_id is not None`` the projection engine
+    branches on. Without it this function asserted "today's plan" to a user who
+    has none — a sentence that contradicted the page's own plan card. The
+    dashboard now renders its own sentence from the fields, but this string is
+    the API contract and the fallback, so it has to be true as well.
     """
     if not should_rest:
+        if not plan_active:
+            # No plan: say what the verdict is actually based on, rather than
+            # pointing at a plan that does not exist.
+            return "Train — nothing is planned, so this rests on load and recovery alone."
         return "Go ahead with today's plan."
     rest_voters = [r for r in consensus if r.available and r.stance in (STANCE_REST, STANCE_CUT)]
     if not rest_voters:
@@ -443,7 +453,7 @@ async def compute_today_verdict(
 
     return {
         "should_rest": should_rest,
-        "headline": _headline(should_rest, consensus),
+        "headline": _headline(should_rest, consensus, plan_id is not None),
         "reasons": reasons,
         "consensus": [row.as_dict() for row in consensus],
         "projected_load": projected,
