@@ -656,3 +656,119 @@ class TestActivityAiAnalysis:
     async def test_trigger_for_nonexistent_activity(self, client):
         resp = await client.post(f"/api/v1/activities/{_uuid.uuid4()}/ai-analysis")
         assert resp.status_code == 404
+
+# ── Journal contract ─────────────────────────────────────────────────────────
+#
+# The journal names a lift after the exercise it trained and filters by sport
+# family, because provider strings disagree ("strength" vs "weighttraining") and
+# every activity name is constant. These tests pin that contract end to end.
+
+
+class TestJournalContract:
+    """What the activity journal needs from the list and summary endpoints."""
+
+    @staticmethod
+    async def _strength_activity_with_sets(db_session, test_user):
+        """An activity linked to a session with three sets of Bench Press."""
+        from app.models.lifting import LiftingSession, LiftingSet
+
+        activity = Activity(
+            user_id=test_user.id,
+            source="strava",
+            sport_type="strength",
+            name="Evening Weight Training",
+            start_date=datetime.now(UTC) - timedelta(days=2),
+            duration_seconds=4200,
+        )
+        db_session.add(activity)
+        await db_session.flush()
+
+        session = LiftingSession(
+            user_id=test_user.id,
+            activity_id=activity.id,
+            session_date=activity.start_date.date(),
+            focus="Push",
+            duration_seconds=4200,
+            total_volume_kg=5326.0,
+            estimated_tss=58.7,
+        )
+        db_session.add(session)
+        await db_session.flush()
+
+        for index, (name, weight, reps) in enumerate(
+            [("Bench Press", 90.0, 4), ("Bench Press", 90.0, 4), ("Tricep Extension", 36.0, 12)]
+        ):
+            db_session.add(
+                LiftingSet(
+                    session_id=session.id,
+                    exercise_name=name,
+                    weight_kg=weight,
+                    reps=reps,
+                    set_number=index + 1,
+                    order_index=index,
+                )
+            )
+        await db_session.flush()
+        return activity
+
+    async def test_linked_session_carries_the_exercise_the_row_shows(
+        self, client, db_session, test_user
+    ):
+        """top_exercise / top_weights / estimated_tss come back on the list."""
+        await self._strength_activity_with_sets(db_session, test_user)
+
+        resp = await client.get("/api/v1/activities")
+
+        assert resp.status_code == 200
+        rows = resp.json()
+        assert len(rows) == 1
+        linked = rows[0]["linked_lifting_session"]
+        assert linked["top_exercise"] == "Bench Press"
+        assert linked["set_count"] == 3
+        assert linked["top_weights"][0] == 90.0
+        assert linked["estimated_tss"] == 58.7
+
+    async def test_summary_includes_lifting_volume(self, client, db_session, test_user):
+        """A period total without volume hides every lift."""
+        await self._strength_activity_with_sets(db_session, test_user)
+
+        resp = await client.get("/api/v1/activities/summary")
+
+        assert resp.status_code == 200
+        assert resp.json()["total_volume_kg"] == 5326.0
+
+    async def test_sport_group_ride_excludes_lifts(self, client, db_session, test_user):
+        await self._strength_activity_with_sets(db_session, test_user)
+        db_session.add(
+            Activity(
+                user_id=test_user.id,
+                source="strava",
+                sport_type="cycling",
+                name="Cycling",
+                start_date=datetime.now(UTC) - timedelta(days=1),
+                duration_seconds=3600,
+                distance_meters=50_000.0,
+            )
+        )
+        await db_session.flush()
+
+        rides = await client.get("/api/v1/activities", params={"sport_group": "ride"})
+        lifts = await client.get("/api/v1/activities", params={"sport_group": "lift"})
+
+        assert [row["sport_type"] for row in rides.json()] == ["cycling"]
+        # The real account stores "strength", not "weighttraining" — the old
+        # dropdown's exact-match filter silently returned nothing.
+        assert [row["sport_type"] for row in lifts.json()] == ["strength"]
+
+    async def test_search_reaches_route_and_exercise_names(
+        self, client, db_session, test_user, test_route_activities
+    ):
+        """`q` used to match Activity.name only — constant for every row."""
+        by_route = await client.get("/api/v1/activities", params={"q": "Richmond"})
+        assert by_route.status_code == 200
+        assert len(by_route.json()) == len(test_route_activities)
+
+        await self._strength_activity_with_sets(db_session, test_user)
+        by_exercise = await client.get("/api/v1/activities", params={"q": "Tricep"})
+        assert by_exercise.status_code == 200
+        assert [row["sport_type"] for row in by_exercise.json()] == ["strength"]

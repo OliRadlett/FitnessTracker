@@ -12,14 +12,15 @@ from typing import Literal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import Date, asc, case, cast, desc, func, select
+from sqlalchemy import Date, asc, case, cast, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.activity import Activity, ActivityStream
 from app.models.daily_metric import DailyMetric
-from app.models.lifting import LiftingSession, PersonalRecord
+from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
+from app.models.route import Route
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanDay
 from app.models.user import User
@@ -68,16 +69,41 @@ router = APIRouter()
 def _build_linked_session_summary(
     activity: Activity,
 ) -> LinkedLiftingSessionSummary | None:
-    """Build a linked lifting session summary from the activity's relationship."""
+    """Build a linked lifting session summary from the activity's relationship.
+
+    ``top_exercise`` is the exercise with the most sets, and ``top_weight_kg``
+    the heaviest single set. Both read the already-eager-loaded ``sets`` that
+    ``set_count`` reads — this adds no query and no column to keep in sync.
+    """
     ls = activity.lifting_session
     if ls is None:
         return None
+
+    sets = ls.sets or []
+    counts: dict[str, int] = {}
+    weights: list[float] = []
+    for lifting_set in sets:
+        name = (lifting_set.exercise_name or "").strip()
+        if name:
+            counts[name] = counts.get(name, 0) + 1
+        if lifting_set.weight_kg is not None:
+            weights.append(lifting_set.weight_kg)
+
+    # First-most-sets wins on a tie: sets are ordered by (order_index,
+    # created_at, id), so this is deterministic rather than dict-order luck.
+    top_exercise = max(counts, key=lambda name: counts[name]) if counts else None
+    heaviest = max(weights) if weights else None
+
     return LinkedLiftingSessionSummary(
         id=ls.id,
         session_date=ls.session_date,
         focus=ls.focus,
-        set_count=len(ls.sets) if ls.sets else 0,
+        set_count=len(sets),
         total_volume_kg=ls.total_volume_kg,
+        top_exercise=top_exercise,
+        top_weight_kg=heaviest,
+        top_weights=sorted(weights, reverse=True)[:4],
+        estimated_tss=ls.estimated_tss,
     )
 
 
@@ -100,6 +126,27 @@ def _extract_encoded_polyline(activity: Activity) -> str | None:
     from app.services.polyline_utils import extract_activity_polyline
 
     return extract_activity_polyline(activity)
+
+
+def _activity_search_clause(q: str):
+    """Match what an activity row actually shows: its name, its route, or the
+    lift it was linked to.
+
+    ``Activity.name`` alone is the one field that carries no information —
+    every ride on the real account is named "Cycling" and every lift
+    "… Weight Training" — so searching it alone returns everything or nothing.
+    """
+    term = f"%{q}%"
+    return or_(
+        Activity.name.ilike(term),
+        Activity.route.has(Route.name.ilike(term)),
+        Activity.lifting_session.has(
+            or_(
+                LiftingSession.focus.ilike(term),
+                LiftingSession.sets.any(LiftingSet.exercise_name.ilike(term)),
+            )
+        ),
+    )
 
 
 def _enrich_activity_read(
@@ -150,10 +197,16 @@ ACTIVITY_SORT_FIELDS = {
 @router.get("")
 async def list_activities(
     sport_type: str | None = Query(None),
+    sport_group: Literal["ride", "lift"] | None = Query(
+        None, description="Sport family: ride or lift (provider strings vary)"
+    ),
     source: str | None = Query(None),
     start_date_after: datetime | None = Query(None),
     start_date_before: datetime | None = Query(None),
-    q: str | None = Query(None, description="Search activity name (case-insensitive)"),
+    q: str | None = Query(
+        None,
+        description="Search activity name, route name, or linked lift focus/exercise (case-insensitive)",
+    ),
     min_distance: float | None = Query(None, ge=0),
     max_distance: float | None = Query(None, ge=0),
     min_duration: int | None = Query(None, ge=0),
@@ -217,6 +270,8 @@ async def list_activities(
     ]
     if sport_type:
         base_filters.append(Activity.sport_type == sport_type)
+    if sport_group:
+        base_filters.append(_sport_group_clause(sport_group))
     if source:
         base_filters.append(Activity.source == source)
     if start_date_after:
@@ -224,7 +279,7 @@ async def list_activities(
     if start_date_before:
         base_filters.append(Activity.start_date <= start_date_before)
     if q:
-        base_filters.append(Activity.name.ilike(f"%{q}%"))
+        base_filters.append(_activity_search_clause(q))
     if min_distance is not None:
         base_filters.append(Activity.distance_meters >= min_distance)
     if max_distance is not None:
@@ -276,14 +331,46 @@ async def list_activities(
 
 STRENGTH_SPORT_TYPES = ("weighttraining", "workout", "crossfit", "strength_training")
 
+# Journal filters are "Rides" / "Lifts", not exact provider strings. Providers
+# disagree ("cycling" vs "virtualride"; "strength" vs "weighttraining"), and the
+# old dropdown sent `sport_type=weighttraining` — which silently matched nothing
+# on an account whose rides say "strength". A group is the honest filter.
+SPORT_GROUP_TYPES = {
+    "ride": ("cycling", "ride", "virtualride", "ebikeride", "gravelride", "mountainbikeride"),
+    "lift": ("weighttraining", "strength", "strength_training", "workout", "crossfit", "lifting"),
+}
+
+
+def _sport_group_clause(group: str):
+    """Match a whole sport family, mirroring the frontend's own classifier."""
+    if group == "ride":
+        return or_(
+            Activity.sport_type.in_(SPORT_GROUP_TYPES["ride"]),
+            Activity.sport_type.ilike("%cycl%"),
+        )
+    return or_(
+        Activity.sport_type.in_(SPORT_GROUP_TYPES["lift"]),
+        Activity.sport_type.ilike("%strength%"),
+        Activity.sport_type.ilike("%weight%"),
+        Activity.sport_type.ilike("%workout%"),
+        Activity.sport_type.ilike("%crossfit%"),
+        Activity.sport_type.ilike("%lift%"),
+    )
+
 
 @router.get("/summary", response_model=ActivitySummary)
 async def get_activity_summary(
     sport_type: str | None = Query(None),
+    sport_group: Literal["ride", "lift"] | None = Query(
+        None, description="Sport family: ride or lift (provider strings vary)"
+    ),
     source: str | None = Query(None),
     start_date_after: datetime | None = Query(None),
     start_date_before: datetime | None = Query(None),
-    q: str | None = Query(None, description="Search activity name (case-insensitive)"),
+    q: str | None = Query(
+        None,
+        description="Search activity name, route name, or linked lift focus/exercise (case-insensitive)",
+    ),
     min_distance: float | None = Query(None, ge=0),
     max_distance: float | None = Query(None, ge=0),
     min_duration: int | None = Query(None, ge=0),
@@ -295,9 +382,10 @@ async def get_activity_summary(
 ):
     """Get aggregate totals for all activities matching the filter criteria.
 
-    Returns count, total distance, total duration, and total TSS across every
-    matching activity (not just a single paginated page). Strenth activities are
-    excluded from the distance total to match the frontend stats bar.
+    Returns count, total distance, total duration, total TSS and total lifting
+    volume across every matching activity (not just a single paginated page).
+    Strength activities are excluded from the distance total to match the
+    frontend stats bar, and contribute volume instead.
     """
     # Validate min/max pairs
     if (
@@ -322,6 +410,8 @@ async def get_activity_summary(
     where = [Activity.user_id == current_user.id, Activity.source != "wahoo"]
     if sport_type:
         where.append(Activity.sport_type == sport_type)
+    if sport_group:
+        where.append(_sport_group_clause(sport_group))
     if source:
         where.append(Activity.source == source)
     if start_date_after:
@@ -329,7 +419,7 @@ async def get_activity_summary(
     if start_date_before:
         where.append(Activity.start_date <= start_date_before)
     if q:
-        where.append(Activity.name.ilike(f"%{q}%"))
+        where.append(_activity_search_clause(q))
     if min_distance is not None:
         where.append(Activity.distance_meters >= min_distance)
     if max_distance is not None:
@@ -365,11 +455,25 @@ async def get_activity_summary(
         ).where(*where)
     )
     row = result.one()
+
+    # Volume is the lifter's distance: without it a period total makes most of
+    # this account's sessions invisible. A separate aggregate rather than a
+    # correlated subquery — the outer query has no GROUP BY, and rather than a
+    # join — which would multiply the distance and TSS sums by the number of
+    # sessions linked to an activity.
+    volume_result = await db.execute(
+        select(func.coalesce(func.sum(LiftingSession.total_volume_kg), 0))
+        .select_from(Activity)
+        .join(LiftingSession, LiftingSession.activity_id == Activity.id)
+        .where(*where)
+    )
+
     return ActivitySummary(
         count=int(row.count or 0),
         total_distance_meters=float(row.total_distance or 0),
         total_duration_seconds=float(row.total_duration or 0),
         total_tss=float(row.total_tss or 0),
+        total_volume_kg=float(volume_result.scalar() or 0),
     )
 
 
