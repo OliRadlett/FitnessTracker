@@ -76,7 +76,7 @@ python fittrack.py exec backend pytest tests/ -q
 ```
 
 Markers (defined in [`backend/pyproject.toml`](../backend/pyproject.toml)):
-- `integration` — requires real PostgreSQL; the integration conftest creates its own test database (override via `TEST_DATABASE_URL` env var). Transactional rollback per test.
+- `integration` — requires real PostgreSQL; the integration conftest drops and recreates the `public` schema per test (override via `TEST_DATABASE_URL`; a DB-name tripwire refuses non-test databases). There is **no transactional rollback** — use `begin_nested()` for a scoped undo.
 - `cheap` / `expensive` / `smoke` — speed tiers for filtering.
 
 pytest config: `asyncio_mode = "auto"` — async test functions need no decorator.

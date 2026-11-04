@@ -1,20 +1,11 @@
 # FitTrack Bug Report — Active Bugs
 
-> **Updated**: 2026-10-16 | Total tracked: 99 | **Open: 6** | Fixed: 82 (archived, see `BUGS-archive.md` and git history)
+> **Updated**: 2026-11-04 | Total tracked: 99 | **Open: 5** | Fixed: 84 (archived, see `BUGS-archive.md` and git history)
+>
+> BUG-013 (the file is `004_add_pr_notes.py` with `revision = "004"`) and BUG-015
+> (double-commit removed) were fixed long ago; they are no longer listed as open.
 
 ## Open Bugs
-
-### BUG-013: Alembic Migration Revision Filename Mismatch
-- **Status:** DOCUMENTED (skip — naming only)
-- **File:** `backend/alembic/versions/003_add_pr_notes.py`
-- **Issue:** File is named `003_add_pr_notes.py` but contains `revision = "004"` and `down_revision = "002"`. Revision `003` is missing from the versions directory. Confusing and indicates a deleted or never-created migration.
-- **Fix:** Rename file to `004_add_pr_notes.py` to match revision ID, or create a stub `003` migration.
-
-### BUG-015: Double-Commit Anti-Pattern
-- **Status:** FIXED (2026-09-30 — one documented carve-out remains)
-- **Files:** `backend/app/database.py:28-36` + `backend/app/api/webhooks.py:105`
-- **Issue:** `get_db()` auto-commits after endpoint yields. 34+ endpoints also called `await db.commit()` explicitly, causing two commits per request.
-- **Fix:** Removed explicit commits across all endpoints (pilot #196 + follow-ups). The sole remainder is the Strava webhook receiver, which uses a manually-created `async_session_factory()` session (not `get_db`) and must durably queue one row before returning 200 — documented carve-out in code.
 
 ### BUG-025: OAuth `redirect_uri` Constructed Client-Side
 - **Status:** DEFERRED (needs architecture change)

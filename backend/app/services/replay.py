@@ -415,11 +415,6 @@ def build_replay(activity: Activity) -> dict[str, Any]:
     power = [float(value) for value in streams.get("watts", [])]
     ascent, descent = _ascent_descent(alt)
     route_name = _route_name(activity)
-    pose_labels = (
-        {"lausanne": "Start", "montreux": "Mid"}
-        if route_name and "arthur" in route_name.lower()
-        else None
-    )
     moving_s = int(activity.duration_seconds or t[-1])
     distance_m = float(activity.distance_meters or d[-1])
     elapsed_s = float(t[-1])
@@ -520,7 +515,7 @@ def build_replay(activity: Activity) -> dict[str, Any]:
         "name": activity.name,
         "date": activity.start_date.isoformat(),
         "timezone": activity_timezone(activity),
-        "pose_labels": pose_labels,
+        "pose_labels": None,
         "stats": {
             "distance_m": round(distance_m, 1),
             "moving_s": moving_s,
