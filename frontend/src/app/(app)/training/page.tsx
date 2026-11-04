@@ -62,9 +62,27 @@ export default function TrainingPage() {
   const currentWeek = shell.selectedPlan
     ? weekNumberForDate(shell.selectedPlan.start_date, shell.selectedPlan.end_date, today)
     : 1;
+
+  /**
+   * Which week to open on.
+   *
+   * `?w=` wins, then `?day=`'s week (goal cards deep-link to a date), then today's
+   * week — but only if the plan actually covers today. A finished plan clamped to
+   * "week 7 of 7" opens on an empty trailing week, which is the state the whole
+   * redesign exists to stop landing on; open where the content is instead.
+   */
+  const defaultWeek = (() => {
+    if (!shell.selectedPlan) return 1;
+    const { start_date, end_date } = shell.selectedPlan;
+    if (shell.highlightDate) return weekNumberForDate(start_date, end_date, shell.highlightDate);
+    if (today >= start_date && today <= end_date) return currentWeek;
+    const firstWritten = coverage?.weeks.find((w) => w.written)?.weekNumber;
+    return firstWritten ?? currentWeek;
+  })();
+
   const weekParam = Number(getParam('w'));
   const weekNumber =
-    Number.isFinite(weekParam) && weekParam >= 1 && weekParam <= totalWeeks ? weekParam : currentWeek;
+    Number.isFinite(weekParam) && weekParam >= 1 && weekParam <= totalWeeks ? weekParam : defaultWeek;
 
   const setWeek = (n: number) => setParam('w', n === currentWeek ? null : String(n));
 

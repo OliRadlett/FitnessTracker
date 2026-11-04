@@ -206,9 +206,10 @@ export function readDay(
   const rideKm = km(ride?.distance_meters);
 
   // A missed session has no number: the absence is the point. Showing the
-  // planned duration beside "Missed" reads as load that was banked.
+  // planned duration beside "Missed" reads as load that was banked. The same is
+  // true of a rest day — "0 TSS" is not a measurement.
   const headline =
-    status === 'missed'
+    status === 'missed' || status === 'rest'
       ? null
       : liftTonnes != null
         ? { value: liftTonnes, unit: 't' }

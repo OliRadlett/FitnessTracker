@@ -144,12 +144,16 @@ export function TrainingSpine({
           </div>
 
           {plans.length > 1 && (
-            <PlanSwitcher
-              plans={plans}
-              selectedPlanId={plan?.id ?? null}
-              onSelect={onSelectPlan}
-              onManage={onOpenPlans}
-            />
+            // Hidden below md: at 390 the switcher clipped to "Base Buildin…" and
+            // pushed the overflow menu off the row entirely.
+            <div className="hidden md:block">
+              <PlanSwitcher
+                plans={plans}
+                selectedPlanId={plan?.id ?? null}
+                onSelect={onSelectPlan}
+                onManage={onOpenPlans}
+              />
+            </div>
           )}
 
           <button

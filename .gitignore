@@ -42,6 +42,7 @@ frontend/tsconfig.tsbuildinfo
 frontend/test-results/
 frontend/test-results-prod-shots/
 frontend/e2e/screenshots/
+frontend/e2e/out/
 frontend/playwright-report/
 frontend/e2e/.auth/
 frontend/e2e/prod-shots/.auth/

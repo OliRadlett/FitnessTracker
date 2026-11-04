@@ -18,6 +18,13 @@ export default defineConfig({
   use: {
     baseURL: 'http://localhost:3010/fittrack',
     ignoreHTTPSErrors: true,
+    // The PWA service worker re-issues `/api/v1/*` fetches from its own context,
+    // which `page.route()` does not intercept. In a production build that meant
+    // the plan-detail and week requests escaped the mocks entirely and hit the
+    // real backend (401 "Invalid token") — the page then rendered an error state
+    // that looked like an application bug. Blocking the SW is what makes the
+    // mocks authoritative.
+    serviceWorkers: 'block',
     screenshot: 'only-on-failure',
     trace: 'off',
     video: 'off',

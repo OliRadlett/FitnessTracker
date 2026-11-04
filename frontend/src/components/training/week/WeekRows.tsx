@@ -136,8 +136,10 @@ export function WeekRows({
           </div>
 
           <div className="min-w-0 flex-1 self-stretch">
-            <div className="flex items-start gap-2">
-              <span className="mt-0.5 md:hidden">
+            {/* Centred, not `items-start`: at 390 the pill was rendering above the
+                title, which read as two rows for one session. */}
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 md:hidden">
                 <SportGlyph sport={r.sport} className="h-3.5 w-3.5 text-muted" />
               </span>
               <button

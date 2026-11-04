@@ -59,27 +59,57 @@ plan", conformity said "87%", and the week under all of it was empty.
 4. **Blocks live behind a button** on the Plan surface ("Blocks & phases"),
    because the derived histogram that used to open the editor is gone.
 
-## Unverified — read before merging
+## Verified
 
-- **The e2e suite runs and the page renders, but 8 of 10 cases fail.** Observed,
-  not assumed: `npx next start -p 3010` + `playwright.local.config.ts` (the repo
-  config hardcodes `port: 3000` with `reuseExistingServer: true`, so on a machine
-  where another checkout already serves :3000 the suite silently tests *that*
-  build — it did, on the first attempt).
-  - Passing: the two-surface tab bar, and the empty-plan-list state.
-  - **Blocking:** the page renders the spine, the Week/Plan tabs and the week nav,
-    then shows `Couldn't load plans` — `plansQuery` errors under the e2e fixture,
-    so no plan, no coverage, no rows. Everything downstream of that fails.
-  - Not yet diagnosed. First place to look: the fixture handler for
-    `api/v1/training-plans` (`e2e/fixtures/authenticated-test.ts:348`) returns
-    summaries for the collection and a plan for `/{id}`; something in the new
-    page's request shape or query set is not matching it.
-- **Nothing beyond the error state has been visually reviewed.** The design was
-  proven in the lab (`prototype/training/qa/out/contact-sheet.png`, ten frames,
-  measured audits); this implementation has only been seen as an error card.
+- **`tsc --noEmit` clean**; `npm run build` succeeds.
 - **Unit tests:** `src/__tests__/training-coverage.test.ts` — 15 passing.
-- **Typecheck:** clean, and clean again after deleting the 14 components.
-- **Build:** `npm run build` succeeds.
+- **e2e:** `e2e/training.spec.ts` — **10/10 passing** against a locally started
+  build (`npx next start -p 3010`, `playwright.local.config.ts`).
+- **Rendered and reviewed** at 1440×900 and 390×844, both surfaces. Screenshots:
+  `frontend/e2e/out/*.png` (gitignored), captured by `e2e/capture-training.spec.ts`.
+
+### Two harness bugs found by doing this — both worth fixing repo-wide
+
+1. **`playwright.config.ts` hardcodes `port: 3000` with `reuseExistingServer: true`.**
+   On a machine where another checkout is already serving :3000, the suite
+   silently tests *that* build. It did, on the first run here: eight failures
+   against the old page. `playwright.local.config.ts` exists to make the target
+   explicit.
+2. **The PWA service worker escapes `page.route()`.** In a production build the
+   SW re-issues `/api/v1/*` fetches from its own context, so the plan-detail and
+   week requests bypassed the mocks and hit the real backend (`401 Invalid
+   token`). It presented as an application bug. `serviceWorkers: 'block'` in the
+   Playwright config is the fix, and it likely explains other flakiness in this
+   suite.
+
+### Six defects the first render exposed (all fixed)
+
+1. **A wall of alarm-red.** The plan grid and table derived "missed" from
+   `completed: false`, which the plan payload carries but `day_status` does not —
+   four historical weeks painted red while the week view (which has `day_status`)
+   said "Done". Now: done / no-completion-recorded / rest / not-written, and
+   "missed" is only ever claimed where the server said so.
+2. **"0 of 7 weeks have no sessions"** rendered as a caution banner. Suppressed;
+   the callout now states the positive case in neutral type.
+3. **Header range disagreed with the rows** ("27 Jul – 9 Aug" over rows 3–9 Aug),
+   because the header used plan math while the rows had moved to the payload's
+   `week_start`.
+4. **Rest days showed "0 TSS"** — a measurement where there is none.
+5. **The mobile spine clipped its plan switcher** to "Base Buildin…" and pushed
+   the overflow menu off the row.
+6. **The mobile status pill sat above the row title**, reading as two lines for
+   one session.
+
+## Still owed
+
+- **`DayEditor` still uses 10 px text** (25 occurrences). The week surface is
+  clean — the smallest computed font on the week frame is 11 px and on the
+  day-expanded frame 10 px, which is `DayEditor`'s pre-existing type. Deleting
+  those is a follow-up, and until it happens the lab's criterion 8 does not hold
+  on frame 4.
+- `frontend/src/CODEMAP.md` `/training` row and the `AGENTS.md` bullet still
+  describe WeeklyView and the mode switch.
+- `training-redesign-plan.md` §15 not yet marked superseded.
 
 ## Docs still to update (do this in the same PR)
 

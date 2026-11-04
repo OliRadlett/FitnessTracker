@@ -25,8 +25,9 @@ test.describe('Training Page — the week surface', () => {
   test('names the plan and states its coverage before anything else', async ({
     authenticatedPage: page,
   }) => {
+    // Scoped to `main`: the app shell's wordmark is also an h1 on every page.
     // mockTrainingPlanSummaries: plan-1 is the only `active` plan.
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('Base Building Block');
+    await expect(page.locator('main h1')).toContainText('Base Building Block');
     // The line that replaced `47/49 · 96%`: weeks written, out of weeks claimed.
     await expect(page.getByTestId('coverage-sentence')).toContainText(/weeks written/i);
   });
@@ -122,6 +123,10 @@ test.describe('Training Page — capabilities that had to survive', () => {
             d.id === 'day-3'
               ? {
                   ...d,
+                  // The card is keyed off *having a strength day*, not plan_type —
+                  // the old `plan_type === 'strength'` gate hid S1–S4 from every
+                  // custom plan. This plan is custom AND has a strength day.
+                  sport: 'strength' as const,
                   planned_exercises: [
                     { exercise: 'Back Squat', sets: 5, reps: 5, weight_kg: 100, pct_1rm: 0.8 },
                     { exercise: 'Plank', sets: 3, reps: 1, weight_kg: 0 },

@@ -23,12 +23,21 @@ const rangeLabel = (start: string, end: string): string => {
     : `${a.getDate()} ${MONTH[a.getMonth()]} – ${b.getDate()} ${MONTH[b.getMonth()]}`;
 };
 
-/** Fill for one date, from the plan payload alone (no per-week request). */
+/**
+ * Fill for one date, from the plan payload alone (no per-week request).
+ *
+ * Deliberately **not** red for "past and not completed". The plan payload carries
+ * `completed` but not `day_status`, and the two disagree — a whole historical plan
+ * whose `completed` flags were never written painted four weeks solid alarm-red
+ * while the week view (which has `day_status`) said "Done". A day the plan cannot
+ * vouch for is *unrecorded*, not missed; missed is only claimed where the week
+ * payload knows, which is the week surface.
+ */
 function cellClass(day: TrainingPlanDay | undefined, date: string, today: string): string {
   if (!day) return 'border border-dashed border-white/[0.10] bg-transparent';
   if (day.sport === 'rest') return 'bg-white/[0.10]';
   if (day.completed) return 'bg-accent/55';
-  if (date < today) return 'bg-warning/75';
+  if (date < today) return 'border border-white/[0.16] bg-white/[0.03]';
   return 'bg-accent/25';
 }
 
@@ -39,7 +48,8 @@ function Legend() {
         <span className="h-2.5 w-2.5 rounded-[2px] bg-accent/55" /> done
       </span>
       <span className="flex items-center gap-1.5">
-        <span className="h-2.5 w-2.5 rounded-[2px] bg-warning/75" /> missed
+        <span className="h-2.5 w-2.5 rounded-[2px] border border-white/[0.16] bg-white/[0.03]" /> no
+        completion recorded
       </span>
       <span className="flex items-center gap-1.5">
         <span className="h-2.5 w-2.5 rounded-[2px] bg-white/[0.10]" /> rest
@@ -85,35 +95,50 @@ export function PlanCoverage({
   const stateOf = (w: WeekSummary): string => {
     if (!w.written) return 'No sessions';
     if (w.isCurrent) return 'This week';
-    if (w.missed > 0) return `${w.missed} missed`;
-    return w.isPast ? 'All done' : 'Planned';
+    // `completed` is the only per-day fact in the plan payload; it is not
+    // `day_status`. So a past week is "recorded" or "no record" — never
+    // "planned" (it is over) and never "missed" (that needs day_status).
+    if (w.isPast) return w.done > 0 ? 'Recorded' : 'No record';
+    return 'Planned';
   };
 
   return (
     <>
-      <section className="mb-4 rounded-xl border border-caution/25 bg-caution/[0.06] p-4">
-        <p className="text-sm font-medium text-foreground">
-          {coverage.uncoveredWeeks} of {coverage.totalWeeks} weeks have no sessions.
-        </p>
-        <p className="mt-1 text-sm text-muted">
-          {coverage.lastSessionDate ? (
-            <>
-              The plan is written to {shortDate(coverage.lastSessionDate)} and claims to run to{' '}
-              {shortDate(plan.end_date)}.
-            </>
-          ) : (
-            <>The plan has no sessions written yet.</>
-          )}{' '}
-          {coverage.firstUnwrittenWeek != null && (
-            <>
-              Weeks {coverage.firstUnwrittenWeek}–{coverage.totalWeeks} are empty
-              {coverage.daysSinceLastSession != null && (
-                <> — nothing has been planned for the last {coverage.daysSinceLastSession} days</>
+      <section
+        className="mb-4 rounded-xl border border-white/[0.07] bg-surface p-4"
+        aria-label="Plan coverage summary"
+      >
+        {coverage.uncoveredWeeks > 0 ? (
+          <>
+            <p className="text-sm font-medium text-caution">
+              {coverage.uncoveredWeeks} of {coverage.totalWeeks} weeks have no sessions.
+            </p>
+            <p className="mt-1 text-sm text-muted">
+              {coverage.lastSessionDate ? (
+                <>
+                  The plan is written to {shortDate(coverage.lastSessionDate)} and claims to run to{' '}
+                  {shortDate(plan.end_date)}.
+                </>
+              ) : (
+                <>The plan has no sessions written yet.</>
+              )}{' '}
+              {coverage.firstUnwrittenWeek != null && (
+                <>
+                  Weeks {coverage.firstUnwrittenWeek}–{coverage.totalWeeks} are empty
+                  {coverage.daysSinceLastSession != null && (
+                    <> — nothing has been planned for the last {coverage.daysSinceLastSession} days</>
+                  )}
+                  .
+                </>
               )}
-              .
-            </>
-          )}
-        </p>
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted">
+            The plan is written end to end — {coverage.writtenWeeks} of {coverage.totalWeeks} weeks,
+            through {shortDate(plan.end_date)}.
+          </p>
+        )}
         <div className="mt-3 flex flex-wrap items-baseline gap-x-6 gap-y-2 text-foreground">
           <span className="tnum text-base font-semibold">
             {coverage.writtenWeeks}/{coverage.totalWeeks}
@@ -310,7 +335,7 @@ export function PlanCoverage({
               <span className="tnum text-right text-muted">{w.plannedTss > 0 ? w.plannedTss : '—'}</span>
               <span
                 className={`text-right text-xs ${
-                  !w.written ? 'text-caution' : w.missed > 0 ? 'text-warning' : 'text-muted'
+                  !w.written ? 'text-caution' : w.isPast && w.done === 0 ? 'text-muted' : 'text-muted'
                 }`}
               >
                 {stateOf(w)}

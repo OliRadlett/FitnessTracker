@@ -16,7 +16,6 @@ import {
   planHasStrengthDays,
   planStopsBefore,
   weekDates,
-  weekStartDate,
   type Coverage,
 } from '@/lib/training/coverage';
 import { newSessionPayload } from '@/lib/training/sessionGroups';
@@ -110,7 +109,23 @@ export function WeekSurface({
     staleTime: 60_000,
   });
 
-  const dates = useMemo(() => weekDates(plan.start_date, weekNumber), [plan.start_date, weekNumber]);
+  /**
+   * The seven dates come from the payload's `week_start` when the payload is in,
+   * because the server is the authority on what "week N" means (plan weeks are
+   * Monday-aligned from the plan's start, which need not be a Monday). Plan math
+   * is only the pre-load stand-in.
+   */
+  const dates = useMemo(() => {
+    const start = weekQuery.data?.week_start;
+    if (start) {
+      return Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(start.slice(0, 10) + 'T00:00:00');
+        d.setDate(d.getDate() + i);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      });
+    }
+    return weekDates(plan.start_date, weekNumber);
+  }, [weekQuery.data?.week_start, plan.start_date, weekNumber]);
   const days = weekQuery.data?.days ?? [];
   const written = days.length > 0;
   const sessions = days.filter((d) => d.sport !== 'rest').length;
@@ -146,7 +161,7 @@ export function WeekSurface({
           <div className="flex flex-wrap items-baseline gap-x-2">
             <h2 className="text-base font-semibold text-foreground">Week {weekNumber}</h2>
             <span className="text-sm text-muted">
-              {rangeLabel(weekStartDate(plan.start_date, weekNumber), dates[6])}
+              {rangeLabel(dates[0], dates[6])}
             </span>
             {written ? (
               <span className="text-sm text-muted">· {sessions} {sessions === 1 ? 'session' : 'sessions'}</span>
