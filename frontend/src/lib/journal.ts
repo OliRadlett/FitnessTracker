@@ -16,7 +16,7 @@
  */
 
 import type { Activity } from '@/lib/api';
-import { isStrengthType } from '@/lib/sportUtils';
+import { isStrengthType, sportLabel } from '@/lib/sportUtils';
 import { formatDistance, getActiveLocale } from '@/lib/utils';
 import { mondayOf, toDateStr } from '@/lib/training/week';
 
@@ -164,9 +164,13 @@ export type SessionGlyph =
   | { kind: 'lift'; weights: number[] }
   | { kind: 'none' };
 
+export type SessionKind = 'ride' | 'lift' | 'other';
+
 export interface JournalRow {
   id: string;
   isRide: boolean;
+  /** Which layout the row belongs to. `other` covers run/swim/hike/walk. */
+  kind: SessionKind;
   title: string;
   /** Time · source · (sport-specific detail). */
   meta: string[];
@@ -198,6 +202,10 @@ function timeOf(activity: Activity): string {
  */
 export function describeActivity(activity: Activity): JournalRow {
   const isRide = activity.sport_type === 'cycling';
+  // A lift is strength work; everything else is an endurance session. The old
+  // two-way branch treated a run as a lift, which titled it "Weight training"
+  // and claimed it had no set log.
+  const isLift = isStrengthType(activity.sport_type);
   const time = timeOf(activity);
   const source = providerOf(activity);
   const duration = formatRowDuration(activity.duration_seconds);
@@ -219,6 +227,7 @@ export function describeActivity(activity: Activity): JournalRow {
     return {
       id: activity.id,
       isRide,
+      kind: 'ride' as const,
       title: route || typeLabel || 'Ride',
       meta,
       primary: duration,
@@ -226,8 +235,32 @@ export function describeActivity(activity: Activity): JournalRow {
       seconds: activity.duration_seconds ?? 0,
       load: tss,
       glyph: activity.encoded_polyline
-        ? { kind: 'route', polyline: activity.encoded_polyline }
-        : { kind: 'none' },
+        ? { kind: 'route' as const, polyline: activity.encoded_polyline }
+        : { kind: 'none' as const },
+    };
+  }
+
+  if (!isLift) {
+    // Run / swim / hike / walk: the activity's own name is usually meaningful
+    // here ("Morning Run"), so it is the title rather than a derived one.
+    const title = activity.name?.trim() || sportLabel(activity.sport_type);
+    const secondary = [formatDistance(activity.distance_meters, 1)];
+    if (activity.average_heartrate) secondary.push(`${Math.round(activity.average_heartrate)} bpm`);
+    else if (activity.elevation_gain_meters) secondary.push(`${Math.round(activity.elevation_gain_meters)} m`);
+
+    return {
+      id: activity.id,
+      isRide: false,
+      kind: 'other' as const,
+      title,
+      meta: [time, source],
+      primary: duration,
+      secondary: secondary.join(' · '),
+      seconds: activity.duration_seconds ?? 0,
+      load: activity.tss ?? null,
+      glyph: activity.encoded_polyline
+        ? { kind: 'route' as const, polyline: activity.encoded_polyline }
+        : { kind: 'none' as const },
     };
   }
 
@@ -252,6 +285,7 @@ export function describeActivity(activity: Activity): JournalRow {
   return {
     id: activity.id,
     isRide: false,
+    kind: 'lift' as const,
     title,
     meta,
     primary: duration,

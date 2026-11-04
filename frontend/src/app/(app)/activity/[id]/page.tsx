@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthFetch } from '@/lib/api';
 import type { ActivityDetail, LiftingSession, RideAnalysis } from '@/lib/api';
 import { describeActivity, formatRowDuration, formatVolumeKg } from '@/lib/journal';
+import { isStrengthType } from '@/lib/sportUtils';
 import { seriesArea } from '@/lib/route-shape';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { RouteShape } from '@/components/activity/RouteShape';
@@ -112,6 +113,10 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
 
   const activity = detailQuery.data;
   const isRide = activity?.sport_type === 'cycling';
+  const isLift = activity ? isStrengthType(activity.sport_type) : false;
+  // Runs, swims, hikes and walks use the endurance layout; they are not lifts,
+  // and the two-way branch used to give them a "no set log" panel.
+  const isEndurance = Boolean(activity) && !isLift;
 
   const analysisQuery = useQuery<RideAnalysis>({
     queryKey: ['activity-analysis', params.id],
@@ -180,7 +185,7 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
     hour12: false,
   });
 
-  const subtitle = isRide
+  const subtitle = isEndurance
     ? [
         formatDistance(activity.distance_meters, 1),
         activity.elevation_gain_meters ? `${Math.round(activity.elevation_gain_meters)} m climbed` : null,
@@ -233,6 +238,19 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
             <Metric label="Intensity" value={analysis?.intensity_factor ? analysis.intensity_factor.toFixed(2) : '—'} sub="IF" />
             <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
           </>
+        ) : isEndurance ? (
+          // Non-cycling endurance (run / swim / hike): distance, time, terrain
+          // and heart rate. Power and zones would be a wall of em dashes.
+          <>
+            <Metric label="Distance" value={formatDistance(activity.distance_meters, 1)} />
+            <Metric label="Moving" value={formatRowDuration(activity.duration_seconds)} />
+            <Metric
+              label="Elevation"
+              value={activity.elevation_gain_meters ? `${Math.round(activity.elevation_gain_meters)} m` : '—'}
+            />
+            <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
+            <Metric label="Calories" value={activity.calories ? `${Math.round(activity.calories)} kcal` : '—'} />
+          </>
         ) : lifting ? (
           <>
             <Metric label="Volume" value={lifting.total_volume_kg ? formatVolumeKg(lifting.total_volume_kg) : '—'} />
@@ -257,7 +275,7 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
         )}
       </dl>
 
-      {isRide ? (
+      {isEndurance ? (
         <>
           <section className="mt-8">
             <SectionTitle>Route</SectionTitle>
@@ -327,17 +345,19 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
             )}
           </section>
 
-          <div className="mt-9 grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className={`mt-9 grid gap-8 ${isRide ? 'lg:grid-cols-[minmax(0,1fr)_260px]' : ''}`}>
             <section>
               <SectionTitle>Streams</SectionTitle>
               {watts.length > 1 ? (
                 <StreamChart watts={watts} hr={heartrate} />
               ) : (
-                <p className="text-[11.5px] text-muted/50">No per-second streams stored for this ride.</p>
+                <p className="text-[11.5px] text-muted/50">No per-second streams stored for this session.</p>
               )}
             </section>
 
-            <aside>
+            {/* Power context is a cycling surface; on a run every row would be "—". */}
+            {isRide && (
+              <aside>
               <SectionTitle>Context</SectionTitle>
               <dl>
                 <ContextRow label="Variability" value={analysis?.variability_index ? analysis.variability_index.toFixed(2) : '—'} />
@@ -357,7 +377,8 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
                 />
                 <ContextRow label="Source" value={source} />
               </dl>
-            </aside>
+              </aside>
+            )}
           </div>
 
           {analysis?.power_zones && analysis.power_zones.length > 0 && (

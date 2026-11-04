@@ -153,6 +153,30 @@ describe('describeActivity', () => {
     expect(row.secondary).toBe('113 bpm avg');
   });
 
+  it('keeps a run out of the lifting layout', () => {
+    // The two-way branch titled a run "Weight training" and claimed it had no
+    // set log; the dev database has no runs, so this is the only coverage.
+    const row = describeActivity(
+      act({
+        sport_type: 'running',
+        name: 'Morning Run',
+        distance_meters: 12400,
+        duration_seconds: 3600,
+        average_heartrate: 148,
+      }),
+    );
+
+    expect(row.kind).toBe('other');
+    expect(row.title).toBe('Morning Run');
+    expect(row.secondary).toBe('12.4 km · 148 bpm');
+    expect(row.meta).not.toContain('no set log');
+  });
+
+  it('falls back to the sport label when a run has no name', () => {
+    const row = describeActivity(act({ sport_type: 'running', name: '  ' }));
+    expect(row.title).toBe('Running');
+  });
+
   it('shows ride metrics for a ride and lift metrics for a lift', () => {
     const ride = describeActivity(act({ distance_meters: 55632, duration_seconds: 11552, tss: 115 }));
     expect(ride.secondary).toBe('55.6 km · 115 TSS');
