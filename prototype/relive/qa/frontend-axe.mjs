@@ -2,8 +2,11 @@
 // repo gains no dependency.
 //
 // Run from prototype/relive:
-//   node qa/frontend-axe.mjs                     # local dev harness (Lake)
-//   node qa/frontend-axe.mjs prod <activity-id>  # production page
+//   node qa/frontend-axe.mjs                                  # dev harness (Lake)
+//   node qa/frontend-axe.mjs page <local-activity-id>          # local production page
+//   node qa/frontend-axe.mjs prod <prod-activity-id>           # production page
+
+import { readFileSync } from 'node:fs';
 
 import { chromium } from '@playwright/test';
 
@@ -15,19 +18,36 @@ const browser = await chromium.launch({
   args: ['--ignore-gpu-blocklist', '--enable-webgl'],
 });
 
-const context =
-  mode === 'prod'
-    ? await browser.newContext({
-        storageState: '../../frontend/e2e/prod-shots/.auth/storageState.json',
-        viewport: { width: 1440, height: 900 },
-      })
-    : await browser.newContext({ viewport: { width: 1440, height: 900 } });
+let context;
+if (mode === 'prod') {
+  context = await browser.newContext({
+    storageState: '../../frontend/e2e/prod-shots/.auth/storageState.json',
+    viewport: { width: 1440, height: 900 },
+  });
+} else if (mode === 'page') {
+  const session = JSON.parse(readFileSync('../../.tmp/qa-session.json', 'utf8'));
+  context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await context.addCookies([
+    {
+      name: session.name,
+      value: session.value,
+      domain: 'localhost',
+      path: '/',
+      httpOnly: true,
+      sameSite: 'Lax',
+    },
+  ]);
+} else {
+  context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+}
 
 const page = await context.newPage();
 const url =
   mode === 'prod'
     ? `https://oliradlett.co.uk/fittrack/relive3d/${activityId}`
-    : 'http://localhost:3000/fittrack/dev/relive3d';
+    : mode === 'page'
+      ? `http://localhost:3000/fittrack/relive3d/${activityId}`
+      : 'http://localhost:3000/fittrack/dev/relive3d';
 
 await page.goto(url, { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('gmp-map-3d', { timeout: 60_000 }).catch(() => {});
