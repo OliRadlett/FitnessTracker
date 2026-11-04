@@ -109,7 +109,11 @@ export function PlansModal({
         <p className="text-xs font-medium uppercase tracking-wider text-muted">All plans</p>
         {plansLoading && <div className="h-16 animate-pulse rounded-lg bg-surface-light/30" />}
         {plans.map((p) => {
-          const pct = p.day_count > 0 ? Math.round((p.completed_days / p.day_count) * 100) : 0;
+          // Coverage, not completion: `completed_days / day_count` measures authored
+          // days, so it reported 96% for a plan that had run dry. These fields come
+          // from the summary, so listing plans never has to load every plan's days.
+          const written = p.weeks_written ?? null;
+          const total = p.total_weeks ?? null;
           return (
             <div
               key={p.id}
@@ -133,7 +137,17 @@ export function PlansModal({
                 {p.plan_type} · {p.start_date} → {p.end_date}
               </p>
               <p className="mt-0.5 text-xs text-muted">
-                {p.completed_days}/{p.day_count} authored days done ({pct}%)
+                {written != null && total != null ? (
+                  <>
+                    <span className="text-foreground">
+                      {written} of {total} weeks written
+                    </span>
+                    {p.uncovered_weeks ? ` · ${p.uncovered_weeks} empty` : ''}
+                    {p.last_planned_date ? ` · written to ${p.last_planned_date}` : ''}
+                  </>
+                ) : (
+                  `${p.day_count} authored days`
+                )}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <button

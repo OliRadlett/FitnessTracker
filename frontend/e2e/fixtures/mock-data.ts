@@ -852,6 +852,11 @@ export const mockTrainingPlanSummaries = [
     status: 'active',
     day_count: 42,
     completed_days: 18,
+    // Coverage from the summary: 7 Monday-aligned weeks, all written through 11 Sep.
+    weeks_written: 7,
+    total_weeks: 7,
+    uncovered_weeks: 0,
+    last_planned_date: '2026-09-11',
   },
   {
     id: 'plan-2',

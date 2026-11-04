@@ -85,7 +85,10 @@ export function TrainingSpine({
                 {coverage.writtenWeeks} of {coverage.totalWeeks} weeks written
               </span>
               {coverage.lastSessionDate && (
-                <span className="text-muted"> · last session {shortDate(coverage.lastSessionDate)}</span>
+                <span className="text-muted">
+                  {' '}
+                  · written to {shortDate(coverage.lastSessionDate)}
+                </span>
               )}
               {stopsEarly && (
                 <>

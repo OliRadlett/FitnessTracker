@@ -326,6 +326,16 @@ class TrainingPlanSummary(BaseModel):
     event_id: uuid.UUID | None = None
     day_count: int = 0
     completed_days: int = 0
+    # Coverage — the plan's written extent against its claimed span.
+    #
+    # `day_count` / `completed_days` count *authored* days, so a plan whose content
+    # stopped weeks before its `end_date` reads as nearly finished. These four say
+    # the other thing, and let a list of plans show geometry without loading every
+    # plan's days.
+    weeks_written: int = 0
+    total_weeks: int = 0
+    uncovered_weeks: int = 0
+    last_planned_date: date | None = None
     updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}

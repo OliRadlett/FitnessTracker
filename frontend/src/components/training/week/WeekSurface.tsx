@@ -72,6 +72,7 @@ export function WeekSurface({
   const [routePicker, setRoutePicker] = useState(false);
   const [wahooPush, setWahooPush] = useState(false);
   const [pickingFor, setPickingFor] = useState<string | null>(null);
+  const [extendError, setExtendError] = useState<string | null>(null);
 
   // `?day=` (goal cards link here): open that day and bring it into view. The
   // effect runs after the week payload resolves, so a deep link that lands before
@@ -143,6 +144,8 @@ export function WeekSurface({
    */
   const extend = useMutation({
     mutationFn: (until: string) => extendPlan(authFetch, plan.id, until),
+    onMutate: () => setExtendError(null),
+    onError: (e: Error) => setExtendError(e.message || "Couldn't write the plan forward"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['training-plan', plan.id] });
       queryClient.invalidateQueries({ queryKey: ['plan-week', plan.id] });
@@ -245,6 +248,15 @@ export function WeekSurface({
           onMoveMissed={moveMissed}
           onAddOn={addOn}
         />
+      )}
+
+      {extendError && (
+        <p
+          role="alert"
+          className="mt-3 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning"
+        >
+          {extendError}
+        </p>
       )}
 
       <ChangesPanel suggestions={suggestionsQuery.data} review={reviewQuery.data} />
