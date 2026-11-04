@@ -97,8 +97,8 @@ export interface GhostOption {
 
 export const POSES: { id: PoseName; label: string }[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'lausanne', label: 'Lausanne' },
-  { id: 'montreux', label: 'Montreux' },
+  { id: 'lausanne', label: 'Quarter' },
+  { id: 'montreux', label: 'Halfway' },
   { id: 'climb', label: 'Climb' },
   { id: 'summit', label: 'Summit' },
   { id: 'close', label: 'Close' },

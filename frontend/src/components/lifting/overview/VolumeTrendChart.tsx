@@ -12,12 +12,13 @@ export function VolumeTrendChart({
   values,
   average,
   height = 170,
-  max = 30_000,
+  max,
 }: {
   labels: string[];
   values: number[];
   average?: number;
   height?: number;
+  /** Optional fixed ceiling; defaults to the data's own maximum. */
   max?: number;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
@@ -39,10 +40,13 @@ export function VolumeTrendChart({
   const padR = 10;
   const padT = 18;
   const padB = 22;
-  const y = (v: number) => H - padB - (v / max) * (H - padT - padB);
+  // A fixed 30 t ceiling clipped any heavier week. Scale to the data unless
+  // the caller deliberately supplies a ceiling.
+  const scaleMax = max ?? Math.max(1, ...values, average ?? 0) * 1.1;
+  const y = (v: number) => H - padB - (v / scaleMax) * (H - padT - padB);
   const step = (W - padL - padR) / Math.max(1, labels.length);
   const bw = Math.min(34, step * 0.58);
-  const ticks = [0, 0.5, 1].map((f) => f * max);
+  const ticks = [0, 0.5, 1].map((f) => f * scaleMax);
 
   return (
     <div ref={ref} className="w-full">
