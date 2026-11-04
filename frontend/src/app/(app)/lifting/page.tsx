@@ -43,7 +43,7 @@ import { RepeatSessionButton } from '@/components/lifting/RepeatSessionButton';
 import { QuickAddSetBar } from '@/components/lifting/QuickAddSetBar';
 import { RepRangeCard } from '@/components/lifting/RepRangeCard';
 import { RpeDriftCard } from '@/components/lifting/RpeDriftCard';
-import { CombinedLoadChart } from '@/components/charts/CombinedLoadChart';
+import { CombinedLoadHero } from '@/components/lifting/overview/CombinedLoadHero';
 import { formatDuration, getActiveLocale } from '@/lib/utils';
 import { fromLocalInputValue, toLocalInputValue } from '@/lib/lifting/sessionTime';
 import { useForecastChart } from '@/lib/projection';
@@ -1107,7 +1107,7 @@ export default function LiftingPage() {
             <div className="flex items-start justify-between gap-2">
               <div>
                 <CardTitle>Weekly volume</CardTitle>
-                <p className="mt-0.5 text-[12px] text-muted">{shortWeight(weeklyVolumeValues[weeklyVolumeValues.length - 1] ?? 0)} last week</p>
+                <p className="mt-0.5 text-[12px] text-muted">{shortWeight(weeklyVolumeValues[weeklyVolumeValues.length - 1] ?? 0)} latest week</p>
               </div>
               <span className="rounded-md bg-accent/12 px-1.5 py-1 text-[12px] font-medium text-accent">kg</span>
             </div>
@@ -1148,7 +1148,7 @@ export default function LiftingPage() {
         </Card>
       </div>
 
-      <CombinedLoadChart />
+      <CombinedLoadHero />
 
       <details className="rounded-xl border border-surface-light/60 bg-surface/50">
         <summary className="flex min-h-[44px] cursor-pointer items-center justify-between px-4 text-[13px] font-medium text-muted hover:text-foreground">
