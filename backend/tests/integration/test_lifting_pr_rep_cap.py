@@ -106,6 +106,52 @@ class TestHighRepSetsDoNotContend:
         assert prs == []
 
 
+class TestManualPrSurvivesRecalc:
+    async def test_manual_pr_beats_lower_set_derived_pr(self, db_session, test_user):
+        """A manual 150x1 must survive a set recalculation at 100x5."""
+        manual = await lifting_service.create_manual_pr(
+            db_session,
+            test_user.id,
+            PersonalRecordCreate(
+                exercise_name="Back Squat",
+                record_type="1rm",
+                weight_kg=150.0,
+                reps=1,
+                achieved_date=date(2026, 10, 1),
+            ),
+        )
+        await lifting_service.create_session(
+            db_session, test_user.id, _session_with_sets((100.0, 5))
+        )
+
+        prs = await lifting_service.get_prs(db_session, test_user.id, "Back Squat")
+        assert len(prs) == 1
+        assert prs[0].id == manual.id
+        assert (prs[0].weight_kg, prs[0].reps) == (150.0, 1)
+
+    async def test_manual_pr_survives_deleting_its_last_set(self, db_session, test_user):
+        """Deleting the only set must not delete an unrelated manual PR."""
+        manual = await lifting_service.create_manual_pr(
+            db_session,
+            test_user.id,
+            PersonalRecordCreate(
+                exercise_name="Back Squat",
+                record_type="1rm",
+                weight_kg=150.0,
+                reps=1,
+                achieved_date=date(2026, 10, 1),
+            ),
+        )
+        session = await lifting_service.create_session(
+            db_session, test_user.id, _session_with_sets((100.0, 5))
+        )
+        assert await lifting_service.delete_session(db_session, session.id, test_user.id)
+
+        prs = await lifting_service.get_prs(db_session, test_user.id, "Back Squat")
+        assert len(prs) == 1
+        assert prs[0].id == manual.id
+
+
 class TestManualPrRepGuard:
     async def test_manual_pr_rejects_high_reps(self, db_session, test_user):
         with pytest.raises(ValueError, match="1–12 reps"):
