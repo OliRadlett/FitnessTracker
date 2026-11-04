@@ -1,0 +1,94 @@
+.page {
+  position: fixed;
+  inset: 0;
+  background: #07111d;
+}
+
+.devBar {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(11, 18, 32, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.ghostBar {
+  position: fixed;
+  top: 190px;
+  right: 18px;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  max-width: 360px;
+  padding: 5px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  background: rgba(11, 18, 32, 0.86);
+  backdrop-filter: blur(12px);
+}
+
+.devLabel {
+  margin: 0 4px;
+  color: #6b7c93;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.devButton {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  background: transparent;
+  color: #cfd9e6;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.devButton:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.active {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #0b1220;
+  font-weight: 700;
+}
+
+.status {
+  display: grid;
+  min-height: 100vh;
+  place-content: center;
+  gap: 6px;
+  background: #07111d;
+  color: #e6edf7;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  text-align: center;
+}
+
+.status h1 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.status p {
+  margin: 0;
+  color: #93a4bb;
+  font-size: 12px;
+}
+
+.status code {
+  color: #fbbf24;
+}

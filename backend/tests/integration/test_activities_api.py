@@ -7,8 +7,14 @@ Run with:  pytest tests/integration/test_activities_api.py -m integration
 from __future__ import annotations
 
 import uuid as _uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
+
+from app.models.activity import Activity, ActivityStream
+from app.models.route import Route
+from app.models.user import User
+from app.services.polyline_utils import encode_polyline
 
 pytestmark = pytest.mark.integration
 
@@ -210,6 +216,332 @@ class TestActivityStreams:
     async def test_streams_for_nonexistent_activity(self, client):
         resp = await client.get(f"/api/v1/activities/{_uuid.uuid4()}/streams")
         assert resp.status_code == 404
+
+
+# ── Replay ────────────────────────────────────────────────────────────────
+
+
+class TestActivityReplay:
+    """GET /api/v1/activities/{id}/replay — normalized 3D replay payload."""
+
+    async def test_replay_returns_aligned_ride(
+        self, client, db_session, test_activity
+    ):
+        coords = [
+            (46.0, 6.0),
+            (46.001, 6.001),
+            (46.002, 6.001),
+            (46.003, 6.002),
+            (46.004, 6.002),
+            (46.005, 6.003),
+        ]
+        test_activity.raw_data = {
+            "timezone": "UTC",
+            "map": {"summary_polyline": encode_polyline(coords)},
+        }
+        db_session.add_all(
+            [
+                ActivityStream(
+                    activity_id=test_activity.id,
+                    stream_type="time",
+                    data={"data": [0, 1, 2, 3, 4, 5]},
+                    resolution=1,
+                ),
+                ActivityStream(
+                    activity_id=test_activity.id,
+                    stream_type="distance",
+                    data={"data": [0, 5, 10, 15, 20, 25]},
+                    resolution=1,
+                ),
+                ActivityStream(
+                    activity_id=test_activity.id,
+                    stream_type="velocity_smooth",
+                    data={"data": [0, 5, 5, 5, 5, 5]},
+                    resolution=1,
+                ),
+                ActivityStream(
+                    activity_id=test_activity.id,
+                    stream_type="altitude",
+                    data={"data": [400, 405, 410, 415, 420, 425]},
+                    resolution=1,
+                ),
+                ActivityStream(
+                    activity_id=test_activity.id,
+                    stream_type="heartrate",
+                    data={"data": [100, 110, 120, 130, 140, 150]},
+                    resolution=1,
+                ),
+                ActivityStream(
+                    activity_id=test_activity.id,
+                    stream_type="latlng",
+                    data={"data": coords},
+                    resolution=1,
+                ),
+            ]
+        )
+        await db_session.flush()
+
+        resp = await client.get(
+            f"/api/v1/activities/{test_activity.id}/replay"
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["ride"]["streams"]["t"][0] == 0
+        assert data["ride"]["streams"]["d"][-1] == 25
+        assert data["ride"]["key_points"]["end"] == 5
+        assert data["ride"]["highlights"]["highest"]["idx"] == 5
+        assert data["activity"]["timezone"] == "UTC"
+        assert data["route"] is None
+
+    async def test_replay_without_speed_returns_422(self, client, test_activity):
+        resp = await client.get(
+            f"/api/v1/activities/{test_activity.id}/replay"
+        )
+        assert resp.status_code == 422
+
+    async def test_replay_for_nonexistent_activity(self, client):
+        resp = await client.get(f"/api/v1/activities/{_uuid.uuid4()}/replay")
+        assert resp.status_code == 404
+
+    async def test_claim_map_false_leaves_budget_untouched(
+        self, client, db_session, test_activity, monkeypatch
+    ):
+        """A ghost payload is fetched into an open map, so it must not claim one.
+
+        Charging it would burn the monthly cap on a page that already counted.
+        """
+        from app.api import activities as activities_api
+
+        calls = 0
+
+        async def _count_claim(user_id):
+            nonlocal calls
+            calls += 1
+            return {"allowed": True, "used": calls, "limit": 500}
+
+        monkeypatch.setattr(activities_api, "claim_map_open", _count_claim)
+
+        await _add_replay_streams(db_session, test_activity)
+
+        plain = await client.get(f"/api/v1/activities/{test_activity.id}/replay")
+        assert plain.status_code == 200
+        assert calls == 1
+        assert plain.json()["map_used"] == 1
+
+        ghost = await client.get(
+            f"/api/v1/activities/{test_activity.id}/replay?claim_map=0"
+        )
+        assert ghost.status_code == 200
+        assert calls == 1, "claim_map=0 must not touch the budget"
+        assert ghost.json()["map_used"] == 0
+
+
+    async def test_second_open_serves_the_cached_payload(
+        self, client, db_session, test_activity, monkeypatch
+    ):
+        """Repeat opens must not rebuild the payload (or reload its streams).
+
+        The cache is swapped for an in-memory dict so the assertion does not
+        depend on a Redis instance being reachable.
+        """
+        from app.api import activities as activities_api
+
+        store: dict[str, object] = {}
+
+        async def _get(key):
+            return store.get(key)
+
+        async def _set(key, value, ttl):
+            store[key] = value
+
+        monkeypatch.setattr(activities_api, "get_json", _get)
+        monkeypatch.setattr(activities_api, "set_json", _set)
+
+        builds = 0
+        real_build = activities_api.build_replay
+
+        def _count_build(activity):
+            nonlocal builds
+            builds += 1
+            return real_build(activity)
+
+        monkeypatch.setattr(activities_api, "build_replay", _count_build)
+        await _add_replay_streams(db_session, test_activity)
+
+        first = await client.get(f"/api/v1/activities/{test_activity.id}/replay")
+        second = await client.get(f"/api/v1/activities/{test_activity.id}/replay")
+
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["ride"] == second.json()["ride"]
+        assert builds == 1, "the second open should be served from cache"
+        assert len(store) == 1
+
+
+# ── Ghosts (route history) ────────────────────────────────────────────────
+
+
+class TestActivityGhosts:
+    """GET /api/v1/activities/{id}/ghosts — past rides on the same route."""
+
+    async def test_lists_other_rides_on_the_route_newest_first(
+        self, client, db_session, test_user, test_activity
+    ):
+        route = await _add_route(db_session, test_user)
+        test_activity.route_id = route.id
+        older = await _add_route_activity(
+            db_session, test_user, route, days_ago=30, name="Older lap"
+        )
+        newer = await _add_route_activity(
+            db_session, test_user, route, days_ago=2, name="Newer lap"
+        )
+        await db_session.flush()
+
+        resp = await client.get(f"/api/v1/activities/{test_activity.id}/ghosts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["route_id"] == str(route.id)
+        assert data["route_name"] == "Test loop"
+        assert [row["activity_id"] for row in data["candidates"]] == [
+            str(newer.id),
+            str(older.id),
+        ]
+        assert data["candidates"][0]["name"] == "Newer lap"
+        assert data["candidates"][0]["moving_s"] == 3600
+        assert data["reason"] is None
+
+    async def test_excludes_the_activity_itself(
+        self, client, db_session, test_user, test_activity
+    ):
+        route = await _add_route(db_session, test_user)
+        test_activity.route_id = route.id
+        await db_session.flush()
+
+        resp = await client.get(f"/api/v1/activities/{test_activity.id}/ghosts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["candidates"] == []
+        assert data["reason"] == "No other rides on this route yet."
+
+    async def test_unrouted_activity_reports_a_reason(self, client, test_activity):
+        resp = await client.get(f"/api/v1/activities/{test_activity.id}/ghosts")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["candidates"] == []
+        assert data["route_id"] is None
+        assert "not matched to a route" in data["reason"]
+
+    async def test_other_users_rides_are_not_offered(
+        self, client, db_session, test_user, test_activity
+    ):
+        route = await _add_route(db_session, test_user)
+        test_activity.route_id = route.id
+        stranger = User(
+            id=_uuid.uuid4(), email="stranger@example.com", name="Stranger"
+        )
+        db_session.add(stranger)
+        await db_session.flush()
+        await _add_route_activity(
+            db_session, stranger, route, days_ago=3, name="Not mine"
+        )
+        await db_session.flush()
+
+        resp = await client.get(f"/api/v1/activities/{test_activity.id}/ghosts")
+        assert resp.status_code == 200
+        assert resp.json()["candidates"] == []
+
+    async def test_pb_is_the_quickest_ride_including_this_one(
+        self, client, db_session, test_user, test_activity
+    ):
+        """The PB marker must include the current ride, not just the ghosts.
+
+        Otherwise beating your own best makes the badge vanish — the one case
+        where it matters most.
+        """
+        route = await _add_route(db_session, test_user)
+        test_activity.route_id = route.id
+        test_activity.duration_seconds = 1800  # this ride is the PB
+        slower = await _add_route_activity(
+            db_session, test_user, route, days_ago=5, name="Slower lap"
+        )
+        slower.duration_seconds = 2400
+        await db_session.flush()
+
+        resp = await client.get(f"/api/v1/activities/{test_activity.id}/ghosts")
+        assert resp.status_code == 200
+        assert resp.json()["pb_activity_id"] == str(test_activity.id)
+
+    async def test_nonexistent_activity_returns_404(self, client):
+        resp = await client.get(f"/api/v1/activities/{_uuid.uuid4()}/ghosts")
+        assert resp.status_code == 404
+
+
+async def _add_route(db_session, user) -> Route:
+    route = Route(
+        user_id=user.id,
+        name="Test loop",
+        sport_type="cycling",
+        distance_meters=20_000.0,
+        encoded_polyline="abc",
+        start_lat=55.94,
+        start_lng=-3.17,
+        end_lat=55.94,
+        end_lng=-3.17,
+    )
+    db_session.add(route)
+    await db_session.flush()
+    return route
+
+
+async def _add_route_activity(db_session, user, route, *, days_ago, name):
+    activity = Activity(
+        user_id=user.id,
+        source="strava",
+        sport_type="cycling",
+        name=name,
+        start_date=datetime.now(UTC) - timedelta(days=days_ago),
+        duration_seconds=3600,
+        distance_meters=20_000.0,
+        average_speed=5.5,
+        route_id=route.id,
+        raw_data={"timezone": "Europe/London"},
+    )
+    db_session.add(activity)
+    await db_session.flush()
+    return activity
+
+
+async def _add_replay_streams(db_session, activity) -> None:
+    """Give ``activity`` the minimum streams ``build_replay`` needs."""
+    coords = [
+        (46.0, 6.0),
+        (46.001, 6.001),
+        (46.002, 6.001),
+        (46.003, 6.002),
+        (46.004, 6.002),
+        (46.005, 6.003),
+    ]
+    activity.raw_data = {
+        "timezone": "UTC",
+        "map": {"summary_polyline": encode_polyline(coords)},
+    }
+    for stream_type, data in (
+        ("time", [0, 1, 2, 3, 4, 5]),
+        ("distance", [0, 5, 10, 15, 20, 25]),
+        ("velocity_smooth", [0, 5, 5, 5, 5, 5]),
+        ("altitude", [400, 405, 410, 415, 420, 425]),
+        ("heartrate", [100, 110, 120, 130, 140, 150]),
+        ("latlng", coords),
+    ):
+        db_session.add(
+            ActivityStream(
+                activity_id=activity.id,
+                stream_type=stream_type,
+                data={"data": data},
+                resolution=1,
+            )
+        )
+    await db_session.flush()
 
 
 # ── Analysis (static) ─────────────────────────────────────────────────────
