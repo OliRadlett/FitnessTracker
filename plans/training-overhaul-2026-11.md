@@ -61,17 +61,25 @@ plan", conformity said "87%", and the week under all of it was empty.
 
 ## Unverified — read before merging
 
-- **The e2e suite was NOT run.** `e2e/training.spec.ts` was rewritten for the new
-  surface (week rows, `?view=`, deep link, block editor, strength re-key,
-  multi-sport rows) but the suite needs the dev stack behind `https://localhost`
-  (Caddy), which was not running in this checkout. **Run `npm run test:e2e:ci`
-  before trusting this branch.**
-- **The port has never been rendered.** The design was proven in the lab
-  (`prototype/training/qa/out/contact-sheet.png`, ten frames, measured audits);
-  this implementation has only passed `tsc` and unit tests. The first look on the
-  real page is still owed.
+- **The e2e suite runs and the page renders, but 8 of 10 cases fail.** Observed,
+  not assumed: `npx next start -p 3010` + `playwright.local.config.ts` (the repo
+  config hardcodes `port: 3000` with `reuseExistingServer: true`, so on a machine
+  where another checkout already serves :3000 the suite silently tests *that*
+  build — it did, on the first attempt).
+  - Passing: the two-surface tab bar, and the empty-plan-list state.
+  - **Blocking:** the page renders the spine, the Week/Plan tabs and the week nav,
+    then shows `Couldn't load plans` — `plansQuery` errors under the e2e fixture,
+    so no plan, no coverage, no rows. Everything downstream of that fails.
+  - Not yet diagnosed. First place to look: the fixture handler for
+    `api/v1/training-plans` (`e2e/fixtures/authenticated-test.ts:348`) returns
+    summaries for the collection and a plan for `/{id}`; something in the new
+    page's request shape or query set is not matching it.
+- **Nothing beyond the error state has been visually reviewed.** The design was
+  proven in the lab (`prototype/training/qa/out/contact-sheet.png`, ten frames,
+  measured audits); this implementation has only been seen as an error card.
 - **Unit tests:** `src/__tests__/training-coverage.test.ts` — 15 passing.
-- **Typecheck:** clean.
+- **Typecheck:** clean, and clean again after deleting the 14 components.
+- **Build:** `npm run build` succeeds.
 
 ## Docs still to update (do this in the same PR)
 
