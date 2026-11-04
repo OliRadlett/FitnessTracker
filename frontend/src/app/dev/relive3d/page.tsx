@@ -16,7 +16,12 @@ export default function DevRelive3DPage() {
   const [ghostId, setGhostId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const isDevBuild = process.env.NODE_ENV !== 'production';
+
   useEffect(() => {
+    // The fixtures are gitignored dumps, so there is nothing to fetch in a
+    // deployed build; the page renders a notice instead.
+    if (!isDevBuild) return;
     Promise.all([
       fetch('/fittrack/dev-fixtures/relive3d-lake.json').then((response) => {
         if (!response.ok) throw new Error(`lake: HTTP ${response.status}`);
@@ -31,7 +36,18 @@ export default function DevRelive3DPage() {
         setFixtures({ lake, arthurs: arthurs.main, ghosts: arthurs.ghosts });
       })
       .catch((reason: unknown) => setError(String(reason)));
-  }, []);
+  }, [isDevBuild]);
+
+  // NODE_ENV is inlined at build time, so this branch is all a production build
+  // ships: a harness that cannot work must not invite anyone to use it.
+  if (!isDevBuild) {
+    return (
+      <main className={styles.status}>
+        <h1>Dev harness</h1>
+        <p>This page only runs against local fixtures.</p>
+      </main>
+    );
+  }
 
   if (error) {
     return (

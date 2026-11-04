@@ -173,7 +173,7 @@
 }
 
 .telemetry span {
-  color: #6b7c93;
+  color: #7a8ca4;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.12em;
@@ -323,7 +323,7 @@
   display: flex;
   justify-content: space-between;
   margin-top: 2px;
-  color: #6b7c93;
+  color: #7a8ca4;
   font-size: 8px;
   font-variant-numeric: tabular-nums;
 }
