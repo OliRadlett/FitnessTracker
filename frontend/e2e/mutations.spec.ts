@@ -55,10 +55,15 @@ test.describe('Goal creation', () => {
 });
 
 test.describe('Deep links', () => {
-  test('activity deep-link selects the record', async ({ authenticatedPage: page }) => {
+  test('activity deep-link lands on the activity route', async ({ authenticatedPage: page }) => {
+    // Detail moved out of the listing: `?activity=` must redirect to
+    // `/activity/<id>` rather than mounting the 50-row list to show one ride.
     await page.goto('/fittrack/activities?activity=act-1');
-    await expect(page.getByText(/Surrey Hills/i).first()).toBeVisible({ timeout: 8000 });
-    await expect(page.getByText(/Surrey Hills/i).first()).toBeVisible({ timeout: 8000 });
+
+    await expect(page).toHaveURL(/\/fittrack\/activity\/act-1$/, { timeout: 10000 });
+    // The record's own name is the heading — a renamed ride keeps the name the
+    // user gave it rather than being reduced to its derived type.
+    await expect(page.getByRole('heading', { name: /Surrey Hills/i })).toBeVisible({ timeout: 10000 });
   });
 });
 

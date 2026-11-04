@@ -153,6 +153,16 @@ describe('describeActivity', () => {
     expect(row.secondary).toBe('113 bpm avg');
   });
 
+  it('keeps a name the user actually gave the session', () => {
+    // Strava lets a ride be renamed, and a sportive arrives named. Discarding
+    // it loses information the provider never had — the assertion the E2E
+    // deep-link test caught.
+    const row = describeActivity(
+      act({ name: 'Morning Ride — Surrey Hills', route_name: 'Surrey Hills Loop' }),
+    );
+    expect(row.title).toBe('Morning Ride — Surrey Hills');
+  });
+
   it('keeps a run out of the lifting layout', () => {
     // The two-way branch titled a run "Weight training" and claimed it had no
     // set log; the dev database has no runs, so this is the only coverage.
@@ -167,9 +177,17 @@ describe('describeActivity', () => {
     );
 
     expect(row.kind).toBe('other');
-    expect(row.title).toBe('Morning Run');
+    // "Morning Run" is provider boilerplate, exactly as "Cycling" is.
+    expect(row.title).toBe('Running');
     expect(row.secondary).toBe('12.4 km · 148 bpm');
     expect(row.meta).not.toContain('no set log');
+  });
+
+  it('keeps a named run titled as the user named it', () => {
+    const row = describeActivity(
+      act({ sport_type: 'running', name: 'Parkrun PB attempt', distance_meters: 5000 }),
+    );
+    expect(row.title).toBe('Parkrun PB attempt');
   });
 
   it('falls back to the sport label when a run has no name', () => {
