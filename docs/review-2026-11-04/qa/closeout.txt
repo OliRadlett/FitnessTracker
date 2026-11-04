@@ -1,0 +1,33 @@
+﻿target: origin/main @ d2a7fd0
+fixture: {'users': 1, 'activities': 582, 'lifting_sessions': 4, 'routes': 86, 'training_plan_days': 0} ({'lifting_sessions_with_sets': 4, 'lifting_sessions_with_duration': 4, 'lifting_sessions_with_tss': 0})
+
+ID      SEV  STATUS     AREA
+------------------------------------------------------------------------------
+AUD-00  P0*  FIXED      backend / sync reliability
+AUD-01  P0*  FIXED      operations / disaster recovery
+AUD-02  P1*  FIXED      frontend / lifting
+AUD-03  P1*  FIXED      backend / lifting data correctness
+AUD-04  P1*  FIXED      backend / authorization
+AUD-05  P1*  FIXED      production config / security
+AUD-06  P1*  FIXED      release safety
+AUD-07  P1*  FIXED      backend / reliability
+AUD-23  P1*  FIXED      backend / sync reliability
+AUD-08  P2*  FIXED      frontend / lifting
+AUD-09  P2*  FIXED      frontend / lifting
+AUD-10  P2*  FIXED      frontend / lifting
+AUD-11  P2*  FIXED      frontend / relive 3d
+AUD-12  P2*  FIXED      backend / training plan
+AUD-13  P2*  FIXED      backend / training plan
+AUD-14  P2*  FIXED      backend / Jev labels
+AUD-15  P2*  FIXED      process / documentation truth
+AUD-16  P2   ACCEPTED   security / dependencies
+AUD-17  P2   FIXED      security / deployment
+AUD-18  P2   FIXED      security / configuration
+AUD-19  P2   FIXED      privacy / deletion
+AUD-20  P2   FIXED      security / SSRF
+AUD-21  P2   ACCEPTED   backend / training plan
+AUD-22  P2   FIXED      frontend / lifting charts
+
+artifact gate: PASS
+release gate: PASS
+(* = primary finding)

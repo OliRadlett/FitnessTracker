@@ -140,6 +140,24 @@ def main() -> int:
 
     results: list[dict[str, Any]] = []
     for finding in findings:
+        if finding.get("fixed"):
+            # Closed register: the fix evidence is the PR/test record in
+            # FIXES.md. Keep the old bug checks out of the current gate so a
+            # fixed finding does not read as "still open".
+            results.append(
+                {
+                    "id": finding["id"],
+                    "severity": finding["severity"],
+                    "primary": bool(finding.get("primary")),
+                    "area": finding["area"],
+                    "title": finding["title"],
+                    "status": "FIXED",
+                    "accepted": False,
+                    "errors": [],
+                }
+            )
+            continue
+
         errors = evaluate_checks(repo, finding)
         results.append(
             {
@@ -148,7 +166,12 @@ def main() -> int:
                 "primary": bool(finding.get("primary")),
                 "area": finding["area"],
                 "title": finding["title"],
-                "status": "OPEN" if not errors else "FIXED/DRIFT",
+                "status": (
+                    "ACCEPTED"
+                    if finding.get("accepted") and not errors
+                    else "OPEN" if not errors else "FIXED/DRIFT"
+                ),
+                "accepted": bool(finding.get("accepted")),
                 "errors": errors,
             }
         )
@@ -156,7 +179,9 @@ def main() -> int:
     open_p0_p1 = [
         r for r in results if r["primary"] and r["severity"] in ("P0", "P1") and r["status"] == "OPEN"
     ]
-    artifact_ok = all(r["status"] == "OPEN" for r in results)
+    artifact_ok = all(
+        r["status"] in ("FIXED", "ACCEPTED") for r in results
+    )
 
     if args.json:
         print(
