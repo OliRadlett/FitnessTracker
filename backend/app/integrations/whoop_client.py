@@ -255,8 +255,10 @@ class WhoopClient:
         Returns the raw Whoop API v2 response:
             {"cycle_id": int, "score_state": str,
              "score": {"recovery_score": float, "hrv_rmssd_milli": float,
-                       "resting_heart_rate": int, "respiratory_rate": float,
-                       "spo2_percentage": float}}
+                       "resting_heart_rate": int, "spo2_percentage": float}}
+
+        Respiratory rate is **not** on recovery in v2; it is on the sleep score
+        (``score.respiratory_rate``).
         Returns None if recovery is not yet computed (404).
         Transient HTTP errors are retried by retry_request; remaining errors
         are raised so callers can apply their own backoff/retry logic.
@@ -292,7 +294,8 @@ class WhoopClient:
                                                     "total_light_sleep_time_milli": int,
                                                     "total_slow_wave_sleep_time_milli": int,
                                                     "total_rem_sleep_time_milli": int},
-                                 "sleep_efficiency_percentage": float}}
+                                 "sleep_efficiency_percentage": float,
+                                 "respiratory_rate": float}}
 
         Returns: {"records": [...], "next_token": str | None}
         """
