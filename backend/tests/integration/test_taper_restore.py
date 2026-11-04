@@ -12,10 +12,11 @@ from datetime import date, timedelta
 import pytest
 
 from app.models.event import Event
-from app.schemas.training_plan import TrainingPlanUpdate
+from app.schemas.training_plan import TrainingPlanDayUpdate, TrainingPlanUpdate
 from app.services.training_plan import (
     link_event_and_apply_taper,
     update_plan,
+    update_plan_day,
 )
 
 pytestmark = pytest.mark.integration
@@ -69,6 +70,49 @@ async def test_unlink_restores_and_relink_does_not_compound(
         db_session, test_user.id, restored, event.id
     )
     assert await _tss_by_day(relinked) == tapered
+
+
+async def test_editing_a_tapered_day_survives_unlink(
+    db_session, test_user, test_training_plan
+):
+    event = await _event(db_session, test_user)
+    plan = await link_event_and_apply_taper(
+        db_session, test_user.id, test_training_plan, event.id
+    )
+    target = next(day for day in plan.days if day.day_date == event.event_date)
+
+    await update_plan_day(
+        db_session,
+        test_user.id,
+        plan.id,
+        target.id,
+        TrainingPlanDayUpdate(planned_tss=77.0),
+    )
+    restored = await update_plan(
+        db_session,
+        test_user.id,
+        plan.id,
+        TrainingPlanUpdate(event_id=None),
+    )
+    assert next(d for d in restored.days if d.id == target.id).planned_tss == 77.0
+
+
+async def test_unlink_end_date_in_the_same_patch_wins(
+    db_session, test_user, test_training_plan
+):
+    event = await _event(db_session, test_user)
+    plan = await link_event_and_apply_taper(
+        db_session, test_user.id, test_training_plan, event.id
+    )
+    requested_end = date.today() + timedelta(days=45)
+
+    restored = await update_plan(
+        db_session,
+        test_user.id,
+        plan.id,
+        TrainingPlanUpdate(event_id=None, end_date=requested_end),
+    )
+    assert restored.end_date == requested_end
 
 
 async def test_relinking_the_same_event_is_a_noop(

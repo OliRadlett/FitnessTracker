@@ -49,7 +49,9 @@ export function ChangesPanel({
             className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold sm:mt-0.5 ${
               v.tone === 'caution'
                 ? 'border-caution/30 bg-caution/10 text-caution'
-                : 'border-positive/30 bg-positive/10 text-positive'
+                : v.tone === 'pending'
+                  ? 'border-surface-light bg-surface-light/20 text-muted'
+                  : 'border-positive/30 bg-positive/10 text-positive'
             }`}
           >
             1

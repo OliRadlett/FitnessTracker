@@ -307,14 +307,16 @@ export interface PlanVerdict {
   reason: string;
   /** Who said it, and when — shown under the reason. */
   source: string;
-  tone: 'ok' | 'caution';
+  tone: 'ok' | 'caution' | 'pending';
   action: { label: string; href: string } | null;
   /** Set when the persisted snapshot and the live engine disagree on load. */
   conflict: { snapshot: string; live: string; snapshotDate: string; liveDate: string } | null;
 }
 
 const shortDate = (iso: string): string => {
+  if (!iso) return 'unknown';
   const d = new Date(iso.slice(0, 10) + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return 'unknown';
   return `${d.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.getMonth()]}`;
 };
 
@@ -368,6 +370,20 @@ export function planVerdict(
   }
 
   const guidance = loadAxis?.guidance ?? live?.summary ?? null;
+
+  // No live load axis and no fatigue from either engine: silence is not a clean
+  // bill of health. The snapshot may even say "rest"; wait for the engine.
+  if (!loadAxis && !liveFatigue) {
+    return {
+      headline: 'Waiting for the load engine',
+      reason:
+        'There is no live load signal yet, so this is not a clean bill of health. The persisted review may still disagree.',
+      source: 'load · waiting',
+      tone: 'pending',
+      action: null,
+      conflict,
+    };
+  }
 
   return {
     headline: 'Nothing to change — the load is in the healthy band',

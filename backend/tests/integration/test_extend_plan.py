@@ -14,6 +14,7 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 
+import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -103,6 +104,55 @@ class TestExtendPlanIntegration:
         assert not [
             d for d in days if d.day_date.weekday() not in (0, 6)
         ]
+
+    async def test_fills_a_hole_between_written_weeks(
+        self, db_session: AsyncSession, test_user: User
+    ):
+        """Weeks 1-2 and 4 written, week 3 empty: the empty-week CTA must fill it."""
+        plan = await _make_plan(
+            db_session, test_user, weeks=2, end=PLAN_START + timedelta(days=60)
+        )
+        week4_monday = PLAN_START + timedelta(days=21)
+        db_session.add_all(
+            [
+                TrainingPlanDay(
+                    plan_id=plan.id,
+                    day_date=week4_monday,
+                    sport="strength",
+                    planned_type="moderate",
+                    planned_tss=90,
+                ),
+                TrainingPlanDay(
+                    plan_id=plan.id,
+                    day_date=week4_monday + timedelta(days=6),
+                    sport="rest",
+                    planned_type="rest",
+                ),
+            ]
+        )
+        await db_session.commit()
+
+        week3_sunday = PLAN_START + timedelta(days=20)
+        result = await extend_plan(db_session, test_user.id, plan.id, week3_sunday)
+        await db_session.commit()
+
+        assert result["created"] == 2
+        days = await _days(db_session, plan.id)
+        week3 = [d for d in days if PLAN_START + timedelta(days=14) <= d.day_date <= week3_sunday]
+        assert {d.sport for d in week3} == {"strength", "rest"}
+
+    async def test_rejects_an_unbounded_until(
+        self, db_session: AsyncSession, test_user: User
+    ):
+        plan = await _make_plan(
+            db_session, test_user, weeks=1, end=PLAN_START + timedelta(days=13)
+        )
+        before = len(await _days(db_session, plan.id))
+        with pytest.raises(ValueError, match="two years"):
+            await extend_plan(
+                db_session, test_user.id, plan.id, date(9999, 12, 31)
+            )
+        assert len(await _days(db_session, plan.id)) == before
 
     async def test_second_call_creates_nothing(self, db_session: AsyncSession, test_user: User):
         plan = await _make_plan(db_session, test_user, weeks=1, end=PLAN_START + timedelta(days=60))

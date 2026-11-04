@@ -15,12 +15,14 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.errors import PermanentAuthError, TransientSyncError
 from app.models.activity import Activity
+from app.models.user import OAuthConnection
 from app.models.webhook_event import StravaWebhookEvent
+from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +38,23 @@ async def process_pending_strava_events(
 
     result = await db.execute(
         select(StravaWebhookEvent)
-        .where(StravaWebhookEvent.status == "pending")
+        .outerjoin(
+            OAuthConnection,
+            and_(
+                OAuthConnection.provider == "strava",
+                OAuthConnection.provider_user_id == StravaWebhookEvent.owner_id,
+            ),
+        )
+        .where(
+            StravaWebhookEvent.status == "pending",
+            # A revoked connection must not occupy the oldest-50 window forever.
+            # Its pending events are skipped (not failed) until re-auth flips the
+            # connection back to active.
+            or_(
+                OAuthConnection.id.is_(None),
+                OAuthConnection.status != CONNECTION_STATUS_NEEDS_REAUTH,
+            ),
+        )
         .order_by(StravaWebhookEvent.received_at.asc())
         .limit(limit)
     )

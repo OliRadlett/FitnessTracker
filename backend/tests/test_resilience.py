@@ -3,8 +3,6 @@
 Pure (no DB) — exercises ``app/integrations/resilience.py`` directly.
 """
 
-import time
-
 from app.integrations.resilience import ModalCircuitBreaker
 
 
@@ -32,13 +30,37 @@ def test_success_resets():
     assert br.state("task") == "closed"
 
 
-def test_half_open_after_cooldown():
-    br = ModalCircuitBreaker(failures_before_open=1, cooldown_seconds=0.05)
+def test_half_open_after_cooldown_allows_one_trial():
+    now = 0.0
+    br = ModalCircuitBreaker(
+        failures_before_open=1, cooldown_seconds=0.05, clock=lambda: now
+    )
     br.record("task", False)
     assert br.allow("task") is False
-    time.sleep(0.06)
-    assert br.allow("task") is True
+
+    now = 0.06
     assert br.state("task") == "half-open"
+    assert br.allow("task") is True
+    # The trial is claimed; other callers wait for its outcome.
+    assert br.allow("task") is False
+    assert br.state("task") == "half-open"
+
+
+def test_failed_half_open_trial_rearms_the_cooldown():
+    now = 0.0
+    br = ModalCircuitBreaker(
+        failures_before_open=1, cooldown_seconds=10.0, clock=lambda: now
+    )
+    br.record("task", False)
+    now = 11.0
+    assert br.allow("task") is True
+
+    br.record("task", False)
+    assert br.allow("task") is False
+    assert br.state("task") == "open"
+
+    now = 21.0
+    assert br.allow("task") is True
 
 
 def test_tasks_are_independent():

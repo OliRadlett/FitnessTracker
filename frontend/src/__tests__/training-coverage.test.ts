@@ -333,6 +333,13 @@ describe('planVerdict', () => {
     expect(v.conflict).toBeNull();
   });
 
+  it('does not claim a healthy load when the live engine is silent', () => {
+    const v = planVerdict(undefined, snapshot());
+    expect(v.headline).not.toContain('Nothing to change');
+    expect(v.tone).toBe('pending');
+    expect(v.source).toContain('waiting');
+  });
+
   it('names a disagreement once instead of printing two verdicts', () => {
     const v = planVerdict(live({}), snapshot());
     expect(v.conflict).not.toBeNull();
