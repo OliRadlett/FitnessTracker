@@ -123,6 +123,34 @@ def _make_cache_key(prefix: str, *args, **kwargs) -> str:
     return f"fittrack:{prefix}:{key_hash}"
 
 
+async def get_json(key: str) -> Any | None:
+    """Read a JSON value, or ``None`` on a miss *or* any Redis failure.
+
+    Fail-open on purpose: a cache is an optimisation, and an endpoint that 500s
+    because Redis blinked is worse than one that recomputes.
+    """
+    try:
+        raw = await _get_redis().get(key)
+    except Exception as exc:
+        logger.debug("Cache read failed for %s: %s", key, exc)
+        return None
+    if raw is None:
+        return None
+    try:
+        return json.loads(raw)
+    except (TypeError, ValueError) as exc:
+        logger.debug("Cache decode failed for %s: %s", key, exc)
+        return None
+
+
+async def set_json(key: str, value: Any, ttl: int) -> None:
+    """Store a JSON value for ``ttl`` seconds. Never raises."""
+    try:
+        await _get_redis().setex(key, ttl, json.dumps(value, default=str))
+    except Exception as exc:
+        logger.debug("Cache write failed for %s: %s", key, exc)
+
+
 def cached(ttl: int = 120, key_prefix: str = "", to_dict: Callable | None = None):
     """Decorator that caches async function results in Redis.
 

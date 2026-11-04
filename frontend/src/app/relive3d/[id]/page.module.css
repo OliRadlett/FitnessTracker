@@ -1,0 +1,27 @@
+.status {
+  display: grid;
+  min-height: 100vh;
+  place-content: center;
+  gap: 8px;
+  padding: 24px;
+  background: #07111d;
+  color: #e6edf7;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  text-align: center;
+}
+
+.status h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.status p {
+  margin: 0;
+  color: #93a4bb;
+  font-size: 13px;
+}
+
+.status a {
+  color: #fbbf24;
+  font-size: 13px;
+}

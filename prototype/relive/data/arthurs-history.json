@@ -1,0 +1,45 @@
+{
+  "route_id": "034bac3e-1739-47c5-82de-8edc3fab1f3b",
+  "route_name": "Cycling",
+  "total_rides": 4,
+  "personal_best": {
+    "activity_id": "98eca1e6-db1a-40bb-b54e-806f3711ef8a",
+    "date": "2026-07-25T16:47:57+00:00",
+    "duration_seconds": 2425,
+    "average_power": 136.1
+  },
+  "rides": [
+    {
+      "activity_id": "748af0e7-e9eb-4b8d-915c-2c165d32795c",
+      "date": "2026-09-16T16:09:18+00:00",
+      "duration_seconds": 2477,
+      "distance_meters": 13371.4,
+      "average_power": 142.4,
+      "tss": 43.9
+    },
+    {
+      "activity_id": "d981887a-23d0-486b-8f37-35a93725ec49",
+      "date": "2026-09-09T16:20:21+00:00",
+      "duration_seconds": 4021,
+      "distance_meters": 23765.4,
+      "average_power": 161.7,
+      "tss": 82.1
+    },
+    {
+      "activity_id": "98eca1e6-db1a-40bb-b54e-806f3711ef8a",
+      "date": "2026-07-25T16:47:57+00:00",
+      "duration_seconds": 2425,
+      "distance_meters": 13377.4,
+      "average_power": 136.1,
+      "tss": 55.3
+    },
+    {
+      "activity_id": "9313322e-16ee-4c39-b823-f0d66354e546",
+      "date": "2025-01-27T13:16:45+00:00",
+      "duration_seconds": 2491,
+      "distance_meters": 13631.3,
+      "average_power": null,
+      "tss": null
+    }
+  ]
+}

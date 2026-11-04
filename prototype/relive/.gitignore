@@ -1,0 +1,8 @@
+node_modules/
+qa/out/
+test-results/
+.tmp/
+.env.local
+data/hero-ride.raw.json
+data/hero-ride-latlng.json
+data/arthurs-raw.json

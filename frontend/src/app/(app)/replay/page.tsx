@@ -4,8 +4,10 @@
  * 3D Replay — V2 standalone page.
  *
  * Lists cycling activities with GPS data + stream availability.
- * Each activity links to the 3D Theater via ?replay=<id> on the
- * activities page (detail view still owns the Theater component).
+ *
+ * With `NEXT_PUBLIC_RELIVE3D=1` each card opens the new immersive viewer and
+ * keeps a "Classic 3D" link to the old Theater, so the flag is a routing
+ * preference rather than a dead end. With the flag off nothing changes.
  */
 
 import React, { useMemo } from 'react';
@@ -21,6 +23,8 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { Play } from 'lucide-react';
 import Link from 'next/link';
+
+const RELIVE3D_ENABLED = process.env.NEXT_PUBLIC_RELIVE3D === '1';
 
 export default function ReplayPage() {
   usePageTitle('3D Replays');
@@ -76,43 +80,58 @@ export default function ReplayPage() {
               ? formatDuration(activity.duration_seconds)
               : '';
             return (
-              <Link
-                key={activity.id}
-                href={`/activities?replay=${activity.id}`}
-                className="group block"
-              >
-                <Card className="p-3 hover:border-accent/40 transition-colors">
-                  <div className="flex items-start gap-3">
-                    <Play className="w-5 h-5 text-accent shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Badge variant={getSportBadgeVariant(activity.sport_type)}>
-                          {activity.sport_type}
-                        </Badge>
-                        <p className="font-medium text-foreground truncate group-hover:text-accent transition-colors">
-                          {activity.name || 'Untitled ride'}
+              <div key={activity.id}>
+                <Link
+                  href={
+                    RELIVE3D_ENABLED
+                      ? `/relive3d/${activity.id}`
+                      : `/activities?replay=${activity.id}`
+                  }
+                  className="group block"
+                >
+                  <Card className="p-3 hover:border-accent/40 transition-colors">
+                    <div className="flex items-start gap-3">
+                      <Play className="w-5 h-5 text-accent shrink-0 mt-0.5 group-hover:scale-110 transition-transform" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant={getSportBadgeVariant(activity.sport_type)}>
+                            {activity.sport_type}
+                          </Badge>
+                          <p className="font-medium text-foreground truncate group-hover:text-accent transition-colors">
+                            {activity.name || 'Untitled ride'}
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted mt-1">
+                          {date.toLocaleDateString(getActiveLocale(), {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
                         </p>
-                      </div>
-                      <p className="text-sm text-muted mt-1">
-                        {date.toLocaleDateString(getActiveLocale(), {
-                          weekday: 'short',
-                          month: 'short',
-                          day: 'numeric',
-                        })}
-                      </p>
-                      <div className="flex items-center gap-4 text-xs text-muted mt-2">
-                        {activity.distance_meters && (
-                          <span>{formatDistance(activity.distance_meters)}</span>
-                        )}
-                        {duration && <span>{duration}</span>}
-                        {activity.tss != null && (
-                          <span>TSS {activity.tss.toFixed(0)}</span>
-                        )}
+                        <div className="flex items-center gap-4 text-xs text-muted mt-2">
+                          {activity.distance_meters && (
+                            <span>{formatDistance(activity.distance_meters)}</span>
+                          )}
+                          {duration && <span>{duration}</span>}
+                          {activity.tss != null && (
+                            <span>TSS {activity.tss.toFixed(0)}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
+                  </Card>
+                </Link>
+                {RELIVE3D_ENABLED && (
+                  <div className="mt-1 flex justify-end">
+                    <Link
+                      href={`/activities?replay=${activity.id}`}
+                      className="text-xs text-muted hover:text-accent transition-colors"
+                    >
+                      Classic 3D
+                    </Link>
                   </div>
-                </Card>
-              </Link>
+                )}
+              </div>
             );
           })}
         </div>

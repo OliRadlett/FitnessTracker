@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Google 3D Maps test</title>
+    <style>
+      html,
+      body,
+      gmp-map-3d {
+        height: 100%;
+        margin: 0;
+        background: #0b1220;
+      }
+    </style>
+    <script>
+      const key = new URLSearchParams(location.search).get('key');
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${key}&v=beta&libraries=maps3d&callback=init`;
+      script.async = true;
+      document.head.appendChild(script);
+      function init() {
+        window.__google3d = true;
+        console.log('google3d ready');
+      }
+    </script>
+  </head>
+  <body>
+    <gmp-map-3d
+      center="46.45,6.55"
+      range="6000"
+      tilt="60"
+      heading="0"
+      mode="SATELLITE"
+    ></gmp-map-3d>
+  </body>
+</html>
