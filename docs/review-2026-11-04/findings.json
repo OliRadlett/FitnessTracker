@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "FitTrack project audit — 2026-11-04",
+    "title": "FitTrack project audit \u2014 2026-11-04",
     "target": "origin/main @ d2a7fd0",
     "audited_at": "2026-11-04",
     "method": "read-only code audit + clean-export test baseline + aggregate DB fixture; no production code changed",
@@ -48,10 +48,37 @@
       "fix": "Import handle_sync_http_error and mark_connection_reauth at scheduler.py:102 (or at module scope), narrow the F821 ignore to app/models/*, and add a test whose mocked sync raises PermanentAuthError and asserts both users are attempted and mark_connection_reauth is awaited.",
       "verify": "`python -m ruff check backend/app/tasks/scheduler.py --select F821` reports 4 undefined auth names (plus two postponed annotations). Mock sync_activities to raise PermanentAuthError: today the second user is never reached.",
       "checks": [
-        {"path": "backend/app/tasks/scheduler.py", "section": {"start": "def sync_all_strava_activities", "end": "def generate_health_alerts", "contains": ["from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH", "await mark_connection_reauth(db, conn, str(e))", "await handle_sync_http_error(db, conn, e, strava_client)"], "absent": ["mark_connection_reauth,", "handle_sync_http_error,"]}},
-        {"path": "backend/pyproject.toml", "contains": ["\"F821\""]},
-        {"path": "backend/app/services/connection_health.py", "contains": ["async def mark_connection_reauth", "async def handle_sync_http_error"]}
-      ]
+        {
+          "path": "backend/app/tasks/scheduler.py",
+          "section": {
+            "start": "def sync_all_strava_activities",
+            "end": "def generate_health_alerts",
+            "contains": [
+              "from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH",
+              "await mark_connection_reauth(db, conn, str(e))",
+              "await handle_sync_http_error(db, conn, e, strava_client)"
+            ],
+            "absent": [
+              "mark_connection_reauth,",
+              "handle_sync_http_error,"
+            ]
+          }
+        },
+        {
+          "path": "backend/pyproject.toml",
+          "contains": [
+            "\"F821\""
+          ]
+        },
+        {
+          "path": "backend/app/services/connection_health.py",
+          "contains": [
+            "async def mark_connection_reauth",
+            "async def handle_sync_http_error"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-01",
@@ -64,13 +91,45 @@
       "fix": "Mount a host or named volume at /backups on the worker in production, or copy the dump off-box after writing it. Make the task fail loudly when the directory is not a mount, and run a restore drill.",
       "verify": "`docker compose -f docker-compose.yml -f docker-compose.prod.yml config` shows no /backups mount; run backup_database, list /backups in the worker, recreate the worker, list again.",
       "checks": [
-        {"path": "backend/app/tasks/maintenance.py", "contains": ["backup_dir = settings.backup_dir", "fittrack_backup_"]},
-        {"path": "backend/app/config.py", "contains": ["backup_dir: str = \"/backups\""]},
-        {"path": "docker-compose.yml", "absent": ["/backups"]},
-        {"path": "docker-compose.prod.yml", "absent": ["/backups"]},
-        {"path": "docker-compose.yml", "contains": ["celery -A app.tasks.scheduler worker"]},
-        {"path": ".github/workflows/deploy.yml", "contains": ["down --timeout 30"]}
-      ]
+        {
+          "path": "backend/app/tasks/maintenance.py",
+          "contains": [
+            "backup_dir = settings.backup_dir",
+            "fittrack_backup_"
+          ]
+        },
+        {
+          "path": "backend/app/config.py",
+          "contains": [
+            "backup_dir: str = \"/backups\""
+          ]
+        },
+        {
+          "path": "docker-compose.yml",
+          "absent": [
+            "/backups"
+          ]
+        },
+        {
+          "path": "docker-compose.prod.yml",
+          "absent": [
+            "/backups"
+          ]
+        },
+        {
+          "path": "docker-compose.yml",
+          "contains": [
+            "celery -A app.tasks.scheduler worker"
+          ]
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "contains": [
+            "down --timeout 30"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-02",
@@ -83,10 +142,28 @@
       "fix": "Run the deep-link read once on mount (read window.location.search directly or guard with a ref), and clear the session/pr query params when the user changes tabs.",
       "verify": "/lifting -> Sessions -> select a session -> click Overview; or open /lifting?session=<id> and click Analytics.",
       "checks": [
-        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["}, [getParam]);", "if (tab !== 'sessions') setActiveTab('sessions');"]},
-        {"path": "frontend/src/lib/useDeepLink.ts", "contains": ["const getParam = useCallback((key: string): string | null => params.get(key), [params]);"]},
-        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["const handleTabChange = useCallback(", "setParam('tab', tab);"]}
-      ]
+        {
+          "path": "frontend/src/app/(app)/lifting/page.tsx",
+          "contains": [
+            "}, [getParam]);",
+            "if (tab !== 'sessions') setActiveTab('sessions');"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/useDeepLink.ts",
+          "contains": [
+            "const getParam = useCallback((key: string): string | null => params.get(key), [params]);"
+          ]
+        },
+        {
+          "path": "frontend/src/app/(app)/lifting/page.tsx",
+          "contains": [
+            "const handleTabChange = useCallback(",
+            "setParam('tab', tab);"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-03",
@@ -99,10 +176,47 @@
       "fix": "Resolve bodyweight once and call refresh_session_tss at the end of create_session, add_set, update_set, and delete_set (re-read the set list in delete_set). Add a DB/test invariant: any session with working sets and a duration has a non-null TSS.",
       "verify": "Create a session, add a set, GET it: estimated_tss remains null. After the fix it is non-null and changes when the set changes.",
       "checks": [
-        {"path": "backend/app/services/lifting.py", "section": {"start": "async def create_session(", "end": "async def get_session(", "contains": ["session.total_volume_kg = volume"], "absent": ["refresh_session_tss"]}},
-        {"path": "backend/app/services/lifting.py", "section": {"start": "async def add_set(", "end": "async def update_set(", "contains": ["session.total_volume_kg = current_volume + (data.weight_kg * data.reps)"], "absent": ["refresh_session_tss"]}},
-        {"path": "backend/app/services/lifting.py", "section": {"start": "async def update_set(", "end": "async def delete_set(", "contains": ["session.total_volume_kg = max("], "absent": ["refresh_session_tss"]}}
-      ]
+        {
+          "path": "backend/app/services/lifting.py",
+          "section": {
+            "start": "async def create_session(",
+            "end": "async def get_session(",
+            "contains": [
+              "session.total_volume_kg = volume"
+            ],
+            "absent": [
+              "refresh_session_tss"
+            ]
+          }
+        },
+        {
+          "path": "backend/app/services/lifting.py",
+          "section": {
+            "start": "async def add_set(",
+            "end": "async def update_set(",
+            "contains": [
+              "session.total_volume_kg = current_volume + (data.weight_kg * data.reps)"
+            ],
+            "absent": [
+              "refresh_session_tss"
+            ]
+          }
+        },
+        {
+          "path": "backend/app/services/lifting.py",
+          "section": {
+            "start": "async def update_set(",
+            "end": "async def delete_set(",
+            "contains": [
+              "session.total_volume_kg = max("
+            ],
+            "absent": [
+              "refresh_session_tss"
+            ]
+          }
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-04",
@@ -115,11 +229,35 @@
       "fix": "Use one ownership helper for all three refs in add_plan_day, update_plan_day, and save_plan_days, and scope the week/LLM readers by user_id as well.",
       "verify": "Create user B's lifting session, POST its id as user A, GET A's week: today it returns B's metadata; after the fix it returns 404/422.",
       "checks": [
-        {"path": "backend/app/schemas/training_plan.py", "contains": ["planned_route_id: uuid.UUID | None = None", "lifting_session_id: uuid.UUID | None = None", "warmup_template_id: uuid.UUID | None = None"]},
-        {"path": "backend/app/services/training_plan.py", "contains": ["TrainingPlanDay(plan_id=plan.id, **data.model_dump(exclude_none=True))"]},
-        {"path": "backend/app/services/training_plan.py", "contains": ["select(LiftingSession).where(LiftingSession.id.in_(lifting_ids))"]},
-        {"path": "backend/app/services/training_plan.py", "contains": ["select(WarmupTemplate)", ".where(WarmupTemplate.id.in_(warmup_ids))"]}
-      ]
+        {
+          "path": "backend/app/schemas/training_plan.py",
+          "contains": [
+            "planned_route_id: uuid.UUID | None = None",
+            "lifting_session_id: uuid.UUID | None = None",
+            "warmup_template_id: uuid.UUID | None = None"
+          ]
+        },
+        {
+          "path": "backend/app/services/training_plan.py",
+          "contains": [
+            "TrainingPlanDay(plan_id=plan.id, **data.model_dump(exclude_none=True))"
+          ]
+        },
+        {
+          "path": "backend/app/services/training_plan.py",
+          "contains": [
+            "select(LiftingSession).where(LiftingSession.id.in_(lifting_ids))"
+          ]
+        },
+        {
+          "path": "backend/app/services/training_plan.py",
+          "contains": [
+            "select(WarmupTemplate)",
+            ".where(WarmupTemplate.id.in_(warmup_ids))"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-05",
@@ -132,9 +270,22 @@
       "fix": "Loopback-bind the frontend (127.0.0.1:3000:3000) or remove the published port in a prod-safe way, and set NODE_ENV=production in the prod override.",
       "verify": "`docker compose -f docker-compose.yml -f docker-compose.prod.yml config` shows 3000 published on all interfaces and NODE_ENV=development; from another host, curl http://<droplet>:3000/fittrack.",
       "checks": [
-        {"path": "docker-compose.yml", "contains": ["- \"3000:3000\"", "NODE_ENV=development"]},
-        {"path": "docker-compose.prod.yml", "absent": ["3000:3000", "NODE_ENV"]}
-      ]
+        {
+          "path": "docker-compose.yml",
+          "contains": [
+            "- \"3000:3000\"",
+            "NODE_ENV=development"
+          ]
+        },
+        {
+          "path": "docker-compose.prod.yml",
+          "absent": [
+            "3000:3000",
+            "NODE_ENV"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-06",
@@ -147,11 +298,37 @@
       "fix": "Run migrations in a one-shot container before starting services, fail closed on startup, and include alembic current == head in /health. Document IMAGE_TAG rollback.",
       "verify": "Stage a failing revision on a copy: /health returns 200 and deploy reports healthy today. After the fix the deploy aborts before startup and /health reports the mismatch.",
       "checks": [
-        {"path": "backend/app/main.py", "contains": ["logger.error(\"Alembic migration failed:", "yield"]},
-        {"path": "backend/app/main.py", "contains": ["await session.execute(text(\"SELECT 1\"))"], "absent": ["alembic current"]},
-        {"path": ".github/workflows/deploy.yml", "order": ["up -d", "exec -T backend alembic upgrade head"]},
-        {"path": ".github/workflows/deploy.yml", "contains": ["https://localhost/health"]}
-      ]
+        {
+          "path": "backend/app/main.py",
+          "contains": [
+            "logger.error(\"Alembic migration failed:",
+            "yield"
+          ]
+        },
+        {
+          "path": "backend/app/main.py",
+          "contains": [
+            "await session.execute(text(\"SELECT 1\"))"
+          ],
+          "absent": [
+            "alembic current"
+          ]
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "order": [
+            "up -d",
+            "exec -T backend alembic upgrade head"
+          ]
+        },
+        {
+          "path": ".github/workflows/deploy.yml",
+          "contains": [
+            "https://localhost/health"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-07",
@@ -164,9 +341,25 @@
       "fix": "Call `await aanalyze_weather_on_modal(rides)` from the scheduler and retarget the test at the scheduler path, not the wrapper in isolation.",
       "verify": "grep -rn \"aanalyze_weather_on_modal\" backend/app returns only the definition; after the fix the scheduler is a caller.",
       "checks": [
-        {"path": "backend/app/tasks/scheduler.py", "contains": ["analyze_weather_on_modal,", "results = analyze_weather_on_modal(rides)"], "absent": ["aanalyze_weather_on_modal"]},
-        {"path": "backend/app/integrations/weather_analysis.py", "contains": ["async def aanalyze_weather_on_modal", "asyncio.to_thread"]}
-      ]
+        {
+          "path": "backend/app/tasks/scheduler.py",
+          "contains": [
+            "analyze_weather_on_modal,",
+            "results = analyze_weather_on_modal(rides)"
+          ],
+          "absent": [
+            "aanalyze_weather_on_modal"
+          ]
+        },
+        {
+          "path": "backend/app/integrations/weather_analysis.py",
+          "contains": [
+            "async def aanalyze_weather_on_modal",
+            "asyncio.to_thread"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-23",
@@ -179,9 +372,22 @@
       "fix": "On PermanentAuthError, mark the connection needs_reauth, leave the event pending (or deferred) without consuming an attempt, and continue with other users' events. Add a replay path for failed events.",
       "verify": "Integration test with a revoked token: the event is still pending, the connection is needs_reauth, and a second user's event is processed in the same run.",
       "checks": [
-        {"path": "backend/app/services/strava/webhook_queue.py", "contains": ["except PermanentAuthError", "event.status = \"failed\"", "break"]},
-        {"path": "backend/app/services/strava/webhook_queue.py", "contains": ["MAX_ATTEMPTS = 5"]}
-      ]
+        {
+          "path": "backend/app/services/strava/webhook_queue.py",
+          "contains": [
+            "except PermanentAuthError",
+            "event.status = \"failed\"",
+            "break"
+          ]
+        },
+        {
+          "path": "backend/app/services/strava/webhook_queue.py",
+          "contains": [
+            "MAX_ATTEMPTS = 5"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-08",
@@ -194,9 +400,25 @@
       "fix": "Destructure isError/refetch, render ErrorState + retry, stop passing isLoading={!sessions} when errored, and make the E2E assert the error state.",
       "verify": "Mock /api/v1/lifting/sessions -> 500 and load /lifting; the page must show an error and a retry, not a skeleton.",
       "checks": [
-        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["const { data: sessions } = useQuery", "isLoading={!sessions}"], "absent": ["sessionsError"]},
-        {"path": "frontend/e2e/lifting.spec.ts", "contains": ["test('handles API errors gracefully'", "toContainText('Lifting')"]}
-      ]
+        {
+          "path": "frontend/src/app/(app)/lifting/page.tsx",
+          "contains": [
+            "const { data: sessions } = useQuery",
+            "isLoading={!sessions}"
+          ],
+          "absent": [
+            "sessionsError"
+          ]
+        },
+        {
+          "path": "frontend/e2e/lifting.spec.ts",
+          "contains": [
+            "test('handles API errors gracefully'",
+            "toContainText('Lifting')"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-09",
@@ -209,10 +431,31 @@
       "fix": "Request limit/offset from page, read X-Total-Count via authFetchWithHeaders, and either implement or remove the split/class/exercise filters. At minimum request limit=200 and label the list honestly.",
       "verify": "With 51+ sessions, the header reads 50 and session 51 is absent; ?s_split=push shows all sessions.",
       "checks": [
-        {"path": "backend/app/api/lifting.py", "contains": ["limit: int = Query(50, ge=1, le=200)"]},
-        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["authFetch<LiftingSession[]>('/api/v1/lifting/sessions')"]},
-        {"path": "frontend/src/components/lifting/SessionRail.tsx", "contains": ["All {sessions.length}"], "absent": ["filters.split", "filters.sessionClass", "filters.exercise"]}
-      ]
+        {
+          "path": "backend/app/api/lifting.py",
+          "contains": [
+            "limit: int = Query(50, ge=1, le=200)"
+          ]
+        },
+        {
+          "path": "frontend/src/app/(app)/lifting/page.tsx",
+          "contains": [
+            "authFetch<LiftingSession[]>('/api/v1/lifting/sessions')"
+          ]
+        },
+        {
+          "path": "frontend/src/components/lifting/SessionRail.tsx",
+          "contains": [
+            "All {sessions.length}"
+          ],
+          "absent": [
+            "filters.split",
+            "filters.sessionClass",
+            "filters.exercise"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-10",
@@ -225,9 +468,25 @@
       "fix": "Key the panel by selectedSessionId (or close it on selection), send ''/null for cleared fields, and allow null in UpdateSessionPayload.",
       "verify": "Clear a populated Focus and inspect the PATCH body; switch between two viewed sessions with Edit open and compare the displayed values.",
       "checks": [
-        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["defaultValue={sessionDetail.focus || ''}", "data: { focus: e.target.value || undefined }"]},
-        {"path": "frontend/src/lib/api/types/lifting.ts", "contains": ["focus?: string;", "notes?: string;"], "absent": ["focus?: string | null"]}
-      ]
+        {
+          "path": "frontend/src/app/(app)/lifting/page.tsx",
+          "contains": [
+            "defaultValue={sessionDetail.focus || ''}",
+            "data: { focus: e.target.value || undefined }"
+          ]
+        },
+        {
+          "path": "frontend/src/lib/api/types/lifting.ts",
+          "contains": [
+            "focus?: string;",
+            "notes?: string;"
+          ],
+          "absent": [
+            "focus?: string | null"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-11",
@@ -240,10 +499,27 @@
       "fix": "Use location-neutral labels (Overview, Start, Mid, Climb, Summit, Close) or derive labels from the ride's key points/place names; remove the 'arthur' branch.",
       "verify": "Open /relive3d/<id> for a non-Swiss ride: the preset row still reads Lausanne/Montreux.",
       "checks": [
-        {"path": "frontend/src/lib/relive3d/types.ts", "contains": ["{ id: 'lausanne', label: 'Lausanne' }", "{ id: 'montreux', label: 'Montreux' }"]},
-        {"path": "backend/app/services/replay.py", "contains": ["\"arthur\" in route_name.lower()"]},
-        {"path": "frontend/src/components/relive3d/Relive3D.tsx", "contains": ["ride.poseLabels?.[p.id] ?? p.label"]}
-      ]
+        {
+          "path": "frontend/src/lib/relive3d/types.ts",
+          "contains": [
+            "{ id: 'lausanne', label: 'Lausanne' }",
+            "{ id: 'montreux', label: 'Montreux' }"
+          ]
+        },
+        {
+          "path": "backend/app/services/replay.py",
+          "contains": [
+            "\"arthur\" in route_name.lower()"
+          ]
+        },
+        {
+          "path": "frontend/src/components/relive3d/Relive3D.tsx",
+          "contains": [
+            "ride.poseLabels?.[p.id] ?? p.label"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-12",
@@ -256,8 +532,15 @@
       "fix": "Check completed before the date branch, keeping rest first.",
       "verify": "Unit test with TrainingPlanDay(day_date=today, completed=True) expects completed, not pending.",
       "checks": [
-        {"path": "backend/app/services/training_plan.py", "order": ["elif day.day_date >= today:", "elif day.completed:"]}
-      ]
+        {
+          "path": "backend/app/services/training_plan.py",
+          "order": [
+            "elif day.day_date >= today:",
+            "elif day.completed:"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-13",
@@ -270,10 +553,28 @@
       "fix": "Store a pre-taper baseline (or taper_applied_for_event_id) and derive targets from it; restore on unlink; compute the factor per distinct day_date and scale duration/power with TSS.",
       "verify": "Link -> unlink -> link yields the same TSS as one link; two same-date rows share one factor.",
       "checks": [
-        {"path": "backend/app/services/training_plan.py", "contains": ["plan.end_date = min(plan.end_date, event.event_date)", "for i, day in enumerate(taper_days):"]},
-        {"path": "backend/app/services/training_plan.py", "contains": ["if event_id:", "plan = await link_event_and_apply_taper(db, user_id, plan, event_id)"]},
-        {"path": "frontend/src/app/(app)/training/page.tsx", "contains": ["event_id: null"]}
-      ]
+        {
+          "path": "backend/app/services/training_plan.py",
+          "contains": [
+            "plan.end_date = min(plan.end_date, event.event_date)",
+            "for i, day in enumerate(taper_days):"
+          ]
+        },
+        {
+          "path": "backend/app/services/training_plan.py",
+          "contains": [
+            "if event_id:",
+            "plan = await link_event_and_apply_taper(db, user_id, plan, event_id)"
+          ]
+        },
+        {
+          "path": "frontend/src/app/(app)/training/page.tsx",
+          "contains": [
+            "event_id: null"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-14",
@@ -286,10 +587,31 @@
       "fix": "Schedule classify_lifting_session_by_id from the set CRUD endpoints, or classify inline when the set list changes.",
       "verify": "Mock jev_client.decide, mutate a stub session's sets, re-run classification: the hash check must not short-circuit the second call.",
       "checks": [
-        {"path": "backend/app/services/jev_classification.py", "contains": ["content_hash", "taxonomy_version"]},
-        {"path": "backend/app/services/lifting.py", "section": {"start": "async def add_set(", "end": "async def update_set(", "absent": ["classify_lifting_session_by_id"]}},
-        {"path": "backend/app/api/lifting.py", "contains": ["classify_lifting_session_by_id"]}
-      ]
+        {
+          "path": "backend/app/services/jev_classification.py",
+          "contains": [
+            "content_hash",
+            "taxonomy_version"
+          ]
+        },
+        {
+          "path": "backend/app/services/lifting.py",
+          "section": {
+            "start": "async def add_set(",
+            "end": "async def update_set(",
+            "absent": [
+              "classify_lifting_session_by_id"
+            ]
+          }
+        },
+        {
+          "path": "backend/app/api/lifting.py",
+          "contains": [
+            "classify_lifting_session_by_id"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-15",
@@ -302,27 +624,73 @@
       "fix": "Extend test_doc_claims.py to AGENTS.md and the migration numbers; correct the UndoLog, pre-commit, and rollback sentences; reconcile BUGS.md with its archive; add a re-verified status column to the 2026-10-15 review docs.",
       "verify": "python -m pytest backend/tests/test_doc_claims.py -q passes today while AGENTS.md:223 says 097 and the head is 103.",
       "checks": [
-        {"path": "AGENTS.md", "contains": ["New migrations continue from 097"]},
-        {"path": "backend/tests/test_doc_claims.py", "absent": ["AGENTS.md"]},
-        {"path": "AGENTS.md", "contains": ["It has no HTTP surface", "C6 gave `UndoLog` its first HTTP surface"]},
-        {"path": ".githooks/pre-commit", "absent": ["pytest", "SECRET_KEY"]},
-        {"path": "docs/RUNNING.md", "contains": ["Transactional rollback per test"]},
-        {"path": "docs/BUGS.md", "contains": ["**Open: 6**", "BUG-015"]}
-      ]
+        {
+          "path": "AGENTS.md",
+          "contains": [
+            "New migrations continue from 097"
+          ]
+        },
+        {
+          "path": "backend/tests/test_doc_claims.py",
+          "absent": [
+            "AGENTS.md"
+          ]
+        },
+        {
+          "path": "AGENTS.md",
+          "contains": [
+            "It has no HTTP surface",
+            "C6 gave `UndoLog` its first HTTP surface"
+          ]
+        },
+        {
+          "path": ".githooks/pre-commit",
+          "absent": [
+            "pytest",
+            "SECRET_KEY"
+          ]
+        },
+        {
+          "path": "docs/RUNNING.md",
+          "contains": [
+            "Transactional rollback per test"
+          ]
+        },
+        {
+          "path": "docs/BUGS.md",
+          "contains": [
+            "**Open: 6**",
+            "BUG-015"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-16",
       "severity": "P2",
       "primary": false,
+      "accepted": true,
       "area": "security / dependencies",
       "title": "Next.js 14.2.15 carries a critical advisory set; the app has no middleware and no next/image, so only part is reachable",
       "confidence": "high",
       "impact": "npm audit --omit=dev reports 1 critical, 2 high, 1 moderate. Middleware-bypass and image-optimizer advisories are not reachable without middleware.ts/next/image, but the App Router DoS and cache-poisoning classes remain. Upgrading is a breaking major from 14 to a patched line.",
       "fix": "Plan a Next 14.2.x security bump to the newest patched 14.x, or a staged Next 16 migration; add npm audit to CI as advisory until then.",
+      "acceptance": "Accepted residual risk: 14.2.35 still reports the range and only Next 16.4.5 clears it; Next 16 needs React 19 and a broad migration. No middleware.ts and no next/image reduce reachability; App Router DoS/cache classes remain. Revisit as a dedicated migration.",
       "verify": "npm audit --omit=dev in frontend: 4 vulnerabilities; npm view next@14 version shows the patched line.",
       "checks": [
-        {"path": "frontend/package.json", "contains": ["\"next\": \"14.2.15\""]},
-        {"path": "frontend/package-lock.json", "contains": ["\"version\": \"14.2.15\""]}
+        {
+          "path": "frontend/package.json",
+          "contains": [
+            "\"next\": \"14.2.15\""
+          ]
+        },
+        {
+          "path": "frontend/package-lock.json",
+          "contains": [
+            "\"version\": \"14.2.15\""
+          ]
+        }
       ]
     },
     {
@@ -336,9 +704,24 @@
       "fix": "Keep infra/Caddyfile as the single source and substitute only DOMAIN/ACME_EMAIL, or include the header block in the generated file.",
       "verify": "On the droplet, curl -sI https://<domain>/fittrack | grep -iE 'strict-transport|x-frame|referrer|x-content' returns nothing today.",
       "checks": [
-        {"path": ".github/workflows/deploy.yml", "contains": ["cat > infra/Caddyfile"], "absent": ["Strict-Transport-Security"]},
-        {"path": "infra/Caddyfile", "contains": ["Strict-Transport-Security", "X-Frame-Options DENY"]}
-      ]
+        {
+          "path": ".github/workflows/deploy.yml",
+          "contains": [
+            "cat > infra/Caddyfile"
+          ],
+          "absent": [
+            "Strict-Transport-Security"
+          ]
+        },
+        {
+          "path": "infra/Caddyfile",
+          "contains": [
+            "Strict-Transport-Security",
+            "X-Frame-Options DENY"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-18",
@@ -351,9 +734,22 @@
       "fix": "Decouple the default-key and localhost-DB checks from DEBUG (require an explicit ALLOW_INSECURE_DEFAULTS), and set DEBUG=false in .env.example.",
       "verify": "SECRET_KEY=change-me-to-a-random-secret-key DEBUG=true python -c 'from app.config import Settings; Settings()' constructs today (warning only); after the fix it raises.",
       "checks": [
-        {"path": "backend/app/config.py", "contains": ["if not self.debug:", "_DEFAULT_SECRET_KEY"]},
-        {"path": ".env.example", "contains": ["DEBUG=true", "SECRET_KEY=change-me-to-a-random-secret-key"]}
-      ]
+        {
+          "path": "backend/app/config.py",
+          "contains": [
+            "if not self.debug:",
+            "_DEFAULT_SECRET_KEY"
+          ]
+        },
+        {
+          "path": ".env.example",
+          "contains": [
+            "DEBUG=true",
+            "SECRET_KEY=change-me-to-a-random-secret-key"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-19",
@@ -366,9 +762,23 @@
       "fix": "Before deleting the user, list and delete the lift_videos/{user_id}/ prefix; add a bucket lifecycle rule as a backstop and record the deletion.",
       "verify": "Upload a video, delete the account, list the bucket prefix: objects remain today.",
       "checks": [
-        {"path": "backend/app/api/account.py", "contains": ["delete(User)"], "absent": ["delete_object"]},
-        {"path": "backend/app/api/videos.py", "contains": ["delete_object"]}
-      ]
+        {
+          "path": "backend/app/api/account.py",
+          "contains": [
+            "delete(User)"
+          ],
+          "absent": [
+            "delete_object"
+          ]
+        },
+        {
+          "path": "backend/app/api/videos.py",
+          "contains": [
+            "delete_object"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-20",
@@ -381,24 +791,58 @@
       "fix": "Require https, reject userinfo/private/link-local/loopback hosts, allowlist push services, and key the upsert on (user_id, endpoint).",
       "verify": "POST an http://169.254.169.254/... endpoint: today it is stored; after the fix it is 422.",
       "checks": [
-        {"path": "backend/app/schemas/push.py", "contains": ["endpoint: str"], "absent": ["HttpUrl"]},
-        {"path": "backend/app/services/push.py", "contains": ["webpush,", "\"endpoint\": sub.endpoint"]},
-        {"path": "backend/app/services/push.py", "contains": ["PushSubscription.endpoint == endpoint"]}
-      ]
+        {
+          "path": "backend/app/schemas/push.py",
+          "contains": [
+            "endpoint: str"
+          ],
+          "absent": [
+            "HttpUrl"
+          ]
+        },
+        {
+          "path": "backend/app/services/push.py",
+          "contains": [
+            "webpush,",
+            "\"endpoint\": sub.endpoint"
+          ]
+        },
+        {
+          "path": "backend/app/services/push.py",
+          "contains": [
+            "PushSubscription.endpoint == endpoint"
+          ]
+        }
+      ],
+      "fixed": true
     },
     {
       "id": "AUD-21",
       "severity": "P2",
       "primary": false,
+      "accepted": true,
       "area": "backend / training plan",
       "title": "The full-array plan save deletes every pair missing from the payload, and its test asserts the opposite of its name",
       "confidence": "high",
       "impact": "PATCH /training-plans/{id} with days deletes any (date, sport) pair not in the payload. The test named 'payload_for_one_sport_leaves_the_other_row_alone' asserts that the same-date cycle row is gone and never checks the other date, so a destructive omission is certified as safe.",
       "fix": "Either restrict the save to pairs the payload names (non-destructive), or keep full-replace and make the UI/contract explicit. Rename the test to what it asserts and add a case for the omitted other-date row.",
+      "acceptance": "Accepted full-replace contract. PATCH /training-plans/{id} with days replaces the set; the targeted /days endpoints are the non-destructive path. The test now says what it asserts and checks the omitted-date deletion.",
       "verify": "POST a two-sport date, then PATCH only one sport: the sibling is deleted and the other date is deleted too.",
       "checks": [
-        {"path": "backend/app/services/training_plan.py", "contains": ["if key not in incoming_keys:", "await db.delete(row)"]},
-        {"path": "backend/tests/integration/test_multi_sport_days.py", "contains": ["test_payload_for_one_sport_leaves_the_other_row_alone", "[(\"strength\", \"hard\")]"]}
+        {
+          "path": "backend/app/services/training_plan.py",
+          "contains": [
+            "if key not in incoming_keys:",
+            "await db.delete(row)"
+          ]
+        },
+        {
+          "path": "backend/tests/integration/test_multi_sport_days.py",
+          "contains": [
+            "test_payload_for_one_sport_replaces_the_whole_day_set",
+            "[(\"strength\", \"hard\")]"
+          ]
+        }
       ]
     },
     {
@@ -412,9 +856,21 @@
       "fix": "Derive max from values (Math.max(1, ...values) * 1.1) and derive tick labels, or pass a per-call max.",
       "verify": "Render VolumeTrendChart with values={[40000]}: the bar is clipped today; after the fix it fits and the axis scales.",
       "checks": [
-        {"path": "frontend/src/components/lifting/overview/VolumeTrendChart.tsx", "contains": ["max = 30_000", "(v / max)"]},
-        {"path": "frontend/src/components/lifting/overview/CombinedLoadHero.tsx", "contains": ["Math.max"]}
-      ]
+        {
+          "path": "frontend/src/components/lifting/overview/VolumeTrendChart.tsx",
+          "contains": [
+            "max = 30_000",
+            "(v / max)"
+          ]
+        },
+        {
+          "path": "frontend/src/components/lifting/overview/CombinedLoadHero.tsx",
+          "contains": [
+            "Math.max"
+          ]
+        }
+      ],
+      "fixed": true
     }
   ]
 }

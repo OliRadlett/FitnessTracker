@@ -1,50 +1,57 @@
 # Post-audit fixes — 2026-11-04
 
-Branch: `fix/audit-p0-2026-11-04` (clean worktree at `C:\Projects\fitness-tracker-stabilise`)
-Base: `origin/main` @ `0151e5f` (the audit snapshot was `d2a7fd0`; main advanced two commits, and every finding below was re-checked on the newer base).
-Commits:
+Status: **closed**. PRs #352, #358 and #361 are merged to `main`; CI was green on each.
 
-- `c352083` — `fix(audit): restore sync auth imports and persist backups`
-- `0f76f15` — `fix(audit): keep lifting load and tab state current`
-- `a94c70c` — `fix(audit): unblock the weather task and close the prod frontend port`
-
-Nothing was pushed or merged. The dirty checkout in `C:\Projects\fitness-tracker` was not modified.
+| PR | Scope |
+|---|---|
+| [#352](https://github.com/OliRadlett/FitnessTracker/pull/352) | All P0/P1 + AUD-08/09/10/12 |
+| [#358](https://github.com/OliRadlett/FitnessTracker/pull/358) | AUD-11/17/22 + AUD-15 docs truth |
+| [#361](https://github.com/OliRadlett/FitnessTracker/pull/361) | AUD-13/14/18/19/20/21 |
 
 ## Fixed
 
 | ID | Fix | Evidence |
 |---|---|---|
-| AUD-00 | Imported `mark_connection_reauth` and `handle_sync_http_error` in the sync task; narrowed the F821 ignore to `app/models/*`; added an AST guard that the task imports both. | `backend/tests/test_scheduler_auth_handlers.py`; `ruff --select F821` clean |
-| AUD-01 | Added `./backups:/backups` to the production worker and a config guard. | `docker-compose.prod.yml`; `backend/tests/test_backup_durability.py`; merged compose shows the mount |
-| AUD-02 | The deep-link effect reads `window.location.search` once on mount instead of depending on `getParam`; added an E2E tab-selection case. | `frontend/src/app/(app)/lifting/page.tsx`; `frontend/e2e/lifting.spec.ts`; `tsc --noEmit` clean |
-| AUD-03 | `refresh_persisted_session_tss` recomputes from the persisted set rows after create/add/update/delete; `refresh_session_tss` accepts an explicit set list. | `backend/app/services/lifting.py`; `test_lifting_api.py` create/add/delete assertions; 21 integration tests pass |
-| AUD-04 | Added one ownership helper for route/session/template IDs; `save_plan_days` and `add_plan_day` use it; `update_plan_day` now also checks `warmup_template_id`. | `backend/app/services/training_plan.py`; foreign-session integration test returns 404 and stores no row |
-| AUD-05 | Removed the base frontend `ports`; moved 3000 to the dev override; set `NODE_ENV=production` in the prod override. | `docker-compose*.yml`; `docker compose config` shows no 3000 in prod, 3000 in dev |
-| AUD-07 | The weather task now awaits `aanalyze_weather_on_modal`; added a scheduler-wiring test alongside the existing wrapper test. | `scheduler.py`; `backend/tests/test_weather_modal_async.py` |
-| AUD-06 | Deploy now starts `db`/`redis`, runs `alembic upgrade head` in a one-shot backend, and only then starts the app. Startup fails closed on migration failure. `/health` reports `db_revision`, `db_head`, and `schema`, and returns 503 on a mismatch. | `.github/workflows/deploy.yml`; `backend/app/main.py`; local `/health` returned 503 with `db_revision=102`, `db_head=103` |
-| AUD-23 | On `PermanentAuthError`, the webhook drain keeps the event pending, records the error, counts it as `deferred`, and continues with other events. Each loop re-reads the event with `populate_existing` so a rollback from the previous iteration cannot expire the queue. | `webhook_queue.py`; `test_webhook_queue.py` (6 passed) |
+| AUD-00 | Imported `mark_connection_reauth` / `handle_sync_http_error`; narrowed F821 to `app/models/*`; AST guard. | `test_scheduler_auth_handlers.py`; Ruff F821 clean |
+| AUD-01 | Production worker mounts `./backups:/backups`; compose guard. | `docker-compose.prod.yml`; `test_backup_durability.py` |
+| AUD-02 | Deep links read once on mount; E2E tab case. | `lifting/page.tsx`; `lifting.spec.ts` |
+| AUD-03 | TSS recomputed from persisted sets after create/add/update/delete. | `lifting.py`; `test_lifting_api.py` |
+| AUD-04 | Ownership helper for route/session/template IDs on create/upsert/PATCH. | `training_plan.py`; foreign-session test |
+| AUD-05 | 3000 is dev-only; prod is Caddy-only with `NODE_ENV=production`. | compose config |
+| AUD-06 | Migrations run before `up -d`; startup fails closed; `/health` gates on `db_revision == db_head`. | `deploy.yml`; `main.py`; `test_health_schema.py` |
+| AUD-07 | Weather task awaits `aanalyze_weather_on_modal`; scheduler-wiring test. | `scheduler.py`; `test_weather_modal_async.py` |
+| AUD-08 | Sessions failure renders `ErrorState` + Retry; E2E asserts it. | `lifting/page.tsx`; E2E |
+| AUD-09 | 200-row request, `X-Total-Count`, shown-of-total, working `s_split`/`s_class`/`s_ex` + exercise search. | `SessionRail.tsx`; E2E |
+| AUD-10 | Edit panel keyed by session id. | `lifting/page.tsx` |
+| AUD-11 | Location-neutral Relive presets; removed the “arthur” route branch. | `types.ts`; `replay.py`; `test_replay.py` |
+| AUD-12 | Completed wins over the date in `day_status`; pure helper + test. | `test_training_day_status.py` |
+| AUD-13 | Migration 104 stores the pre-taper baseline; link idempotent, unlink restores, multi-sport dates share a factor. | `104_add_plan_taper_baseline.py`; `test_taper_restore.py` |
+| AUD-14 | Set CRUD schedules Jev reclassification; API test. | `api/lifting.py`; `test_lifting_api.py` |
+| AUD-15 | AGENTS/RUNNING/BUGS/backlog/2026-10-15 review corrected. | docs |
+| AUD-17 | Deploy-generated Caddyfile carries the security headers. | `deploy.yml` |
+| AUD-18 | Default `SECRET_KEY` rejected unless `ALLOW_INSECURE_DEFAULTS`; `.env.example` no longer ships `DEBUG=true`. | `config.py`; `test_config_secret.py` |
+| AUD-19 | Account deletion removes R2 video objects before the DB cascade. | `account.py` |
+| AUD-20 | Push endpoints require public HTTPS; upsert keyed by `(user_id, endpoint)`. | `schemas/push.py`; `test_push_validation.py` |
+| AUD-22 | Volume chart scales to its own maximum. | `VolumeTrendChart.tsx` |
+| AUD-23 | Webhook auth failures stay pending/deferred and continue the queue. | `webhook_queue.py`; `test_webhook_queue.py` |
+
+## Accepted with a decision
+
+| ID | Decision |
+|---|---|
+| AUD-16 | **Accepted residual risk, not fixed.** `next@14.2.35` still carries the advisory range; only Next 16.4.5 clears it, and Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image`, so the image-optimizer and middleware-bypass advisories are not reachable; the App Router DoS/cache classes remain. Revisit with a dedicated React 19 + Next 16 migration. |
+| AUD-21 | **Accepted full-replace contract.** `PATCH /training-plans/{id}` with `days` replaces the day set; the targeted `/days` endpoints are the non-destructive editor path. The misleading test name was corrected and the omitted-date deletion is asserted. |
 
 ## Verification
 
-- Backend unit: **1780 passed**, 796 deselected.
+- Backend unit: **1789 passed**, 799 deselected.
 - Frontend unit: **741 passed** across 76 files.
-- Lifting API integration: **21 passed**.
-- Multi-sport/training-plan integration: **24 passed** (includes the foreign-session case).
-- Weather/wrapper + integration set: **47 passed**.
-- `/health` exercised locally: 503 with `db_revision=102`, `db_head=103`, `schema=error`; the two schema cases are unit-tested in `backend/tests/test_health_schema.py`.
-- `ruff check backend/`: clean, including `F821`.
-- `tsc --noEmit`: clean.
-- E2E tab case was added but **not executed** (no server was started in this session).
+- Affected integration: **30 passed** (account, taper, lifting API); webhook queue **6 passed**; health **2 passed**.
+- Migration 104: upgrade -> downgrade 103 -> upgrade head, clean.
+- `ruff check backend/` clean, including F821.
+- `tsc --noEmit` clean.
+- CI: Lint, Backend, Frontend, Playwright E2E green on #352/#358/#361.
 
-## P2 follow-up (same PR)
+## Residual operational check
 
-- **AUD-08** — a failed sessions query now renders `ErrorState` + Retry instead of an infinite skeleton; the E2E error test asserts that state.
-- **AUD-09** — the sessions query asks for 200 rows, reads `X-Total-Count`, and the rail reports shown-of-total with an explicit truncation note. `s_split` / `s_class` / `s_ex` are applied; search includes exercise names.
-- **AUD-10** — the edit panel is keyed by session id, so switching between cached sessions remounts the inputs instead of showing the previous session's values.
-- **AUD-12** — `day_status` checks `completed` before the date, factored into `day_status_for()` with a parametrized test.
-
-## Remaining
-
-No P0/P1 code item remains. The release gate still needs a real deploy run to prove `AUD-06` end to end: a failed migration must stop the release before `up -d`, and `/health` must return 200 only when `db_revision == db_head`.
-
-The P2 register in [AUDIT.md](AUDIT.md) is unchanged. The verifier's snapshot checks for AUD-03/AUD-04/AUD-06/AUD-23 still describe the pre-fix code, so use the tests above as the fix evidence rather than expecting the snapshot to flip.
+`AUD-06` is unit/static verified, but the one-shot migration ordering and `/health` gate have not been run in a real release. Confirm on the next deploy: a failed migration must abort before `up -d`, and `/health` must return 200 only when `db_revision == db_head`.
