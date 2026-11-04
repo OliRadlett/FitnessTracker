@@ -12,3 +12,7 @@ qa/out/*.png
 qa/before/*.png
 !qa/before/before-evidence.png
 qa/before/slices/
+
+# The production-page frames (`node qa/capture-after.mjs`) are regenerated per run
+# against the running app; they are evidence, not source.
+qa/after/*.png
