@@ -436,6 +436,15 @@ them.
 
 ## 15. Remaining & deferred items (register)
 
+> **Superseded in part — 2026-11.** This plan fixed the *editor* and left the *measuring stick*:
+> every phase's acceptance criterion was behavioural, never visual, so the page shipped with eleven
+> stacked bands, its own subject below the fold, and a spine printing `47/49 · 96%` — a denominator
+> of authored days — for a plan that had run dry nineteen days earlier. The surface has been rebuilt
+> around plan coverage in [`training-overhaul-2026-11.md`](training-overhaul-2026-11.md): Phases 0–4's
+> **surface** descriptions below no longer match the code (the mode switch, the week grid and the load
+> strip are gone), while their editor primitives, S1–S4 and C1–C6 remain in use. Read the overhaul doc
+> first; this register still holds for anything backend-side.
+
 The single place listing what is **not yet built** across the training workstream. Phases 0–4, companion S1–S4 and follow-ons C1–C6 have all shipped; what follows records what they deliberately left open.
 
 ### In-scope build (these are the order)

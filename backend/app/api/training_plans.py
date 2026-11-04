@@ -1,7 +1,7 @@
 """Training Plans API — thin router delegating to services.training_plan."""
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,6 +34,8 @@ from app.schemas.training_plan import (
     TrainingPlanDayCreate,
     TrainingPlanDayRead,
     TrainingPlanDayUpdate,
+    TrainingPlanExtendRequest,
+    TrainingPlanExtendResponse,
     TrainingPlanRead,
     TrainingPlanSummary,
     TrainingPlanUpdate,
@@ -61,23 +63,37 @@ async def list_plans(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all training plans for the current user."""
+    """List all training plans for the current user, with coverage."""
     plans = await plan_service.list_plans(db, current_user.id, status_filter)
-    return [
-        TrainingPlanSummary(
-            id=p.id,
-            name=p.name,
-            start_date=p.start_date,
-            end_date=p.end_date,
-            plan_type=p.plan_type,
-            status=p.status,
-            event_id=p.event_id,
-            day_count=len(p.days),
-            completed_days=sum(1 for d in p.days if d.completed),
-            updated_at=p.updated_at,
-        )
-        for p in plans
-    ]
+    return [_summary(p) for p in plans]
+
+
+def _summary(p) -> TrainingPlanSummary:
+    """One plan's summary, including how much of it is actually written.
+
+    Plan weeks are Monday-aligned from the plan's start, mirroring the backend's
+    own week numbering (and the client's): week 1 begins on the Monday on or
+    before ``start_date``.
+    """
+    week1_start = p.start_date - timedelta(days=p.start_date.weekday())
+    total_weeks = max(1, ((p.end_date - week1_start).days // 7) + 1)
+    written_weeks = {((d.day_date - week1_start).days // 7) + 1 for d in p.days}
+    return TrainingPlanSummary(
+        id=p.id,
+        name=p.name,
+        start_date=p.start_date,
+        end_date=p.end_date,
+        plan_type=p.plan_type,
+        status=p.status,
+        event_id=p.event_id,
+        day_count=len(p.days),
+        completed_days=sum(1 for d in p.days if d.completed),
+        weeks_written=len(written_weeks),
+        total_weeks=total_weeks,
+        uncovered_weeks=max(0, total_weeks - len(written_weeks)),
+        last_planned_date=max((d.day_date for d in p.days), default=None),
+        updated_at=p.updated_at,
+    )
 
 
 @router.get("/{plan_id}", response_model=TrainingPlanRead)
@@ -555,9 +571,32 @@ async def add_plan_day(
     return TrainingPlanDayRead.model_validate(day)
 
 
-@router.delete("/{plan_id}/days/{day_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_plan_day(
+@router.post("/{plan_id}/extend", response_model=TrainingPlanExtendResponse)
+async def extend_plan(
     plan_id: uuid.UUID,
+    data: TrainingPlanExtendRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Fill the plan forward to ``until``, copying a weekday pattern.
+
+    The page's primary action on its most common state — a plan whose written
+    content stops weeks before its ``end_date``. Only empty dates are filled, so
+    it is safe to retry and cannot overwrite authored days.
+    """
+    try:
+        result = await plan_service.extend_plan(
+            db, current_user.id, plan_id, data.until, data.source_week
+        )
+    except ValueError as e:
+        detail = str(e)
+        code = 404 if "not found" in detail else 400
+        raise HTTPException(status_code=code, detail=detail) from e
+    return TrainingPlanExtendResponse.model_validate(result)
+
+
+@router.delete("/{plan_id}/days/{day_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_plan_day(    plan_id: uuid.UUID,
     day_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),

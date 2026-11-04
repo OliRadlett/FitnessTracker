@@ -376,7 +376,7 @@ export function Sidebar() {
           >
             <AppIcon icon={Search} size={18} className="shrink-0" />
             <span className={`flex-1 ${isCollapsed ? 'md:hidden' : ''}`}>Search</span>
-            <kbd className={`hidden sm:inline-flex px-1.5 py-0.5 rounded bg-surface-light/60 text-[11px] text-muted ${isCollapsed ? 'md:hidden' : ''}`}>
+            <kbd className={`hidden sm:inline-flex px-1.5 py-0.5 rounded bg-surface-light/60 text-xs text-muted ${isCollapsed ? 'md:hidden' : ''}`}>
               ⌘K
             </kbd>
           </button>

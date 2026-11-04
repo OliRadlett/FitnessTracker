@@ -279,7 +279,7 @@ export function DayEditor({
         <div className="space-y-3">
           {targets ? (
             <div className="rounded-lg bg-surface-light/30 border border-surface-light/50 p-2 space-y-1">
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted">
                 <span>{targets.zone_name}</span>
                 <span>{targets.target_power_low}–{targets.target_power_high}W</span>
                 <span>{Math.round(targets.target_tss_low)}–{Math.round(targets.target_tss_high)} TSS</span>
@@ -295,42 +295,42 @@ export function DayEditor({
                     planned_zone: targets.zone_id,
                   })
                 }
-                className="text-[10px] text-accent hover:text-accent/80"
+                className="text-xs text-accent hover:text-accent/80"
               >
                 Use these targets
               </button>
             </div>
           ) : (
-            <p className="text-[11px] text-muted">
+            <p className="text-xs text-muted">
               {day.planned_duration_min ? 'Set FTP on Cycling to see computed targets' : 'Set duration to see targets'}
             </p>
           )}
 
           {/* Route */}
           <div className="space-y-1">
-            <p className="text-[10px] font-medium text-muted uppercase tracking-wide">Route</p>
+            <p className="text-xs font-medium text-muted uppercase tracking-wide">Route</p>
             {day.actual_activity?.route_id ? (
-              <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
+              <span className="inline-block text-xs px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
                 {day.actual_activity.route_name || 'Linked route'}
               </span>
             ) : day.planned_route_id ? (
               <div className="flex items-center gap-2">
-                <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
+                <span className="inline-block text-xs px-1.5 py-0.5 rounded-full bg-positive/15 text-positive border border-positive/30 truncate">
                   {day.route_matches?.find((m) => m.route_id === day.planned_route_id)?.name || 'Route assigned'}
                 </span>
-                <button onClick={onOpenRoutePicker} className="text-[10px] text-accent hover:text-accent/80 shrink-0">
+                <button onClick={onOpenRoutePicker} className="text-xs text-accent hover:text-accent/80 shrink-0">
                   Change
                 </button>
                 <button
                   onClick={() => patch({ planned_route_id: null })}
                   disabled={edit.isPending}
-                  className="text-[10px] text-warning hover:text-warning/80 disabled:opacity-50 shrink-0"
+                  className="text-xs text-warning hover:text-warning/80 disabled:opacity-50 shrink-0"
                 >
                   Remove
                 </button>
               </div>
             ) : (
-              <button onClick={onOpenRoutePicker} className="text-[10px] text-accent hover:text-accent/80">
+              <button onClick={onOpenRoutePicker} className="text-xs text-accent hover:text-accent/80">
                 <MapPin className="w-3 h-3 mr-1" /> Pick a route...
               </button>
             )}
@@ -343,20 +343,20 @@ export function DayEditor({
 
           {/* Wahoo */}
           <div className="space-y-1">
-            <p className="text-[10px] font-medium text-muted uppercase tracking-wide">Wahoo</p>
+            <p className="text-xs font-medium text-muted uppercase tracking-wide">Wahoo</p>
             {day.wahoo_pushed_at ? (
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="inline-block text-[10px] px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
+                <span className="inline-block text-xs px-1.5 py-0.5 rounded-full bg-accent/15 text-accent border border-accent/30">
                   Pushed {new Date(day.wahoo_pushed_at).toLocaleDateString(getActiveLocale())}
                   {day.wahoo_push_workout ? ' · workout' : ''}
                   {day.wahoo_route_id ? ' · route' : ''}
                 </span>
-                <button onClick={onOpenWahooPush} className="text-[10px] text-accent hover:text-accent/80 shrink-0">
+                <button onClick={onOpenWahooPush} className="text-xs text-accent hover:text-accent/80 shrink-0">
                   Manage
                 </button>
               </div>
             ) : (
-              <button onClick={onOpenWahooPush} className="text-[10px] text-accent hover:text-accent/80">
+              <button onClick={onOpenWahooPush} className="text-xs text-accent hover:text-accent/80">
                 <Upload className="w-3 h-3 inline mr-1" /> Push to Wahoo
               </button>
             )}
@@ -417,7 +417,7 @@ export function DayEditor({
               {selectedWarmup && selectedWarmup.steps.length > 0 && (
                 <div className="mt-1 space-y-0.5">
                   {selectedWarmup.steps.map((s) => (
-                    <p key={s.step_number} className="text-[10px] text-muted">
+                    <p key={s.step_number} className="text-xs text-muted">
                       {s.step_number}. {s.weight_kg}kg × {s.reps} reps
                       {s.notes ? ` — ${s.notes}` : ''}
                     </p>
@@ -430,11 +430,11 @@ export function DayEditor({
           {/* Warm-up ramp from the day's top set (S4) */}
           {ramp.length > 0 && (
             <div className="rounded-lg bg-surface-light/30 border border-surface-light/50 p-2 space-y-0.5">
-              <p className="text-[10px] font-medium text-muted uppercase tracking-wide">
+              <p className="text-xs font-medium text-muted uppercase tracking-wide">
                 Warm-up ramp (top {topKg}kg)
               </p>
               {ramp.map((s) => (
-                <p key={s.pct} className="text-[10px] text-muted">
+                <p key={s.pct} className="text-xs text-muted">
                   {Math.round(s.pct * 100)}% · {s.kg}kg × {s.reps}
                 </p>
               ))}
@@ -498,7 +498,7 @@ export function DayEditor({
                     disabled={suggestIdx !== null}
                     title={`Suggest weight from current e1RM @ ${Math.round((ex.pct_1rm ?? 0.8) * 100)}%`}
                     aria-label={`Suggest weight for ${ex.exercise || 'exercise'}`}
-                    className="shrink-0 px-1.5 py-1.5 text-[10px] rounded-lg bg-surface-light/60 text-muted hover:text-foreground transition-colors disabled:opacity-50"
+                    className="shrink-0 px-1.5 py-1.5 text-xs rounded-lg bg-surface-light/60 text-muted hover:text-foreground transition-colors disabled:opacity-50"
                   >
                     {suggestIdx === idx ? '…' : '%1RM'}
                   </button>
@@ -506,7 +506,7 @@ export function DayEditor({
                     const hint = autoMap.get((ex.exercise ?? '').toLowerCase());
                     if (!hint || hint.suggestedWeightKg == null || hint.deltaKg === 0) return null;
                     return (
-                      <span className="text-accent text-[10px] shrink-0" title={hint.reason}>
+                      <span className="text-accent text-xs shrink-0" title={hint.reason}>
                         →{hint.suggestedWeightKg}
                       </span>
                     );
@@ -537,7 +537,7 @@ export function DayEditor({
                   placeholder="Cue (e.g. pause on chest)"
                   value={ex.note ?? ''}
                   onChange={(e) => patchExercise(idx, { note: e.target.value || null })}
-                  className="col-span-6 sm:col-span-12 px-2 py-1 bg-background border border-surface-light rounded text-foreground text-[10px] focus:outline-none focus:border-accent"
+                  className="col-span-6 sm:col-span-12 px-2 py-1 bg-background border border-surface-light rounded text-foreground text-xs focus:outline-none focus:border-accent"
                   aria-label={`Cue for ${ex.exercise || 'exercise'}`}
                 />
               </div>
@@ -580,7 +580,7 @@ export function DayEditor({
                 </button>
               </div>
             )}
-            {suggestMsg && <p className="text-[11px] text-muted">{suggestMsg}</p>}
+            {suggestMsg && <p className="text-xs text-muted">{suggestMsg}</p>}
           </div>
         </div>
       )}
@@ -633,12 +633,12 @@ export function DayEditor({
           {day.actual_activity ? (
             <Link
               href={`/activities?activity=${day.actual_activity.id}`}
-              className="text-[11px] text-positive font-medium truncate"
+              className="text-xs text-positive font-medium truncate"
             >
               {day.actual_activity.name} →
             </Link>
           ) : (
-            <p className="text-[11px] text-positive font-medium">
+            <p className="text-xs text-positive font-medium">
               {day.actual_lifting_session!.focus
                 ? day.actual_lifting_session!.focus!
                 : 'Lifting'}{' '}
@@ -679,7 +679,7 @@ export function DayEditor({
               setShowMove((v) => !v);
               setShowDuplicate(false);
             }}
-            className="text-[11px] text-accent hover:text-accent/80 inline-flex items-center gap-1"
+            className="text-xs text-accent hover:text-accent/80 inline-flex items-center gap-1"
           >
             <Calendar className="w-3 h-3" /> Move to date
           </button>
@@ -688,7 +688,7 @@ export function DayEditor({
               setShowDuplicate((v) => !v);
               setShowMove(false);
             }}
-            className="text-[11px] text-accent hover:text-accent/80 inline-flex items-center gap-1"
+            className="text-xs text-accent hover:text-accent/80 inline-flex items-center gap-1"
           >
             <Copy className="w-3 h-3" /> Duplicate to date
           </button>
@@ -696,7 +696,7 @@ export function DayEditor({
             onClick={() => setConfirmDelete(true)}
             disabled={day.completed}
             title={day.completed ? 'Completed days cannot be deleted' : undefined}
-            className="text-[11px] text-warning hover:text-warning/80 inline-flex items-center gap-1 ml-auto disabled:opacity-40"
+            className="text-xs text-warning hover:text-warning/80 inline-flex items-center gap-1 ml-auto disabled:opacity-40"
           >
             <Trash2 className="w-3 h-3" /> Delete
           </button>

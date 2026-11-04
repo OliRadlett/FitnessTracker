@@ -13,7 +13,7 @@ import type { CreateEventPayload } from '@/lib/api';
 
 const inputCls =
   'w-full px-2 py-1.5 min-h-[44px] bg-background border border-surface-light rounded-lg text-foreground text-sm focus:outline-none focus:border-accent';
-const labelCls = 'block text-[10px] text-muted mb-0.5';
+const labelCls = 'block text-xs text-muted mb-0.5';
 
 export interface EventFormProps {
   onSubmit: (payload: CreateEventPayload) => void;

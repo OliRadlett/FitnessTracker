@@ -2918,6 +2918,125 @@ async def delete_plan_day(
     await db.flush()
 
 
+# Prescription fields a copy carries. Deliberately excludes everything the
+# server owns (``completed``, the ``activity_id`` / ``lifting_session_id`` links,
+# the Wahoo ids) and everything that is *this week's* rather than the pattern's
+# (``planned_route_id``, ``warmup_template_id``): copying a race route onto
+# twelve arguments would be noise, not a plan.
+_EXTEND_COPY_FIELDS = (
+    "sport",
+    "planned_type",
+    "planned_tss",
+    "planned_duration_min",
+    "workout_description",
+    "planned_focus",
+    "planned_exercises",
+    "planned_volume_kg",
+    "planned_rpe",
+    "planned_power_watts",
+    "planned_zone",
+    "notes",
+)
+
+
+async def extend_plan(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    until: date,
+    source_week: int | None = None,
+) -> dict:
+    """Carry the plan's weekday pattern forward, filling only empty dates.
+
+    This is the operation the page was missing: the common state is a plan whose
+    written content stops weeks before its ``end_date``, and nothing could write
+    the rest except authoring every day by hand.
+
+    The pattern comes from ``source_week`` when given, else from the last week
+    that has any days. Every date after the last written day up to ``until``
+    receives that weekday's sessions from the pattern. Dates that already hold a
+    day are skipped, so the call is idempotent and can never overwrite work.
+
+    Returns a summary rather than the plan: the caller invalidates and refetches,
+    and a 49-day plan serialised twice would be a waste.
+    """
+    plan = await _get_plan_or_none(db, user_id, plan_id)
+    if not plan:
+        raise ValueError("Training plan not found")
+
+    if until < plan.start_date:
+        raise ValueError("until is before the plan start")
+
+    # Read the days explicitly rather than through ``plan.days``. The relationship
+    # is identity-mapped, so a session that loaded the plan before this call keeps
+    # serving the pre-write collection — and both the "fill only empty" guarantee
+    # and the pattern depend on seeing the rows as they are *now*. With the stale
+    # collection a retry re-created days it had just written.
+    existing_rows = await db.execute(
+        select(TrainingPlanDay)
+        .where(TrainingPlanDay.plan_id == plan.id)
+        .order_by(TrainingPlanDay.day_date)
+    )
+    existing_days = list(existing_rows.scalars().all())
+
+    week1_start = plan.start_date - timedelta(days=plan.start_date.weekday())
+
+    def week_of(d: date) -> int:
+        return (d - week1_start).days // 7 + 1
+
+    days_by_week: dict[int, list[TrainingPlanDay]] = {}
+    for day in existing_days:
+        days_by_week.setdefault(week_of(day.day_date), []).append(day)
+
+    written = sorted(w for w, ds in days_by_week.items() if ds)
+    if not written:
+        raise ValueError("Plan has no days to copy from — add one first")
+
+    src = source_week if source_week is not None else written[-1]
+    if src not in days_by_week:
+        raise ValueError(f"Week {src} has no days to copy from")
+
+    pattern = days_by_week[src]
+    last_written = max(d.day_date for d in existing_days)
+
+    # Extend the claimed range first: the days created below must fall inside it.
+    plan.end_date = max(plan.end_date, until)
+
+    existing_dates = {d.day_date for d in existing_days}
+    created = 0
+    cursor = last_written + timedelta(days=1)
+    while cursor <= until:
+        if cursor not in existing_dates:
+            for template in pattern:
+                if template.day_date.weekday() != cursor.weekday():
+                    continue
+                db.add(
+                    TrainingPlanDay(
+                        plan_id=plan.id,
+                        day_date=cursor,
+                        **{f: getattr(template, f) for f in _EXTEND_COPY_FIELDS},
+                    )
+                )
+                created += 1
+        cursor += timedelta(days=1)
+
+    await db.flush()
+    logger.info(
+        "Extended plan %s to %s from week %s (+%s days)",
+        plan.id,
+        until.isoformat(),
+        src,
+        created,
+    )
+    return {
+        "plan_id": plan.id,
+        "created": created,
+        "until": until,
+        "end_date": plan.end_date,
+        "source_week": src,
+    }
+
+
 async def swap_plan_days(
     db: AsyncSession,
     user_id: uuid.UUID,
