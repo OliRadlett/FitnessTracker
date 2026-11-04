@@ -4,8 +4,16 @@ import React, { useState } from 'react';
 import { Layers } from 'lucide-react';
 
 import type { TrainingPlan, TrainingPlanDay } from '@/lib/api';
-import type { Coverage, WeekSummary } from '@/lib/training/coverage';
+import {
+  formatWeekRuns,
+  lastWrittenWeek,
+  unwrittenRuns,
+  type Coverage,
+  type WeekSummary,
+} from '@/lib/training/coverage';
 import { BlockEditor } from '../plan/BlockEditor';
+
+const capitalise = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 const WEEKDAY = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const MONTH = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -84,7 +92,13 @@ export function PlanCoverage({
   for (const d of plan.days ?? []) byDate.set(d.day_date.slice(0, 10), d);
   const [blocksOpen, setBlocksOpen] = useState(false);
 
-  const boundary = coverage.writtenWeeks / coverage.totalWeeks;
+  // The marker sits where the written plan actually reaches, not at the *count* of
+  // written weeks: 1–8 plus 11 written put a count-based marker at week 9 — before
+  // content that exists.
+  const runList = unwrittenRuns(coverage);
+  const boundaryWeek = lastWrittenWeek(coverage, plan);
+  const boundary = boundaryWeek ? boundaryWeek / coverage.totalWeeks : 0;
+  const staleDays = coverage.daysSinceLastSession;
 
   const weekIndex = (start: string): number => {
     const d = new Date(start + 'T00:00:00');
@@ -122,14 +136,9 @@ export function PlanCoverage({
               ) : (
                 <>The plan has no sessions written yet.</>
               )}{' '}
-              {coverage.firstUnwrittenWeek != null && (
-                <>
-                  Weeks {coverage.firstUnwrittenWeek}–{coverage.totalWeeks} are empty
-                  {coverage.daysSinceLastSession != null && (
-                    <> — nothing has been planned for the last {coverage.daysSinceLastSession} days</>
-                  )}
-                  .
-                </>
+              {runList.length > 0 && <>{capitalise(formatWeekRuns(runList))} empty.</>}{' '}
+              {staleDays != null && staleDays > 0 && (
+                <>Nothing has been planned for the last {staleDays} days.</>
               )}
             </p>
           </>

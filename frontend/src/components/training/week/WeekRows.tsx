@@ -155,8 +155,10 @@ export function WeekRows({
                   <span className="mt-0.5 block truncate text-xs font-normal text-muted">{second}</span>
                 )}
               </button>
+              {/* No pill on an empty day: the title already says "No session", and
+                  repeating it in the pill made three of seven rows say nothing twice. */}
               <span className="shrink-0 md:hidden">
-                <StatusPill status={r.status} />
+                {r.status !== 'gap' && <StatusPill status={r.status} />}
               </span>
             </div>
           </div>
@@ -170,7 +172,7 @@ export function WeekRows({
           </div>
 
           <div className="hidden w-[104px] shrink-0 md:block">
-            <StatusPill status={r.status} />
+            {r.status !== 'gap' && <StatusPill status={r.status} />}
           </div>
 
           <div className="hidden w-[64px] shrink-0 justify-end md:flex">
