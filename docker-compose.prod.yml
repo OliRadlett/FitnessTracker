@@ -1,4 +1,4 @@
-﻿# Production overrides â€” use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Production overrides â€” use with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
 #
 # NOTE: fittrack.py does NOT auto-include this file. Use the --prod flag:
 #   python fittrack.py --prod up
@@ -46,6 +46,10 @@ services:
     # instead of letting them OOM the box. Concurrency pinned: 1-vCPU droplet, and
     # concurrent stream-staging tasks multiply peak RAM.
     mem_limit: 400m
+    # The weekly pg_dump writes to /backups. Without this bind mount the dump
+    # lives in the container layer and is deleted by the next `compose down`.
+    volumes:
+      - ./backups:/backups
     command: celery -A app.tasks.scheduler worker --loglevel=info --concurrency=1
 
   beat:
@@ -57,6 +61,8 @@ services:
     image: ghcr.io/${GHCR_OWNER:-oliradlett}/${GHCR_REPO:-fitnesstracker}/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     mem_limit: 200m
+    environment:
+      NODE_ENV: production
 
   caddy:
     restart: unless-stopped

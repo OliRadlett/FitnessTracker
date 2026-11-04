@@ -15,8 +15,11 @@ No Modal credentials needed — the sync dispatch is stubbed out.
 import asyncio
 import threading
 import time
+from pathlib import Path
 
 import app.integrations.weather_analysis as wa
+
+SCHEDULER = Path(__file__).resolve().parents[1] / "app" / "tasks" / "scheduler.py"
 
 
 async def test_async_wrapper_offloads_and_keeps_loop_responsive(monkeypatch):
@@ -57,3 +60,15 @@ async def test_async_wrapper_offloads_and_keeps_loop_responsive(monkeypatch):
     assert seen["had_loop"] is False
     # The loop stayed responsive for the whole 0.3 s block (10 x 0.05 s).
     assert ticks == 10
+
+
+def test_scheduler_calls_the_async_wrapper_not_the_sync_dispatch():
+    """The wrapper only helps if production actually awaits it.
+
+    The previous test proves the wrapper works; this one proves the weekly
+    task uses it. Without this, the scheduler can keep calling the blocking
+    sync dispatch and the wrapper test stays green.
+    """
+    source = SCHEDULER.read_text(encoding="utf-8")
+    assert "aanalyze_weather_on_modal" in source
+    assert "results = analyze_weather_on_modal(" not in source

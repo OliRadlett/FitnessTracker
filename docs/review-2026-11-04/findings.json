@@ -1,0 +1,420 @@
+{
+  "meta": {
+    "title": "FitTrack project audit — 2026-11-04",
+    "target": "origin/main @ d2a7fd0",
+    "audited_at": "2026-11-04",
+    "method": "read-only code audit + clean-export test baseline + aggregate DB fixture; no production code changed",
+    "fixture": {
+      "name": "local fittrack database (production-shaped, single user)",
+      "source": "docker exec fitness-tracker-db-1 psql -U fittrack -d fittrack -t -A -c \"...\"",
+      "captured_at": "2026-11-04",
+      "counts": {
+        "users": 1,
+        "activities": 582,
+        "lifting_sessions": 4,
+        "routes": 86,
+        "training_plan_days": 0
+      },
+      "properties": {
+        "lifting_sessions_with_sets": 4,
+        "lifting_sessions_with_duration": 4,
+        "lifting_sessions_with_tss": 0
+      },
+      "limitation": "Not the production database. The production database was not accessed; this is the same single-user schema with real local rows, used only for aggregate checks."
+    },
+    "baseline": {
+      "backend_unit": "1756 passed, 794 deselected in 176.60s",
+      "frontend_unit": "741 passed across 76 files in 187.55s",
+      "typescript": "npx tsc --noEmit clean",
+      "ruff": "python -m ruff check backend/ clean",
+      "doc_claims": "2 passed",
+      "npm_audit": {
+        "critical": 1,
+        "high": 2,
+        "moderate": 1,
+        "note": "npm audit --omit=dev on next@14.2.15; no middleware.ts and no next/image usage, so image/middleware-specific advisories are not all reachable."
+      }
+    }
+  },
+  "findings": [
+    {
+      "id": "AUD-00",
+      "severity": "P0",
+      "primary": true,
+      "area": "backend / sync reliability",
+      "title": "Both auth-error handlers call names that are not imported, so a revoked token crashes the 30-minute sync",
+      "confidence": "high",
+      "impact": "The Strava/Wahoo sync task imports only CONNECTION_STATUS_NEEDS_REAUTH but calls mark_connection_reauth and handle_sync_http_error. On an ordinary 401/403 (the user revokes access in Strava), the handler raises NameError, aborting the coroutine: remaining Strava users and the whole Wahoo loop are skipped, and the connection is never marked needs_reauth. The F821 lint rule is globally ignored for SQLAlchemy forward refs, so CI stays green.",
+      "fix": "Import handle_sync_http_error and mark_connection_reauth at scheduler.py:102 (or at module scope), narrow the F821 ignore to app/models/*, and add a test whose mocked sync raises PermanentAuthError and asserts both users are attempted and mark_connection_reauth is awaited.",
+      "verify": "`python -m ruff check backend/app/tasks/scheduler.py --select F821` reports 4 undefined auth names (plus two postponed annotations). Mock sync_activities to raise PermanentAuthError: today the second user is never reached.",
+      "checks": [
+        {"path": "backend/app/tasks/scheduler.py", "section": {"start": "def sync_all_strava_activities", "end": "def generate_health_alerts", "contains": ["from app.services.connection_health import CONNECTION_STATUS_NEEDS_REAUTH", "await mark_connection_reauth(db, conn, str(e))", "await handle_sync_http_error(db, conn, e, strava_client)"], "absent": ["mark_connection_reauth,", "handle_sync_http_error,"]}},
+        {"path": "backend/pyproject.toml", "contains": ["\"F821\""]},
+        {"path": "backend/app/services/connection_health.py", "contains": ["async def mark_connection_reauth", "async def handle_sync_http_error"]}
+      ]
+    },
+    {
+      "id": "AUD-01",
+      "severity": "P0",
+      "primary": true,
+      "area": "operations / disaster recovery",
+      "title": "The weekly database backup is written inside the worker container and destroyed by the next deploy",
+      "confidence": "high",
+      "impact": "There is no durable off-container backup. The task reports success and logs a filepath, while every deploy runs `compose down`, removing the worker's writable layer. A bad migration or data corruption plus one deploy loses the only datastore.",
+      "fix": "Mount a host or named volume at /backups on the worker in production, or copy the dump off-box after writing it. Make the task fail loudly when the directory is not a mount, and run a restore drill.",
+      "verify": "`docker compose -f docker-compose.yml -f docker-compose.prod.yml config` shows no /backups mount; run backup_database, list /backups in the worker, recreate the worker, list again.",
+      "checks": [
+        {"path": "backend/app/tasks/maintenance.py", "contains": ["backup_dir = settings.backup_dir", "fittrack_backup_"]},
+        {"path": "backend/app/config.py", "contains": ["backup_dir: str = \"/backups\""]},
+        {"path": "docker-compose.yml", "absent": ["/backups"]},
+        {"path": "docker-compose.prod.yml", "absent": ["/backups"]},
+        {"path": "docker-compose.yml", "contains": ["celery -A app.tasks.scheduler worker"]},
+        {"path": ".github/workflows/deploy.yml", "contains": ["down --timeout 30"]}
+      ]
+    },
+    {
+      "id": "AUD-02",
+      "severity": "P1",
+      "primary": true,
+      "area": "frontend / lifting",
+      "title": "Lifting tabs are trapped once a session or PR is selected",
+      "confidence": "high",
+      "impact": "Select a session, then click Overview, Analytics, or PRs: the view changes and immediately snaps back to Sessions. Selecting a PR traps the PRs tab the same way. The new tabbed IA is effectively unreachable after the first session click.",
+      "fix": "Run the deep-link read once on mount (read window.location.search directly or guard with a ref), and clear the session/pr query params when the user changes tabs.",
+      "verify": "/lifting -> Sessions -> select a session -> click Overview; or open /lifting?session=<id> and click Analytics.",
+      "checks": [
+        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["}, [getParam]);", "if (tab !== 'sessions') setActiveTab('sessions');"]},
+        {"path": "frontend/src/lib/useDeepLink.ts", "contains": ["const getParam = useCallback((key: string): string | null => params.get(key), [params]);"]},
+        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["const handleTabChange = useCallback(", "setParam('tab', tab);"]}
+      ]
+    },
+    {
+      "id": "AUD-03",
+      "severity": "P1",
+      "primary": true,
+      "area": "backend / lifting data correctness",
+      "title": "estimated_tss is never computed on session create or on set writes",
+      "confidence": "high",
+      "impact": "The default manual flow creates a session and then adds sets; neither path computes TSS. The session contributes 0 to combined load and deload detection until a PATCH to the session or the Sunday backfill. The local fixture has 4 sessions with sets and 0 with TSS.",
+      "fix": "Resolve bodyweight once and call refresh_session_tss at the end of create_session, add_set, update_set, and delete_set (re-read the set list in delete_set). Add a DB/test invariant: any session with working sets and a duration has a non-null TSS.",
+      "verify": "Create a session, add a set, GET it: estimated_tss remains null. After the fix it is non-null and changes when the set changes.",
+      "checks": [
+        {"path": "backend/app/services/lifting.py", "section": {"start": "async def create_session(", "end": "async def get_session(", "contains": ["session.total_volume_kg = volume"], "absent": ["refresh_session_tss"]}},
+        {"path": "backend/app/services/lifting.py", "section": {"start": "async def add_set(", "end": "async def update_set(", "contains": ["session.total_volume_kg = current_volume + (data.weight_kg * data.reps)"], "absent": ["refresh_session_tss"]}},
+        {"path": "backend/app/services/lifting.py", "section": {"start": "async def update_set(", "end": "async def delete_set(", "contains": ["session.total_volume_kg = max("], "absent": ["refresh_session_tss"]}}
+      ]
+    },
+    {
+      "id": "AUD-04",
+      "severity": "P1",
+      "primary": true,
+      "area": "backend / authorization",
+      "title": "Plan-day create accepts foreign route/session/template ids, and the week reader returns their metadata unscoped",
+      "confidence": "high",
+      "impact": "An authenticated user can POST a plan day carrying another user's lifting_session_id, warmup_template_id, or planned_route_id. GET /training-plans/{id}/week/{n} then embeds that row's date, focus, volume, or warmup steps. A non-existent id reaches flush as an IntegrityError and returns 500. Exposure is UUID-gated and the deployment is single-user, but the API is user-scoped and the gap is real.",
+      "fix": "Use one ownership helper for all three refs in add_plan_day, update_plan_day, and save_plan_days, and scope the week/LLM readers by user_id as well.",
+      "verify": "Create user B's lifting session, POST its id as user A, GET A's week: today it returns B's metadata; after the fix it returns 404/422.",
+      "checks": [
+        {"path": "backend/app/schemas/training_plan.py", "contains": ["planned_route_id: uuid.UUID | None = None", "lifting_session_id: uuid.UUID | None = None", "warmup_template_id: uuid.UUID | None = None"]},
+        {"path": "backend/app/services/training_plan.py", "contains": ["TrainingPlanDay(plan_id=plan.id, **data.model_dump(exclude_none=True))"]},
+        {"path": "backend/app/services/training_plan.py", "contains": ["select(LiftingSession).where(LiftingSession.id.in_(lifting_ids))"]},
+        {"path": "backend/app/services/training_plan.py", "contains": ["select(WarmupTemplate)", ".where(WarmupTemplate.id.in_(warmup_ids))"]}
+      ]
+    },
+    {
+      "id": "AUD-05",
+      "severity": "P1",
+      "primary": true,
+      "area": "production config / security",
+      "title": "Production publishes the frontend on 0.0.0.0:3000 and keeps NODE_ENV=development",
+      "confidence": "high",
+      "impact": "The prod override adds no ports and no NODE_ENV, so the base `3000:3000` publication and `NODE_ENV=development` survive. A network peer can reach the app over plain HTTP and, through Next's /api/v1 rewrite, the backend as a trusted Docker peer, bypassing Caddy TLS and its headers.",
+      "fix": "Loopback-bind the frontend (127.0.0.1:3000:3000) or remove the published port in a prod-safe way, and set NODE_ENV=production in the prod override.",
+      "verify": "`docker compose -f docker-compose.yml -f docker-compose.prod.yml config` shows 3000 published on all interfaces and NODE_ENV=development; from another host, curl http://<droplet>:3000/fittrack.",
+      "checks": [
+        {"path": "docker-compose.yml", "contains": ["- \"3000:3000\"", "NODE_ENV=development"]},
+        {"path": "docker-compose.prod.yml", "absent": ["3000:3000", "NODE_ENV"]}
+      ]
+    },
+    {
+      "id": "AUD-06",
+      "severity": "P1",
+      "primary": true,
+      "area": "release safety",
+      "title": "Migrations run after containers start, failure is swallowed, and /health does not check the schema revision",
+      "confidence": "high",
+      "impact": "A failed migration can leave new code running against the old schema while the deploy health check still returns 200. The old containers are already gone and there is no rollback step; the failure reads as a healthy release.",
+      "fix": "Run migrations in a one-shot container before starting services, fail closed on startup, and include alembic current == head in /health. Document IMAGE_TAG rollback.",
+      "verify": "Stage a failing revision on a copy: /health returns 200 and deploy reports healthy today. After the fix the deploy aborts before startup and /health reports the mismatch.",
+      "checks": [
+        {"path": "backend/app/main.py", "contains": ["logger.error(\"Alembic migration failed:", "yield"]},
+        {"path": "backend/app/main.py", "contains": ["await session.execute(text(\"SELECT 1\"))"], "absent": ["alembic current"]},
+        {"path": ".github/workflows/deploy.yml", "order": ["up -d", "exec -T backend alembic upgrade head"]},
+        {"path": ".github/workflows/deploy.yml", "contains": ["https://localhost/health"]}
+      ]
+    },
+    {
+      "id": "AUD-07",
+      "severity": "P1",
+      "primary": true,
+      "area": "backend / reliability",
+      "title": "The async weather task calls the blocking Modal dispatcher; the async wrapper is dead",
+      "confidence": "high",
+      "impact": "The weekly weather task blocks its event loop for the whole Modal run (~30s per user) and trips Modal's AsyncUsageWarning. The `aanalyze_weather_on_modal` helper and its regression test pass while production never calls the helper.",
+      "fix": "Call `await aanalyze_weather_on_modal(rides)` from the scheduler and retarget the test at the scheduler path, not the wrapper in isolation.",
+      "verify": "grep -rn \"aanalyze_weather_on_modal\" backend/app returns only the definition; after the fix the scheduler is a caller.",
+      "checks": [
+        {"path": "backend/app/tasks/scheduler.py", "contains": ["analyze_weather_on_modal,", "results = analyze_weather_on_modal(rides)"], "absent": ["aanalyze_weather_on_modal"]},
+        {"path": "backend/app/integrations/weather_analysis.py", "contains": ["async def aanalyze_weather_on_modal", "asyncio.to_thread"]}
+      ]
+    },
+    {
+      "id": "AUD-23",
+      "severity": "P1",
+      "primary": true,
+      "area": "backend / sync reliability",
+      "title": "The webhook drain marks a permanently failed auth event 'failed' and aborts the whole queue",
+      "confidence": "high",
+      "impact": "On a revoked Strava token, the first queued event is marked failed, the drain breaks, and every later event (including other users') waits behind it. `failed` is terminal: nothing re-queues it and there is no replay endpoint, so deletes/updates older than the reconcile window are lost even after the user reconnects.",
+      "fix": "On PermanentAuthError, mark the connection needs_reauth, leave the event pending (or deferred) without consuming an attempt, and continue with other users' events. Add a replay path for failed events.",
+      "verify": "Integration test with a revoked token: the event is still pending, the connection is needs_reauth, and a second user's event is processed in the same run.",
+      "checks": [
+        {"path": "backend/app/services/strava/webhook_queue.py", "contains": ["except PermanentAuthError", "event.status = \"failed\"", "break"]},
+        {"path": "backend/app/services/strava/webhook_queue.py", "contains": ["MAX_ATTEMPTS = 5"]}
+      ]
+    },
+    {
+      "id": "AUD-08",
+      "severity": "P2",
+      "primary": true,
+      "area": "frontend / lifting",
+      "title": "A failed sessions query renders as an infinite skeleton or an empty page, and the E2E error test only checks the heading",
+      "confidence": "high",
+      "impact": "On a 500 or network failure, Overview shows skeletons forever; Sessions shows 0 sessions / No session selected with no retry. The E2E test named 'handles API errors gracefully' asserts only that the h1 says Lifting, so the regression is green.",
+      "fix": "Destructure isError/refetch, render ErrorState + retry, stop passing isLoading={!sessions} when errored, and make the E2E assert the error state.",
+      "verify": "Mock /api/v1/lifting/sessions -> 500 and load /lifting; the page must show an error and a retry, not a skeleton.",
+      "checks": [
+        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["const { data: sessions } = useQuery", "isLoading={!sessions}"], "absent": ["sessionsError"]},
+        {"path": "frontend/e2e/lifting.spec.ts", "contains": ["test('handles API errors gracefully'", "toContainText('Lifting')"]}
+      ]
+    },
+    {
+      "id": "AUD-09",
+      "severity": "P2",
+      "primary": true,
+      "area": "frontend / lifting",
+      "title": "The session rail silently stops at the newest 50 and its split/class/exercise deep-link filters do nothing",
+      "confidence": "high",
+      "impact": "A user with more than 50 sessions cannot reach older sessions; the header and 'All N' chip understate the history; search only covers the newest 50. The URL contract still advertises s_split / s_class / s_ex and a page parameter, but SessionRail ignores them.",
+      "fix": "Request limit/offset from page, read X-Total-Count via authFetchWithHeaders, and either implement or remove the split/class/exercise filters. At minimum request limit=200 and label the list honestly.",
+      "verify": "With 51+ sessions, the header reads 50 and session 51 is absent; ?s_split=push shows all sessions.",
+      "checks": [
+        {"path": "backend/app/api/lifting.py", "contains": ["limit: int = Query(50, ge=1, le=200)"]},
+        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["authFetch<LiftingSession[]>('/api/v1/lifting/sessions')"]},
+        {"path": "frontend/src/components/lifting/SessionRail.tsx", "contains": ["All {sessions.length}"], "absent": ["filters.split", "filters.sessionClass", "filters.exercise"]}
+      ]
+    },
+    {
+      "id": "AUD-10",
+      "severity": "P2",
+      "primary": true,
+      "area": "frontend / lifting",
+      "title": "The edit-session panel keeps the previous session's values and cannot clear focus/notes",
+      "confidence": "high",
+      "impact": "Clearing Focus or Notes and blurring sends no field (undefined is dropped by JSON.stringify), so the old value returns on reload. With the panel open, switching to a cached session leaves A's date/focus in the inputs; blurring the date PATCHes B with A's date.",
+      "fix": "Key the panel by selectedSessionId (or close it on selection), send ''/null for cleared fields, and allow null in UpdateSessionPayload.",
+      "verify": "Clear a populated Focus and inspect the PATCH body; switch between two viewed sessions with Edit open and compare the displayed values.",
+      "checks": [
+        {"path": "frontend/src/app/(app)/lifting/page.tsx", "contains": ["defaultValue={sessionDetail.focus || ''}", "data: { focus: e.target.value || undefined }"]},
+        {"path": "frontend/src/lib/api/types/lifting.ts", "contains": ["focus?: string;", "notes?: string;"], "absent": ["focus?: string | null"]}
+      ]
+    },
+    {
+      "id": "AUD-11",
+      "severity": "P2",
+      "primary": true,
+      "area": "frontend / relive 3d",
+      "title": "The 3D viewer labels every ride with the fixture's place names and special-cases a route named 'arthur'",
+      "confidence": "high",
+      "impact": "Every production ride shows Lausanne and Montreux camera presets, regardless of location. The backend only relabels them when the route name contains 'arthur', which is a fixture leak that produces arbitrary labels on a real route.",
+      "fix": "Use location-neutral labels (Overview, Start, Mid, Climb, Summit, Close) or derive labels from the ride's key points/place names; remove the 'arthur' branch.",
+      "verify": "Open /relive3d/<id> for a non-Swiss ride: the preset row still reads Lausanne/Montreux.",
+      "checks": [
+        {"path": "frontend/src/lib/relive3d/types.ts", "contains": ["{ id: 'lausanne', label: 'Lausanne' }", "{ id: 'montreux', label: 'Montreux' }"]},
+        {"path": "backend/app/services/replay.py", "contains": ["\"arthur\" in route_name.lower()"]},
+        {"path": "frontend/src/components/relive3d/Relive3D.tsx", "contains": ["ride.poseLabels?.[p.id] ?? p.label"]}
+      ]
+    },
+    {
+      "id": "AUD-12",
+      "severity": "P2",
+      "primary": true,
+      "area": "backend / training plan",
+      "title": "A completed today/future plan day is reported as pending",
+      "confidence": "high",
+      "impact": "The day_status branch checks day_date >= today before completed. Today's linked, completed session reads as Planned all day; the overview counts fewer completed strength days than the user actually did.",
+      "fix": "Check completed before the date branch, keeping rest first.",
+      "verify": "Unit test with TrainingPlanDay(day_date=today, completed=True) expects completed, not pending.",
+      "checks": [
+        {"path": "backend/app/services/training_plan.py", "order": ["elif day.day_date >= today:", "elif day.completed:"]}
+      ]
+    },
+    {
+      "id": "AUD-13",
+      "severity": "P2",
+      "primary": true,
+      "area": "backend / training plan",
+      "title": "Event unlink leaves the end-date clamp and taper in place; re-linking compounds the taper",
+      "confidence": "high",
+      "impact": "Unlinking an event does not restore end_date or planned TSS, and a later re-link tapers the already-tapered values (0.4 -> 0.16 on the last day). On a multi-sport date the taper factor is applied per row, so a ride and a lift on the same day get different factors.",
+      "fix": "Store a pre-taper baseline (or taper_applied_for_event_id) and derive targets from it; restore on unlink; compute the factor per distinct day_date and scale duration/power with TSS.",
+      "verify": "Link -> unlink -> link yields the same TSS as one link; two same-date rows share one factor.",
+      "checks": [
+        {"path": "backend/app/services/training_plan.py", "contains": ["plan.end_date = min(plan.end_date, event.event_date)", "for i, day in enumerate(taper_days):"]},
+        {"path": "backend/app/services/training_plan.py", "contains": ["if event_id:", "plan = await link_event_and_apply_taper(db, user_id, plan, event_id)"]},
+        {"path": "frontend/src/app/(app)/training/page.tsx", "contains": ["event_id: null"]}
+      ]
+    },
+    {
+      "id": "AUD-14",
+      "severity": "P2",
+      "primary": true,
+      "area": "backend / Jev labels",
+      "title": "Jev session labels are not recomputed after set writes; the content hash has no trigger",
+      "confidence": "high",
+      "impact": "session_split/session_lift/session_class describe the old set list for up to a week. Conformity, /today's session-mix engine, the mix/lift charts, and lift-session goals all read them as current; deleting every set leaves a lift label on an empty session.",
+      "fix": "Schedule classify_lifting_session_by_id from the set CRUD endpoints, or classify inline when the set list changes.",
+      "verify": "Mock jev_client.decide, mutate a stub session's sets, re-run classification: the hash check must not short-circuit the second call.",
+      "checks": [
+        {"path": "backend/app/services/jev_classification.py", "contains": ["content_hash", "taxonomy_version"]},
+        {"path": "backend/app/services/lifting.py", "section": {"start": "async def add_set(", "end": "async def update_set(", "absent": ["classify_lifting_session_by_id"]}},
+        {"path": "backend/app/api/lifting.py", "contains": ["classify_lifting_session_by_id"]}
+      ]
+    },
+    {
+      "id": "AUD-15",
+      "severity": "P2",
+      "primary": true,
+      "area": "process / documentation truth",
+      "title": "The repo's truth guards are narrower than the claims they are trusted to protect",
+      "confidence": "high",
+      "impact": "AGENTS.md says new migrations continue from 097 while the head is 103, and the doc-claims test only scans RUNNING.md. AGENTS.md simultaneously says UndoLog has no HTTP surface and that C6 shipped one. Pitfall 38 claims a pre-commit hook runs tests, but the hook is ruff-only. RUNNING.md claims transactional rollback while the integration fixture drops the schema. BUGS.md says Open: 6 over seven sections and lists a FIXED bug under Open. Each is a stale claim that a future session will act on.",
+      "fix": "Extend test_doc_claims.py to AGENTS.md and the migration numbers; correct the UndoLog, pre-commit, and rollback sentences; reconcile BUGS.md with its archive; add a re-verified status column to the 2026-10-15 review docs.",
+      "verify": "python -m pytest backend/tests/test_doc_claims.py -q passes today while AGENTS.md:223 says 097 and the head is 103.",
+      "checks": [
+        {"path": "AGENTS.md", "contains": ["New migrations continue from 097"]},
+        {"path": "backend/tests/test_doc_claims.py", "absent": ["AGENTS.md"]},
+        {"path": "AGENTS.md", "contains": ["It has no HTTP surface", "C6 gave `UndoLog` its first HTTP surface"]},
+        {"path": ".githooks/pre-commit", "absent": ["pytest", "SECRET_KEY"]},
+        {"path": "docs/RUNNING.md", "contains": ["Transactional rollback per test"]},
+        {"path": "docs/BUGS.md", "contains": ["**Open: 6**", "BUG-015"]}
+      ]
+    },
+    {
+      "id": "AUD-16",
+      "severity": "P2",
+      "primary": false,
+      "area": "security / dependencies",
+      "title": "Next.js 14.2.15 carries a critical advisory set; the app has no middleware and no next/image, so only part is reachable",
+      "confidence": "high",
+      "impact": "npm audit --omit=dev reports 1 critical, 2 high, 1 moderate. Middleware-bypass and image-optimizer advisories are not reachable without middleware.ts/next/image, but the App Router DoS and cache-poisoning classes remain. Upgrading is a breaking major from 14 to a patched line.",
+      "fix": "Plan a Next 14.2.x security bump to the newest patched 14.x, or a staged Next 16 migration; add npm audit to CI as advisory until then.",
+      "verify": "npm audit --omit=dev in frontend: 4 vulnerabilities; npm view next@14 version shows the patched line.",
+      "checks": [
+        {"path": "frontend/package.json", "contains": ["\"next\": \"14.2.15\""]},
+        {"path": "frontend/package-lock.json", "contains": ["\"version\": \"14.2.15\""]}
+      ]
+    },
+    {
+      "id": "AUD-17",
+      "severity": "P2",
+      "primary": false,
+      "area": "security / deployment",
+      "title": "The deploy regenerates Caddyfile without the committed security headers",
+      "confidence": "high",
+      "impact": "infra/Caddyfile sets HSTS, nosniff, frame-deny, referrer, and permissions policy. deploy.yml rewrites the file from a heredoc without that block, so production runs without them while a reviewer reading the repo sees protections that are not deployed.",
+      "fix": "Keep infra/Caddyfile as the single source and substitute only DOMAIN/ACME_EMAIL, or include the header block in the generated file.",
+      "verify": "On the droplet, curl -sI https://<domain>/fittrack | grep -iE 'strict-transport|x-frame|referrer|x-content' returns nothing today.",
+      "checks": [
+        {"path": ".github/workflows/deploy.yml", "contains": ["cat > infra/Caddyfile"], "absent": ["Strict-Transport-Security"]},
+        {"path": "infra/Caddyfile", "contains": ["Strict-Transport-Security", "X-Frame-Options DENY"]}
+      ]
+    },
+    {
+      "id": "AUD-18",
+      "severity": "P2",
+      "primary": false,
+      "area": "security / configuration",
+      "title": "Production secret validation is gated on DEBUG, and .env.example ships DEBUG=true",
+      "confidence": "high",
+      "impact": "A deployment created from .env.example can boot with the repo-published default SECRET_KEY; the check that exists to stop this only warns while DEBUG is true. All HS256 JWTs would then be forgeable.",
+      "fix": "Decouple the default-key and localhost-DB checks from DEBUG (require an explicit ALLOW_INSECURE_DEFAULTS), and set DEBUG=false in .env.example.",
+      "verify": "SECRET_KEY=change-me-to-a-random-secret-key DEBUG=true python -c 'from app.config import Settings; Settings()' constructs today (warning only); after the fix it raises.",
+      "checks": [
+        {"path": "backend/app/config.py", "contains": ["if not self.debug:", "_DEFAULT_SECRET_KEY"]},
+        {"path": ".env.example", "contains": ["DEBUG=true", "SECRET_KEY=change-me-to-a-random-secret-key"]}
+      ]
+    },
+    {
+      "id": "AUD-19",
+      "severity": "P2",
+      "primary": false,
+      "area": "privacy / deletion",
+      "title": "Account deletion leaves every lift video object in R2",
+      "confidence": "high",
+      "impact": "DELETE /account deletes the user row and cascades DB children, but never calls R2 delete_object. The video corpus, the most sensitive content in the app, survives indefinitely with no row left to locate it.",
+      "fix": "Before deleting the user, list and delete the lift_videos/{user_id}/ prefix; add a bucket lifecycle rule as a backstop and record the deletion.",
+      "verify": "Upload a video, delete the account, list the bucket prefix: objects remain today.",
+      "checks": [
+        {"path": "backend/app/api/account.py", "contains": ["delete(User)"], "absent": ["delete_object"]},
+        {"path": "backend/app/api/videos.py", "contains": ["delete_object"]}
+      ]
+    },
+    {
+      "id": "AUD-20",
+      "severity": "P2",
+      "primary": false,
+      "area": "security / SSRF",
+      "title": "Web Push subscription endpoints are unvalidated, so an authenticated user can make the server POST to internal addresses",
+      "confidence": "medium",
+      "impact": "endpoint is a plain string; pywebpush POSTs to it with no scheme/host policy. With VAPID configured, an authenticated user can target loopback, link-local metadata, or the backend service. Blind, but internal reachability and POST side effects are real. The upsert is keyed on endpoint alone, so a leaked endpoint can be reassigned.",
+      "fix": "Require https, reject userinfo/private/link-local/loopback hosts, allowlist push services, and key the upsert on (user_id, endpoint).",
+      "verify": "POST an http://169.254.169.254/... endpoint: today it is stored; after the fix it is 422.",
+      "checks": [
+        {"path": "backend/app/schemas/push.py", "contains": ["endpoint: str"], "absent": ["HttpUrl"]},
+        {"path": "backend/app/services/push.py", "contains": ["webpush,", "\"endpoint\": sub.endpoint"]},
+        {"path": "backend/app/services/push.py", "contains": ["PushSubscription.endpoint == endpoint"]}
+      ]
+    },
+    {
+      "id": "AUD-21",
+      "severity": "P2",
+      "primary": false,
+      "area": "backend / training plan",
+      "title": "The full-array plan save deletes every pair missing from the payload, and its test asserts the opposite of its name",
+      "confidence": "high",
+      "impact": "PATCH /training-plans/{id} with days deletes any (date, sport) pair not in the payload. The test named 'payload_for_one_sport_leaves_the_other_row_alone' asserts that the same-date cycle row is gone and never checks the other date, so a destructive omission is certified as safe.",
+      "fix": "Either restrict the save to pairs the payload names (non-destructive), or keep full-replace and make the UI/contract explicit. Rename the test to what it asserts and add a case for the omitted other-date row.",
+      "verify": "POST a two-sport date, then PATCH only one sport: the sibling is deleted and the other date is deleted too.",
+      "checks": [
+        {"path": "backend/app/services/training_plan.py", "contains": ["if key not in incoming_keys:", "await db.delete(row)"]},
+        {"path": "backend/tests/integration/test_multi_sport_days.py", "contains": ["test_payload_for_one_sport_leaves_the_other_row_alone", "[(\"strength\", \"hard\")]"]}
+      ]
+    },
+    {
+      "id": "AUD-22",
+      "severity": "P2",
+      "primary": false,
+      "area": "frontend / lifting charts",
+      "title": "The weekly volume chart is hard-capped at 30 t, so heavy weeks render above the plot",
+      "confidence": "high",
+      "impact": "Any week above 30,000 kg produces a negative y and a clipped bar/label, while the axis always reads 0/15/30 t. The chart's own sibling (CombinedLoadHero) already derives its max from the data.",
+      "fix": "Derive max from values (Math.max(1, ...values) * 1.1) and derive tick labels, or pass a per-call max.",
+      "verify": "Render VolumeTrendChart with values={[40000]}: the bar is clipped today; after the fix it fits and the axis scales.",
+      "checks": [
+        {"path": "frontend/src/components/lifting/overview/VolumeTrendChart.tsx", "contains": ["max = 30_000", "(v / max)"]},
+        {"path": "frontend/src/components/lifting/overview/CombinedLoadHero.tsx", "contains": ["Math.max"]}
+      ]
+    }
+  ]
+}

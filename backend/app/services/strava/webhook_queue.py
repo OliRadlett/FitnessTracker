@@ -20,7 +20,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.errors import PermanentAuthError, TransientSyncError
 from app.models.activity import Activity
-from app.models.user import OAuthConnection
 from app.models.webhook_event import StravaWebhookEvent
 
 logger = logging.getLogger(__name__)
@@ -41,11 +40,21 @@ async def process_pending_strava_events(
         .order_by(StravaWebhookEvent.received_at.asc())
         .limit(limit)
     )
-    events = list(result.scalars().all())
+    event_ids = [event.id for event in result.scalars().all()]
 
     processed = 0
     failed = 0
-    for event in events:
+    deferred = 0
+    for event_id in event_ids:
+        # Re-read each row with populate_existing: a rollback in a previous
+        # iteration expires every object in the session, including the ones
+        # still queued, and reading an expired attribute outside the greenlet
+        # raises MissingGreenlet.
+        event = await db.get(
+            StravaWebhookEvent, event_id, populate_existing=True
+        )
+        if event is None or event.status != "pending":
+            continue
         try:
             await handle_strava_event(
                 db,
@@ -62,20 +71,20 @@ async def process_pending_strava_events(
             processed += 1
             _record_webhook_metric(event.aspect_type, "processed")
         except PermanentAuthError as e:
-            # Token revoked — no point processing the rest of the queue.
+            # Token revoked. Keep the event pending so it can be processed
+            # after re-auth, and continue with other users' events: one dead
+            # connection must not stop the whole queue.
             event_id = event.id
             await db.rollback()
             event = await db.get(StravaWebhookEvent, event_id)
-            event.status = "failed"
+            event.status = "pending"
             event.error = str(e)[:500]
-            event.attempts += 1
             await db.commit()
-            failed += 1
-            _record_webhook_metric(event.aspect_type, "failed")
-            logger.warning(
-                f"Strava webhook queue aborted on auth failure: {e}"
-            )
-            break
+            deferred += 1
+            _record_webhook_metric(event.aspect_type, "deferred")
+
+            logger.warning("Strava webhook event deferred on auth failure: %s", e)
+            continue
         except (TransientSyncError, Exception) as e:
             # Discard partial work from this attempt, then retry later.
             event_id = event.id
@@ -98,7 +107,7 @@ async def process_pending_strava_events(
             failed += 1
             _record_webhook_metric(event.aspect_type, "failed")
 
-    return {"processed": processed, "failed": failed}
+    return {"processed": processed, "failed": failed, "deferred": deferred}
 
 
 def _record_webhook_metric(aspect_type: str, outcome: str) -> None:

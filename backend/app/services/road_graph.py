@@ -14,6 +14,7 @@ geometric engine already covers order and direction.
 
 from __future__ import annotations
 
+import json
 import math
 from dataclasses import asdict, dataclass, field
 
@@ -281,8 +282,6 @@ def _iter_geojson_features(
     timeout). This streams feature-by-feature and skips any feature whose bbox
     does not intersect ``bbox`` = ``(min_lat, min_lng, max_lat, max_lng)``.
     """
-    import json
-
     with open(path) as fh:
         # Advance to the features array without materialising the whole document.
         buf = ""
@@ -310,7 +309,7 @@ def _iter_geojson_features(
             return
         try:
             feature, end = decoder.raw_decode(stream, pos)
-        except JSONDecodeError:
+        except json.JSONDecodeError:
             return
         pos = end
         geom = (feature or {}).get("geometry") or {}

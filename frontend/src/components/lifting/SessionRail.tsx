@@ -30,12 +30,14 @@ const weight = (n: number | null | undefined) => {
  */
 export function SessionRail({
   sessions,
+  total,
   selectedId,
   onSelect,
   prsBySession,
   filterBag,
 }: {
   sessions: LiftingSession[];
+  total: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
   prsBySession: Map<string, PersonalRecord[]>;
@@ -58,13 +60,31 @@ export function SessionRail({
     () =>
       sessions.filter((s) => {
         if (focus && focusOf(s) !== focus) return false;
+        if (filters.split && (s.session_split ?? '') !== filters.split) return false;
+        if (filters.sessionClass && (s.session_class ?? '') !== filters.sessionClass) return false;
+        if (filters.exercise) {
+          const needle = filters.exercise.toLowerCase();
+          if (!s.sets.some((set) => set.exercise_name.toLowerCase().includes(needle))) {
+            return false;
+          }
+        }
         if (filters.from && s.session_date < filters.from) return false;
         if (filters.to && s.session_date > filters.to) return false;
         if (!q) return true;
-        const haystack = `${focusOf(s)} ${s.program_name ?? ''} ${s.notes ?? ''} ${s.session_date}`.toLowerCase();
+        const exercises = s.sets.map((set) => set.exercise_name).join(' ');
+        const haystack = `${focusOf(s)} ${s.program_name ?? ''} ${s.notes ?? ''} ${s.session_date} ${exercises}`.toLowerCase();
         return haystack.includes(q);
       }),
-    [sessions, focus, q, filters.from, filters.to],
+    [
+      sessions,
+      focus,
+      q,
+      filters.from,
+      filters.to,
+      filters.split,
+      filters.sessionClass,
+      filters.exercise,
+    ],
   );
 
   const groups = useMemo(() => {
@@ -82,8 +102,16 @@ export function SessionRail({
     <div className="overflow-hidden rounded-xl border border-surface-light/60 bg-surface/50">
       <div className="flex items-center justify-between px-4 pb-2 pt-3.5">
         <h2 className="text-[15px] font-semibold">Sessions</h2>
-        <span className="text-[12px] text-muted">{visible.length} sessions</span>
+        <span className="text-[12px] text-muted">
+          {visible.length} of {total} sessions
+        </span>
       </div>
+
+      {total > sessions.length && (
+        <p className="px-4 pb-2 text-[12px] text-muted">
+          Showing the newest {sessions.length} sessions; older sessions are not loaded.
+        </p>
+      )}
 
       <div className="space-y-2 px-3 pb-3">
         <label className="relative block">

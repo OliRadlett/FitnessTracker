@@ -142,7 +142,7 @@ class TestProcessPendingEvents:
             result = await process_pending_strava_events(session)
         await session.close()
 
-        assert result == {"processed": 2, "failed": 0}
+        assert result == {"processed": 2, "failed": 0, "deferred": 0}
         assert mock_handle.call_count == 2
 
         fresh = await _new_session(test_engine)
@@ -248,11 +248,11 @@ class TestDrainBounds:
             await s.execute(delete(StravaWebhookEvent))
             await s.commit()
 
-    async def test_auth_failure_aborts_remaining_events(
+    async def test_auth_failure_defers_events_and_continues(
         self, test_engine, test_session_factory
     ):
-        # R5: "… auth-abort". A revoked-token error on the first event must
-        # stop the run; the rest stay pending (not retried in this run).
+        # A revoked token defers every event it touches and leaves it pending
+        # for after re-auth; one dead connection must not abort other users.
         from app.integrations.errors import PermanentAuthError
         from app.services.strava.webhook_queue import process_pending_strava_events
 
@@ -278,7 +278,7 @@ class TestDrainBounds:
             result = await process_pending_strava_events(session)
         await session.close()
 
-        assert result == {"processed": 0, "failed": 1}
+        assert result == {"processed": 0, "failed": 0, "deferred": 3}
 
         fresh = await _new_session(test_engine)
         rows = (
@@ -288,8 +288,9 @@ class TestDrainBounds:
         ).scalars().all()
         await fresh.close()
         statuses = [r.status for r in rows]
-        assert statuses.count("failed") == 1
-        assert statuses.count("pending") == 2
+        assert statuses == ["pending", "pending", "pending"]
+        assert all(r.error for r in rows)
+        assert all(r.attempts == 0 for r in rows)
 
         async with test_session_factory() as s:
             await s.execute(delete(StravaWebhookEvent))

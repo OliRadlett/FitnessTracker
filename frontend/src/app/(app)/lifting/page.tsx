@@ -135,9 +135,9 @@ const TAB_VALUES: LiftingTab[] = ['overview', 'sessions', 'analytics', 'prs'];
 
 export default function LiftingPage() {
   usePageTitle('Lifting');
-  const { authFetch, token } = useAuthFetch();
+  const { authFetch, authFetchWithHeaders, token } = useAuthFetch();
   const queryClient = useQueryClient();
-  const { getParam, setParam } = useDeepLink();
+  const { setParam } = useDeepLink();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -153,26 +153,30 @@ export default function LiftingPage() {
   // Tab URL state — syncs with `?tab=<name>` for deep-linking
   const [activeTab, setActiveTab] = useState<LiftingTab>('overview');
 
-  // Deep-link: read tab + session/PR from URL on mount
+  // Deep-link: read tab + session/PR from URL once on mount. Reading through
+  // `useDeepLink().getParam` re-ran this whenever `setParam` changed the URL,
+  // and the still-present `?session=` then forced the tab back to Sessions —
+  // a selected session made Overview/Analytics/PRs unreachable.
   useEffect(() => {
-    const tab = getParam('tab') as LiftingTab | 'templates' | null;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') as LiftingTab | 'templates' | null;
     if (tab === 'templates') {
       setShowTemplates(true);
       setActiveTab('sessions');
     } else if (tab && TAB_VALUES.includes(tab)) {
       setActiveTab(tab);
     }
-    const sessionId = getParam('session');
+    const sessionId = params.get('session');
     if (sessionId) {
       setSelectedSessionId((prev) => (prev === sessionId ? prev : sessionId));
       if (tab !== 'sessions') setActiveTab('sessions');
     }
-    const prId = getParam('pr');
+    const prId = params.get('pr');
     if (prId) {
       setSelectedPRId(prId);
       setActiveTab('prs');
     }
-  }, [getParam]);
+  }, []);
 
   const handleTabChange = useCallback(
     (tab: LiftingTab) => {
@@ -214,12 +218,26 @@ export default function LiftingPage() {
 
   // Full-list query retained for AutoregulationCard, Whoop banner, e1RM
   // options and chip facets; SessionRail filters it client-side.
-  const { data: sessions } = useQuery<LiftingSession[]>({
+  const {
+    data: sessionsPage,
+    isError: sessionsError,
+    refetch: refetchSessions,
+  } = useQuery<{ items: LiftingSession[]; total: number }>({
     queryKey: ['lifting-sessions'],
-    queryFn: () => authFetch<LiftingSession[]>('/api/v1/lifting/sessions'),
+    queryFn: async () => {
+      const { data, headers } = await authFetchWithHeaders<LiftingSession[]>(
+        '/api/v1/lifting/sessions?limit=200',
+      );
+      return {
+        items: data,
+        total: Number(headers.get('X-Total-Count') ?? data.length),
+      };
+    },
     enabled: !!token,
     staleTime: 60_000,  // 1 min
   });
+  const sessions = sessionsPage?.items;
+  const sessionsTotal = sessionsPage?.total ?? 0;
 
   const { data: strengthBalanceChart, isLoading: strengthBalanceLoading } = useQuery<ChartData>({
     queryKey: ['chart-strength-balance', 30],
@@ -567,7 +585,7 @@ export default function LiftingPage() {
       <div className="pr-0 lg:pr-12">
         <PageHeader
           title="Lifting"
-        subtitle={sessions ? `${sessions.length} sessions · strength, tracked` : 'Strength, tracked'}
+        subtitle={sessionsPage ? `${sessionsTotal} sessions · strength, tracked` : 'Strength, tracked'}
         actions={
           <>
             <button
@@ -613,6 +631,14 @@ export default function LiftingPage() {
       />
       </div>
 
+      {sessionsError && (
+        <ErrorState
+          title="Couldn't load lifting sessions"
+          message="Check your connection and try again."
+          onRetry={() => refetchSessions()}
+        />
+      )}
+
       {/* Tab bar */}
       <LiftingTabs value={activeTab} onChange={handleTabChange} />
 
@@ -622,7 +648,7 @@ export default function LiftingPage() {
           sessions={sessions ?? []}
           prs={personalRecords ?? []}
           weeklyVolumeChart={weeklyVolumeChart}
-          isLoading={!sessions}
+          isLoading={!sessionsPage && !sessionsError}
           onOpenSession={(id) => {
             setActiveTab('sessions');
             setSelectedSessionId(id);
@@ -719,6 +745,7 @@ export default function LiftingPage() {
         <div className="lg:col-span-1">
           <SessionRail
             sessions={sessions ?? []}
+            total={sessionsTotal}
             selectedId={selectedSessionId}
             onSelect={handleSelectSessionInBrowser}
             prsBySession={prsBySession}
@@ -885,6 +912,7 @@ export default function LiftingPage() {
               {/* Edit Session Form — directly under the summary, above the ladder */}
               {showEditSession && (
                 <div
+                  key={selectedSessionId ?? 'edit'}
                   ref={editFormRef}
                   className="mb-4 rounded-lg border border-accent/40 bg-surface-light/30 p-4"
                   aria-label="Edit session"

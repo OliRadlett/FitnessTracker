@@ -15,6 +15,7 @@ state validation, and error mapping under test are the real code.
 from __future__ import annotations
 
 import uuid
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 

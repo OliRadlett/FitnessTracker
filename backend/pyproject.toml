@@ -60,7 +60,6 @@ target-version = "py312"
 [tool.ruff.lint]
 ignore = [
     "B008",     # FastAPI Depends()/Query() in default args — standard pattern
-    "F821",     # Forward refs in SQLAlchemy models (string-based relationships)
     "BLE001",   # Blind except — acceptable in service/integration code
     "DTZ011",   # date.today() — fine in business logic
     "DTZ001",   # datetime() without tzinfo — mostly in tests
@@ -83,3 +82,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["DTZ001", "DTZ011", "DTZ007"]
+# SQLAlchemy models use string-based relationship targets, which look like
+# forward references to Ruff. Keep the suppression local so a real undefined
+# name in a task/service (as in the 2026-11-04 sync bug) cannot hide.
+"app/models/*" = ["F821"]

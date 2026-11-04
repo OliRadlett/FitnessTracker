@@ -1186,7 +1186,7 @@ async def bulk_export_gpx(
         raise HTTPException(status_code=404, detail="No routes found")
 
     zip_buffer = BytesIO()
-    with ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+    with ZipFile(zip_buffer, "w", ZIP_DEFLATED) as zf:
         for route in routes:
             gpx_content = route_to_gpx(route)
             filename = f"{route.name.replace(' ', '_').replace('/', '_')}.gpx"
