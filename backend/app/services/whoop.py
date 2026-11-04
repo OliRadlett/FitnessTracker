@@ -601,6 +601,65 @@ async def sync_whoop_cycles(
 # ── Sleep sync ─────────────────────────────────────────────────────────────
 
 
+def _sleep_respiratory_rate(score: dict) -> float | None:
+    """Whoop v2 carries respiratory rate on the sleep score, not recovery."""
+    value = score.get("respiratory_rate")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+async def _upsert_sleep_daily_metric(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    sleep_date: date,
+    total_sleep_seconds: int | None,
+    efficiency: float | None,
+    respiratory_rate: float | None,
+) -> None:
+    """Write sleep-derived fields to the day's DailyMetric, preserving other fields.
+
+    ``respiratory_rate`` is the important one here: Whoop returns it in the sleep
+    score, while the daily metric's recovery sync has no usable value for it.
+    Conditional update fields keep a sparse sleep payload from erasing a value
+    written by an earlier sync.
+    """
+    if total_sleep_seconds is None and respiratory_rate is None:
+        return
+
+    minutes = (
+        round(total_sleep_seconds / 60, 1) if total_sleep_seconds is not None else None
+    )
+    update_fields: dict = {"updated_at": datetime.now(UTC)}
+    if minutes is not None:
+        update_fields["sleep_duration_minutes"] = minutes
+    if efficiency is not None:
+        update_fields["sleep_efficiency"] = efficiency
+    if respiratory_rate is not None:
+        update_fields["respiratory_rate"] = respiratory_rate
+
+    stmt = (
+        pg_insert(DailyMetric)
+        .values(
+            user_id=user_id,
+            metric_date=sleep_date,
+            source="whoop",
+            sleep_duration_minutes=minutes,
+            sleep_efficiency=efficiency,
+            respiratory_rate=respiratory_rate,
+            raw_data={"sleep_only": True},
+        )
+        .on_conflict_do_update(
+            index_elements=["user_id", "metric_date", "source"],
+            set_=update_fields,
+        )
+    )
+    await db.execute(stmt)
+
+
 async def sync_whoop_sleep(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -721,6 +780,7 @@ async def sync_whoop_sleep(
         efficiency = score.get("sleep_efficiency_percentage") or score.get(
             "sleep_efficiency"
         )
+        respiratory_rate = _sleep_respiratory_rate(score)
 
         total_sleep_seconds = int(total_milli / 1000) if total_milli else None
         deep_sleep_seconds = int(deep_milli / 1000) if deep_milli else None
@@ -786,43 +846,16 @@ async def sync_whoop_sleep(
         if sleep_log:
             synced.append(sleep_log)
 
-        # Also update DailyMetric with sleep duration and efficiency
-        if total_sleep_seconds is not None:
-            dm_result = await db.execute(
-                select(DailyMetric).where(
-                    DailyMetric.user_id == user_id,
-                    DailyMetric.metric_date == sleep_date,
-                    DailyMetric.source == "whoop",
-                )
-            )
-            dm = dm_result.scalar_one_or_none()
-            if dm:
-                dm.sleep_duration_minutes = round(total_sleep_seconds / 60, 1)
-                dm.sleep_efficiency = efficiency
-            else:
-                # Create a minimal DailyMetric for the sleep data
-                stmt = (
-                    pg_insert(DailyMetric)
-                    .values(
-                        user_id=user_id,
-                        metric_date=sleep_date,
-                        source="whoop",
-                        sleep_duration_minutes=round(total_sleep_seconds / 60, 1),
-                        sleep_efficiency=efficiency,
-                        raw_data={"sleep_only": True},
-                    )
-                    .on_conflict_do_update(
-                        index_elements=["user_id", "metric_date", "source"],
-                        set_={
-                            "sleep_duration_minutes": round(
-                                total_sleep_seconds / 60, 1
-                            ),
-                            "sleep_efficiency": efficiency,
-                            "updated_at": datetime.now(UTC),
-                        },
-                    )
-                )
-                await db.execute(stmt)
+        # Also update DailyMetric with sleep duration, efficiency and respiratory
+        # rate (the latter only exists on the sleep score in Whoop v2).
+        await _upsert_sleep_daily_metric(
+            db,
+            user_id,
+            sleep_date,
+            total_sleep_seconds,
+            efficiency,
+            respiratory_rate,
+        )
 
     await db.flush()
     logger.info(
@@ -1646,6 +1679,7 @@ async def backfill_whoop_data(
         efficiency = score.get("sleep_efficiency_percentage") or score.get(
             "sleep_efficiency"
         )
+        respiratory_rate = _sleep_respiratory_rate(score)
 
         total_sleep_seconds = int(total_milli / 1000) if total_milli else None
         deep_sleep_seconds = int(deep_milli / 1000) if deep_milli else None
@@ -1706,28 +1740,16 @@ async def backfill_whoop_data(
 
         synced_sleep += 1
 
-        # Also update DailyMetric with sleep duration and efficiency
-        if total_sleep_seconds is not None:
-            stmt = (
-                pg_insert(DailyMetric)
-                .values(
-                    user_id=user_id,
-                    metric_date=sleep_date,
-                    source="whoop",
-                    sleep_duration_minutes=round(total_sleep_seconds / 60, 1),
-                    sleep_efficiency=efficiency,
-                    raw_data={"sleep_only": True},
-                )
-                .on_conflict_do_update(
-                    index_elements=["user_id", "metric_date", "source"],
-                    set_={
-                        "sleep_duration_minutes": round(total_sleep_seconds / 60, 1),
-                        "sleep_efficiency": efficiency,
-                        "updated_at": datetime.now(UTC),
-                    },
-                )
-            )
-            await db.execute(stmt)
+        # Also update DailyMetric with sleep duration, efficiency and respiratory
+        # rate (the latter only exists on the sleep score in Whoop v2).
+        await _upsert_sleep_daily_metric(
+            db,
+            user_id,
+            sleep_date,
+            total_sleep_seconds,
+            efficiency,
+            respiratory_rate,
+        )
 
     await db.flush()
     logger.info(
