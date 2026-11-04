@@ -214,12 +214,14 @@ export default function JournalPage() {
   const hasActiveFilter = Boolean(filters.q || filters.sport);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 pb-20">
       <PageHeader
         title="Activity"
         subtitle="Every session, grouped by week."
         actions={
-          <>
+          // pr clears the shell's fixed notification bell at the top-right;
+          // without it the search field ends underneath it.
+          <div className="flex flex-wrap items-center gap-2 sm:pr-12">
             <div className="flex rounded-[9px] border border-surface-light/60 p-[3px]">
               {JOURNAL_PERIODS.map((period) => (
                 <button
@@ -265,14 +267,7 @@ export default function JournalPage() {
                 className="h-8 w-full rounded-[9px] border border-surface-light/60 bg-surface pl-8 pr-2.5 text-[11.5px] text-foreground placeholder:text-muted/45 focus:border-accent/50 focus:outline-none sm:w-[196px]"
               />
             </div>
-
-            <Link
-              href="/activities?view=list"
-              className="text-[11px] text-muted/70 transition-colors hover:text-foreground"
-            >
-              Classic views →
-            </Link>
-          </>
+          </div>
         }
       />
 
@@ -284,7 +279,7 @@ export default function JournalPage() {
       />
 
       {!isError && summary && summary.count > 0 && (
-        <div className="grid grid-cols-3 gap-x-4 gap-y-4 border-y border-surface-light/40 py-4 sm:flex sm:flex-wrap sm:gap-x-9">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-4 border-y border-surface-light/40 py-4 sm:flex sm:flex-wrap sm:gap-x-9">
           <Stat value={String(summary.count)} label="sessions" />
           <Stat value={formatRowDuration(summary.total_duration_seconds)} label="moving" />
           {summary.total_distance_meters > 0 && (
@@ -340,6 +335,17 @@ export default function JournalPage() {
           </>
         )
       )}
+
+      <p className="pt-4 text-[11px] text-muted/45">
+        Timeline, patterns and stats live in{' '}
+        <Link
+          href="/activities?view=list"
+          className="text-muted/70 underline-offset-2 transition-colors hover:text-foreground hover:underline"
+        >
+          classic views
+        </Link>
+        .
+      </p>
     </div>
   );
 }

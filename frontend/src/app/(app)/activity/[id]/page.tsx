@@ -191,6 +191,10 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
     : [
         lifting?.focus ? `${lifting.focus.charAt(0).toUpperCase()}${lifting.focus.slice(1)} day` : null,
         lifting?.total_volume_kg ? formatVolumeKg(lifting.total_volume_kg) : null,
+        // A lift with no set log still has a duration and often a heart rate;
+        // saying "no summary fields recorded" beside three real numbers is wrong.
+        !lifting ? formatRowDuration(activity.duration_seconds) : null,
+        !lifting && activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm avg` : null,
       ]
         .filter(Boolean)
         .join('  ·  ');
@@ -229,16 +233,24 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
             <Metric label="Intensity" value={analysis?.intensity_factor ? analysis.intensity_factor.toFixed(2) : '—'} sub="IF" />
             <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
           </>
-        ) : (
+        ) : lifting ? (
           <>
-            <Metric label="Volume" value={lifting?.total_volume_kg ? formatVolumeKg(lifting.total_volume_kg) : '—'} />
-            <Metric label="Sets" value={lifting ? String(lifting.sets.length) : '—'} />
+            <Metric label="Volume" value={lifting.total_volume_kg ? formatVolumeKg(lifting.total_volume_kg) : '—'} />
+            <Metric label="Sets" value={String(lifting.sets.length)} />
             <Metric label="Duration" value={formatRowDuration(activity.duration_seconds)} />
             <Metric
               label="Est. load"
-              value={lifting?.estimated_tss ? lifting.estimated_tss.toFixed(1) : '—'}
-              sub={lifting?.estimated_tss ? 'TSS' : undefined}
+              value={lifting.estimated_tss ? lifting.estimated_tss.toFixed(1) : '—'}
+              sub={lifting.estimated_tss ? 'TSS' : undefined}
             />
+            <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
+            <Metric label="Calories" value={activity.calories ? `${Math.round(activity.calories)} kcal` : '—'} />
+          </>
+        ) : (
+          // No linked set log: only the fields that actually exist, rather than
+          // a band of em dashes pretending the session has six metrics.
+          <>
+            <Metric label="Duration" value={formatRowDuration(activity.duration_seconds)} />
             <Metric label="Avg HR" value={activity.average_heartrate ? `${Math.round(activity.average_heartrate)} bpm` : '—'} />
             <Metric label="Calories" value={activity.calories ? `${Math.round(activity.calories)} kcal` : '—'} />
           </>
