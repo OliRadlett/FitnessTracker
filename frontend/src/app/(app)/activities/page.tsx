@@ -23,6 +23,7 @@ import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/activities/ActivityAiAnalysisCard';
 import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 
 const RouteMap = dynamic(
   () => import('@/components/maps/RouteMap').then((mod) => mod.RouteMap),
@@ -63,6 +64,10 @@ import { TimelineView } from '@/components/activities/TimelineView';
 import { PatternsView } from '@/components/activities/PatternsView';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+// The Relive 3D viewer is the default 3D experience when it is enabled; the
+// classic theater stays one click away.
+const RELIVE3D_ENABLED = process.env.NEXT_PUBLIC_RELIVE3D === '1';
 
 const SPORT_TYPES = ['', 'cycling', 'running', 'swimming', 'walking', 'hiking', 'weighttraining', 'workout'];
 const SOURCES = ['', 'strava', 'wahoo', 'komoot', 'manual'];
@@ -325,20 +330,43 @@ function ActivityExpanded({
 
       {detailTab === 'replay' && (
       <>
-      {/* 3D Replay launcher — the full experience lives in the Theater (§3.16) */}
+      {/* 3D Replay launcher — Relive 3D is the default when the flag is on */}
       {replayBuild && replayBuild.points.length >= 2 ? (
-        <button
-          onClick={openTheater}
-          className="mb-4 flex w-full items-center gap-3 rounded-lg border border-surface-light bg-gradient-to-r from-accent/10 to-transparent p-4 text-left transition-colors hover:border-accent/40"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold text-foreground">Open 3D Replay</span>
-            <span className="block text-xs text-muted">
-              Ride the route in a full-screen theater — cameras, terrain and live telemetry.
+        RELIVE3D_ENABLED ? (
+          <div className="mb-4 space-y-2">
+            <Link
+              href={`/relive3d/${activity.id}`}
+              className="flex w-full items-center gap-3 rounded-lg border border-surface-light bg-gradient-to-r from-accent/10 to-transparent p-4 text-left transition-colors hover:border-accent/40"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-foreground">Watch in Relive 3D</span>
+                <span className="block text-xs text-muted">
+                  Immersive Google 3D — the ride story, camera presets, and a ghost of your past rides.
+                </span>
+              </span>
+              <span className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground">3D</span>
+            </Link>
+            <button
+              onClick={openTheater}
+              className="text-xs text-muted transition-colors hover:text-accent"
+            >
+              Open the classic theater instead
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={openTheater}
+            className="mb-4 flex w-full items-center gap-3 rounded-lg border border-surface-light bg-gradient-to-r from-accent/10 to-transparent p-4 text-left transition-colors hover:border-accent/40"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-foreground">Open 3D Replay</span>
+              <span className="block text-xs text-muted">
+                Ride the route in a full-screen theater — cameras, terrain and live telemetry.
+              </span>
             </span>
-          </span>
-          <span className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground">Theater</span>
-        </button>
+            <span className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground">Theater</span>
+          </button>
+        )
       ) : (
         replayMissingReason && <p className="mb-4 text-sm text-muted">{replayMissingReason}</p>
       )}
