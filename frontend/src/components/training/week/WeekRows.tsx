@@ -107,8 +107,10 @@ export function WeekRows({
         id={first ? `plan-day-${date}` : undefined}
         className={`border-b border-white/[0.05] last:border-b-0 ${expanded ? 'bg-white/[0.03]' : ''}`}
       >
-        <div className={`group flex min-h-[56px] items-center gap-3 px-1 py-2 ${isToday ? 'bg-accent/[0.04]' : ''}`}>
-          <div className="w-[64px] shrink-0 md:w-[104px]">
+        <div className={`group flex min-h-[56px] items-center gap-2 px-1 py-2 md:gap-3 ${isToday ? 'bg-accent/[0.04]' : ''}`}>
+          {/* Narrower date and number columns on a phone: at 390 the old widths left
+              ~140 px for the title, which broke "Push session" across two lines. */}
+          <div className="w-[52px] shrink-0 md:w-[104px]">
             {first ? (
               <span className="flex items-baseline gap-1">
                 <span
@@ -163,7 +165,7 @@ export function WeekRows({
             </div>
           </div>
 
-          <div className="w-[60px] shrink-0 text-right md:w-[92px]">
+          <div className="w-[52px] shrink-0 text-right md:w-[92px]">
             {r.headline ? (
               <Number value={r.headline.value} unit={r.headline.unit} muted={dim} />
             ) : (

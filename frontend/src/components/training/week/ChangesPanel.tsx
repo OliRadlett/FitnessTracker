@@ -44,9 +44,9 @@ export function ChangesPanel({
       </div>
 
       <div className="overflow-hidden rounded-xl border border-white/[0.07] bg-surface">
-        <div className="flex items-start gap-3 px-3 py-3">
+        <div className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-start sm:gap-3">
           <span
-            className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold ${
+            className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold sm:mt-0.5 ${
               v.tone === 'caution'
                 ? 'border-caution/30 bg-caution/10 text-caution'
                 : 'border-positive/30 bg-positive/10 text-positive'
@@ -60,9 +60,11 @@ export function ChangesPanel({
             <p className="mt-1 text-xs text-muted">source: {v.source}</p>
           </div>
           {v.action && (
+            // Below the reason on a phone: beside it at 390 the guidance was squeezed
+            // into six short lines.
             <Link
               href={v.action.href}
-              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-white/10 px-3 text-sm font-medium text-foreground hover:bg-white/[0.05]"
+              className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-1.5 self-start rounded-lg border border-white/10 px-3 text-sm font-medium text-foreground hover:bg-white/[0.05]"
             >
               <HeartPulse className="h-4 w-4" />
               {v.action.label}
