@@ -914,7 +914,7 @@ export default function LiftingPage() {
                       <input
                         type="text"
                         defaultValue={sessionDetail.focus || ''}
-                        onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { focus: e.target.value || undefined } })}
+                        onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { focus: e.target.value || null } })}
                         placeholder="e.g. Upper Body"
                         className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                       />
@@ -924,7 +924,7 @@ export default function LiftingPage() {
                       <input
                         type="text"
                         defaultValue={sessionDetail.notes || ''}
-                        onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { notes: e.target.value || undefined } })}
+                        onBlur={(e) => updateSessionMutation.mutate({ sessionId: selectedSessionId, data: { notes: e.target.value || null } })}
                         placeholder="Optional notes"
                         className="w-full bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent"
                       />

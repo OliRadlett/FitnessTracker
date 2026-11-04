@@ -259,10 +259,10 @@ export interface CreatePRPayload {
 export interface UpdateSessionPayload {
   session_date?: string;
   program_name?: string;
-  focus?: string;
+  focus?: string | null;
   duration_seconds?: number;
   rpe_session?: number;
-  notes?: string;
+  notes?: string | null;
   started_at?: string | null;
   ended_at?: string | null;
 }
