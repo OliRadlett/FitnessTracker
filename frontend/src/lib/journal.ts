@@ -151,6 +151,25 @@ const RIDE_TYPE_LABEL: Record<string, string> = {
 const GENERIC_ROUTE =
   /^(cycling|ride|morning ride|evening ride|afternoon ride|lunch ride|commute|workout|weight training|training|session)$/i;
 
+/**
+ * Activity names are *mostly* provider boilerplate ("Cycling", "Morning Ride"),
+ * but not always: a renamed ride, a sportive or a race keeps the name the user
+ * gave it — and discarding that loses information the provider never had. Only
+ * the boilerplate is rejected; anything else is the title.
+ */
+const GENERIC_NAME =
+  /^(cycling|ride|run|swim|hike|walk|workout|weight training|strength|lifting|lift|training|session)$/i;
+const DAYPART_NAME =
+  /^(morning|evening|afternoon|lunch|midday|night)\s+(ride|run|walk|hike|swim|weight training|weights|lifting|strength)$/i;
+
+export function usableActivityName(activity: Activity): string {
+  const name = activity.name?.trim() ?? '';
+  if (!name) return '';
+  if (GENERIC_NAME.test(name) || DAYPART_NAME.test(name)) return '';
+  if (name.toLowerCase() === sportLabel(activity.sport_type).toLowerCase()) return '';
+  return name;
+}
+
 export function usableRouteName(activity: Activity): string {
   const route = activity.route_name?.trim() ?? '';
   if (!route) return '';
@@ -211,6 +230,7 @@ export function describeActivity(activity: Activity): JournalRow {
   const duration = formatRowDuration(activity.duration_seconds);
 
   if (isRide) {
+    const name = usableActivityName(activity);
     const route = usableRouteName(activity);
     const typeLabel = activity.ride_type ? RIDE_TYPE_LABEL[activity.ride_type] : undefined;
     const climb = activity.ride_context?.climbing_meters ?? activity.elevation_gain_meters;
@@ -228,7 +248,7 @@ export function describeActivity(activity: Activity): JournalRow {
       id: activity.id,
       isRide,
       kind: 'ride' as const,
-      title: route || typeLabel || 'Ride',
+      title: name || route || typeLabel || 'Ride',
       meta,
       primary: duration,
       secondary: secondary.join(' · '),
@@ -241,9 +261,10 @@ export function describeActivity(activity: Activity): JournalRow {
   }
 
   if (!isLift) {
-    // Run / swim / hike / walk: the activity's own name is usually meaningful
-    // here ("Morning Run"), so it is the title rather than a derived one.
-    const title = activity.name?.trim() || sportLabel(activity.sport_type);
+    // Run / swim / hike / walk: Strava's "Morning Run" is boilerplate exactly as
+    // "Cycling" is, so the sport label is a better title unless the user named
+    // the session something of their own.
+    const title = usableActivityName(activity) || sportLabel(activity.sport_type);
     const secondary = [formatDistance(activity.distance_meters, 1)];
     if (activity.average_heartrate) secondary.push(`${Math.round(activity.average_heartrate)} bpm`);
     else if (activity.elevation_gain_meters) secondary.push(`${Math.round(activity.elevation_gain_meters)} m`);
@@ -269,7 +290,10 @@ export function describeActivity(activity: Activity): JournalRow {
   const volume = linked?.total_volume_kg ?? null;
   const topExercise = linked?.top_exercise ?? null;
 
-  const title = topExercise || (focus ? `${focus.charAt(0).toUpperCase()}${focus.slice(1)} day` : 'Weight training');
+  const title =
+    usableActivityName(activity) ||
+    topExercise ||
+    (focus ? `${focus.charAt(0).toUpperCase()}${focus.slice(1)} day` : 'Weight training');
   const meta = [time, source];
   if (topExercise && focus) meta.push(`${focus} day`);
   if (!linked) meta.push('no set log');
