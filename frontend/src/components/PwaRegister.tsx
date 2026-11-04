@@ -142,7 +142,7 @@ export function PwaRegister() {
           </span>
           <button
             onClick={() => window.location.reload()}
-            className="px-3 py-1 min-h-[44px] rounded-full bg-accent text-white text-xs font-semibold hover:bg-accent-hover transition-colors whitespace-nowrap"
+            className="px-3 py-1 min-h-[44px] rounded-full bg-accent text-background text-xs font-semibold hover:bg-accent-hover transition-colors whitespace-nowrap"
           >
             Reload
           </button>
