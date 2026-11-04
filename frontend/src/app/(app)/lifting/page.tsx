@@ -1283,14 +1283,22 @@ export default function LiftingPage() {
         <WarmupTemplateManager />
       </Modal>
 
-      {/* Manual PR entry */}
-      {showManualPR && (
-        <ManualPRForm
-          onSubmit={(data) => createPRMutation.mutate(data)}
-          onCancel={() => setShowManualPR(false)}
-          isPending={createPRMutation.isPending}
-        />
-      )}
+      {/* Manual PR entry — modal so it is not stranded at the page bottom */}
+      <Modal
+        open={showManualPR}
+        onClose={() => setShowManualPR(false)}
+        size="lg"
+        aria-label="Add personal record"
+      >
+        <ModalHeader title="Add personal record" onClose={() => setShowManualPR(false)} />
+        <div className="p-4">
+          <ManualPRForm
+            onSubmit={(data) => createPRMutation.mutate(data)}
+            onCancel={() => setShowManualPR(false)}
+            isPending={createPRMutation.isPending}
+          />
+        </div>
+      </Modal>
 
       {/* Link Activity Modal */}
       {linkModalSessionId && (
