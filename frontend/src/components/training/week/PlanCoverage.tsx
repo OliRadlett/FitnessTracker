@@ -160,7 +160,7 @@ export function PlanCoverage({
           {coverage.lastSessionDate && (
             <span className="tnum text-base font-semibold">
               {shortDate(coverage.lastSessionDate)}
-              <span className="ml-1 text-xs font-normal text-muted">last session</span>
+              <span className="ml-1 text-xs font-normal text-muted">written to</span>
             </span>
           )}
         </div>
