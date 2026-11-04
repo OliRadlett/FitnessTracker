@@ -29,17 +29,17 @@ function ResultBadge({ result }: { result: EventResult }) {
   return (
     <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
       {result.personal_best && (
-        <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-500/15 text-amber-400 font-medium">
+        <span className="px-1.5 py-0.5 rounded text-xs bg-amber-500/15 text-amber-400 font-medium">
           <Medal className="w-3 h-3 inline mr-1" />PB
         </span>
       )}
       {bits.map((b) => (
-        <span key={b} className="px-1.5 py-0.5 rounded text-[10px] bg-surface-light/60 text-foreground/80 font-medium">
+        <span key={b} className="px-1.5 py-0.5 rounded text-xs bg-surface-light/60 text-foreground/80 font-medium">
           {b}
         </span>
       ))}
       {result.notes && (
-        <span className="text-[11px] text-muted italic">"{result.notes}"</span>
+        <span className="text-xs text-muted italic">"{result.notes}"</span>
       )}
     </div>
   );
@@ -113,13 +113,13 @@ export function EventResultPanel({ event }: { event: Event }) {
                     setForm(event.result ?? {});
                     setShowForm((s) => !s);
                   }}
-                  className="text-[11px] text-accent hover:text-accent/80"
+                  className="text-xs text-accent hover:text-accent/80"
                 >
                   {showForm ? 'Cancel' : 'Edit result'}
                 </button>
                 <button
                   onClick={() => setConfirmClear(true)}
-                  className="min-h-[44px] px-1 text-[11px] text-warning hover:text-warning/80 disabled:opacity-50"
+                  className="min-h-[44px] px-1 text-xs text-warning hover:text-warning/80 disabled:opacity-50"
                 >
                   Clear
                 </button>
@@ -138,7 +138,7 @@ export function EventResultPanel({ event }: { event: Event }) {
             <div className="mt-2 space-y-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[10px] text-muted mb-0.5">
+                  <label className="block text-xs text-muted mb-0.5">
                     Finish time (or seconds)
                   </label>
                   <input
@@ -150,7 +150,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-muted mb-0.5">Overall position</label>
+                  <label className="block text-xs text-muted mb-0.5">Overall position</label>
                   <input
                     type="number"
                     min={1}
@@ -166,7 +166,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                   />
                 </div>
                 <div>
-                  <label className="block text-[10px] text-muted mb-0.5">Class position</label>
+                  <label className="block text-xs text-muted mb-0.5">Class position</label>
                   <input
                     type="number"
                     min={1}
@@ -182,7 +182,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                   />
                 </div>
                 <div className="flex items-end gap-2 pb-0.5">
-                  <label className="flex items-center gap-1.5 text-[11px] text-foreground">
+                  <label className="flex items-center gap-1.5 text-xs text-foreground">
                     <input
                       type="checkbox"
                       checked={!!form.personal_best}
@@ -194,7 +194,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] text-muted mb-0.5">Notes</label>
+                <label className="block text-xs text-muted mb-0.5">Notes</label>
                 <input
                   type="text"
                   value={form.notes ?? ''}
@@ -205,7 +205,7 @@ export function EventResultPanel({ event }: { event: Event }) {
                 />
               </div>
               {actionError && (
-                <p className="text-[11px] text-warning" role="alert">{actionError}</p>
+                <p className="text-xs text-warning" role="alert">{actionError}</p>
               )}
               <div className="flex gap-2">
                 <button
@@ -267,7 +267,7 @@ function Retrospective({ eventId }: { eventId: string }) {
     <div className="mt-2">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="text-[11px] text-accent hover:text-accent/80"
+        className="text-xs text-accent hover:text-accent/80"
       >
         {open ? 'Hide retrospective' : <><BarChart3 className="w-3 h-3 mr-1" />Post-race retrospective</>}
       </button>

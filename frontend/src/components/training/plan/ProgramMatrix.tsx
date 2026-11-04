@@ -173,7 +173,7 @@ export function ProgramMatrix({ plan }: ProgramMatrixProps) {
         >
           {busy === 'materialise' ? 'Filling…' : 'Fill from rules'}
         </button>
-        <span className="text-[10px] text-muted ml-auto">
+        <span className="text-xs text-muted ml-auto">
           Ghost values are suggestions; manual weights are never overwritten.
         </span>
       </div>
@@ -217,10 +217,10 @@ export function ProgramMatrix({ plan }: ProgramMatrixProps) {
                         <span className="block text-muted whitespace-nowrap">
                           {cell.entry.weight_kg != null ? `${cell.entry.weight_kg}kg` : '—'}
                           {cell.entry.weight_source === 'manual' && (
-                            <span className="text-[9px] text-accent ml-1">manual</span>
+                            <span className="text-xs text-accent ml-1">manual</span>
                           )}
                           {sug?.weight_kg != null && !sug.skipped_reason && (
-                            <span className="text-[9px] text-accent ml-1">→{sug.weight_kg}</span>
+                            <span className="text-xs text-accent ml-1">→{sug.weight_kg}</span>
                           )}
                         </span>
                       </button>
@@ -246,7 +246,7 @@ export function ProgramMatrix({ plan }: ProgramMatrixProps) {
                 : `${sug.basis_source ?? '—'}${sug.basis_date ? ` · ${sug.basis_date}` : ''}${
                     sug.basis_1rm_kg != null ? ` · e1RM ${sug.basis_1rm_kg}kg` : ''
                   }`;
-              return <span className="ml-2 text-[10px] text-muted">suggestion basis: {why}</span>;
+              return <span className="ml-2 text-xs text-muted">suggestion basis: {why}</span>;
             })()}
           </p>
           <div className="flex flex-wrap items-end gap-2">
@@ -258,7 +258,7 @@ export function ProgramMatrix({ plan }: ProgramMatrixProps) {
                 ['weight_kg', sel.entry.weight_kg ?? '', 2.5],
               ] as const
             ).map(([field, value, step]) => (
-              <label key={field} className="text-[10px] text-muted">
+              <label key={field} className="text-xs text-muted">
                 <span className="block mb-0.5">{field === 'weight_kg' ? 'kg' : field}</span>
                 <input
                   type="number"
@@ -286,7 +286,7 @@ export function ProgramMatrix({ plan }: ProgramMatrixProps) {
               Close
             </button>
           </div>
-          <p className="text-[10px] text-muted">
+          <p className="text-xs text-muted">
             Editing kg marks the entry <span className="text-accent">manual</span> — suggestions and refresh-targets
             will leave it alone.
           </p>

@@ -37,7 +37,7 @@ export function ConformityBadge({
       return (
         <span
           title={resolvedTitle ?? (status === 'done' ? 'Done' : 'Partial')}
-          className={`inline-flex items-center gap-1 text-[10px] font-medium ${color}`}
+          className={`inline-flex items-center gap-1 text-xs font-medium ${color}`}
         >
           <span className="h-1.5 w-1.5 rounded-full bg-current" />
           {pct != null ? `${Math.round(pct)}%` : ''}
@@ -46,19 +46,19 @@ export function ConformityBadge({
     }
     case 'missed':
       return (
-        <span title={resolvedTitle ?? 'Missed'} className="text-[10px] font-medium text-warning/60">
+        <span title={resolvedTitle ?? 'Missed'} className="text-xs font-medium text-warning/60">
           Missed
         </span>
       );
     case 'extra':
       return (
-        <span title={resolvedTitle ?? 'Extra session'} className="text-[10px] font-medium text-blue-300">
+        <span title={resolvedTitle ?? 'Extra session'} className="text-xs font-medium text-blue-300">
           Extra
         </span>
       );
     case 'pending':
       return (
-        <span title={resolvedTitle ?? 'Pending'} className="text-[10px] text-muted">
+        <span title={resolvedTitle ?? 'Pending'} className="text-xs text-muted">
           —
         </span>
       );

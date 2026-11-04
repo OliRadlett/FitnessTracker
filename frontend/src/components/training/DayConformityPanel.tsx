@@ -130,7 +130,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
 
   return (
     <div className="rounded-lg bg-surface-light/30 border border-surface-light/50 p-1.5 space-y-1.5">
-      <p className="text-[10px] font-medium text-muted uppercase tracking-wide">Conformity</p>
+      <p className="text-xs font-medium text-muted uppercase tracking-wide">Conformity</p>
 
       {/* Loading skeleton */}
       {(query.isLoading || (!data && query.isFetching)) && (
@@ -143,7 +143,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
       )}
 
       {query.isError && (
-        <p className="text-[11px] text-warning">
+        <p className="text-xs text-warning">
           Failed to load conformity: {(query.error as Error).message}
         </p>
       )}
@@ -157,11 +157,11 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
               pct={data.conformity_pct}
               classification={data.classification}
             />
-            <span className="text-[11px] text-foreground font-medium">
+            <span className="text-xs text-foreground font-medium">
               {data.classification ??
                 (data.conformity_pct != null ? `${Math.round(data.conformity_pct)}%` : '')}
             </span>
-            <span className="text-[10px] text-muted">
+            <span className="text-xs text-muted">
               ({data.planned_type}
               {data.sport !== 'rest' ? ` · ${data.sport}` : ''})
             </span>
@@ -170,9 +170,9 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
           {/* No-score message + planned metrics for pending/missed days */}
           {data.conformity_pct == null ? (
             <div className="space-y-1">
-              <p className="text-[11px] text-muted italic">{emptyMessage(data.status)}</p>
+              <p className="text-xs text-muted italic">{emptyMessage(data.status)}</p>
               {day.sport === 'cycle' && (
-                <div className="text-[11px] text-foreground/80">
+                <div className="text-xs text-foreground/80">
                   <span>Planned: {day.planned_duration_min != null ? `${Math.round(day.planned_duration_min)} min` : '—'}</span>
                   {day.planned_tss != null && <span className="text-muted"> · {Math.round(day.planned_tss)} TSS</span>}
                   {day.planned_power_watts != null && (
@@ -181,7 +181,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
                 </div>
               )}
               {day.sport === 'strength' && (
-                <div className="text-[11px] text-foreground/80">
+                <div className="text-xs text-foreground/80">
                   <span>Planned: {day.planned_exercises?.length ?? '—'} exercises</span>
                   {day.planned_volume_kg != null && (
                     <span className="text-muted"> · {Math.round(day.planned_volume_kg)} kg volume</span>
@@ -194,7 +194,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
             /* Components table */
             data.components.length > 0 && (
               <div className="overflow-x-auto -mx-1">
-                <table className="w-full text-[9px] text-muted">
+                <table className="w-full text-xs text-muted">
                 <thead>
                   <tr className="text-left">
                     <th className="font-medium">Metric</th>
@@ -235,7 +235,7 @@ export function DayConformityPanel({ planId, day, open = true }: DayConformityPa
           {data.deviations.length > 0 && (
             <ul className="space-y-0">
               {data.deviations.map((d, i) => (
-                <li key={i} className="text-[9px] text-warning flex gap-1">
+                <li key={i} className="text-xs text-warning flex gap-1">
                   <span className="shrink-0">→</span>
                   <span>{d}</span>
                 </li>

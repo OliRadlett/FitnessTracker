@@ -67,6 +67,10 @@ plan", conformity said "87%", and the week under all of it was empty.
   build (`npx next start -p 3010`, `playwright.local.config.ts`).
 - **Rendered and reviewed** at 1440×900 and 390×844, both surfaces. Screenshots:
   `frontend/e2e/out/*.png` (gitignored), captured by `e2e/capture-training.spec.ts`.
+- **Type floor closed:** the smallest computed font on all five captured frames is
+  **12 px** and horizontal overflow is **0**. `components/training` had 116
+  occurrences of 9–11 px text before this work; it has none. The last one was the
+  shell's `⌘K` hint, which is why the audit read 11 px until it was bumped.
 
 ### Two harness bugs found by doing this — both worth fixing repo-wide
 
@@ -83,7 +87,6 @@ plan", conformity said "87%", and the week under all of it was empty.
    suite.
 
 ### Six defects the first render exposed (all fixed)
-
 1. **A wall of alarm-red.** The plan grid and table derived "missed" from
    `completed: false`, which the plan payload carries but `day_status` does not —
    four historical weeks painted red while the week view (which has `day_status`)
@@ -102,14 +105,11 @@ plan", conformity said "87%", and the week under all of it was empty.
 
 ## Still owed
 
-- **`DayEditor` still uses 10 px text** (25 occurrences). The week surface is
-  clean — the smallest computed font on the week frame is 11 px and on the
-  day-expanded frame 10 px, which is `DayEditor`'s pre-existing type. Deleting
-  those is a follow-up, and until it happens the lab's criterion 8 does not hold
-  on frame 4.
-- `frontend/src/CODEMAP.md` `/training` row and the `AGENTS.md` bullet still
-  describe WeeklyView and the mode switch.
-- `training-redesign-plan.md` §15 not yet marked superseded.
+- `frontend/src/CODEMAP.md` `/training` row — **done**.
+- `AGENTS.md` "Training page overhaul" bullet — **done**.
+- `training-redesign-plan.md` §15 — **marked superseded**.
+- **Backend gaps** (§"Backend gaps" above) are the only substantive work left before this can be
+  considered finished rather than merely shipped.
 
 ## Docs still to update (do this in the same PR)
 
