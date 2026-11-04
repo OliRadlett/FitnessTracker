@@ -8,9 +8,10 @@ import logging
 import math
 import statistics
 import uuid
+from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
 
-from sqlalchemy import Date, Float, cast, func, select
+from sqlalchemy import Date, Float, cast, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity
@@ -791,6 +792,85 @@ def alert_suppressed_by_prefs(
     return False
 
 
+async def resolve_alert(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    alert_type: str,
+) -> int:
+    """Mark active alerts of one type as resolved (condition no longer detected).
+
+    Returns the number of rows changed. This is the missing counterpart to
+    ``upsert_alert``: without it, an alert stayed ``active`` forever after the
+    condition cleared, so a July/August warning rendered beside November
+    readiness as if it were current.
+    """
+    result = await db.execute(
+        update(HealthAlert)
+        .where(
+            HealthAlert.user_id == user_id,
+            HealthAlert.alert_type == alert_type,
+            HealthAlert.status == "active",
+        )
+        .values(status="resolved")
+    )
+    return int(result.rowcount or 0)
+
+
+async def collect_health_signals(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    disabled: set[str] | None = None,
+) -> list[dict]:
+    """Run the six deterministic health signals without persisting anything.
+
+    Shared by ``GET /metrics/health-check`` (read-only page load) and
+    ``POST /metrics/health-alerts/analyze`` (explicit check that upserts and
+    notifies). Per-signal failures are returned as ``error`` entries so one
+    broken signal cannot take down the whole check.
+    """
+    disabled = set(disabled or [])
+    results: list[dict] = []
+
+    checks: list[tuple[str, str, str, Callable[[AsyncSession, uuid.UUID], Awaitable[dict | None]]]] = [
+        ("overtraining", "overtraining", "Overtraining Risk", analyze_overtraining),
+        ("injury_risk", "injury_risk", "Injury Risk", analyze_injury_risk),
+        ("illness_risk", "illness", "Illness Risk", analyze_illness),
+    ]
+    for result_type, pref_key, label, fn in checks:
+        if pref_key in disabled:
+            continue
+        try:
+            result = await fn(db, user_id)
+            results.append({"type": result_type, "label": label, "result": result})
+        except Exception as exc:
+            logger.exception("Health signal %s failed", result_type)
+            results.append({"type": result_type, "label": label, "error": str(exc)})
+
+    try:
+        for reg in await analyze_regeneration_signals(db, user_id):
+            alert_type = reg.get("alert_type")
+            if not alert_type or alert_type in disabled:
+                continue
+            results.append(
+                {
+                    "type": alert_type,
+                    "label": alert_type.replace("_", " ").title(),
+                    "result": reg,
+                }
+            )
+    except Exception as exc:
+        logger.exception("Regeneration health signals failed")
+        results.append(
+            {
+                "type": "regeneration_signals",
+                "label": "Regeneration Signals",
+                "error": str(exc),
+            }
+        )
+
+    return results
+
+
 async def upsert_alert(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -803,8 +883,15 @@ async def upsert_alert(
     never re-notifies for an alert the athlete dismissed within
     ``DISMISS_QUIET_DAYS`` (the row reactivates silently so the list stays
     truthful without push fatigue).
+
+    A ``none`` result now resolves any active alert of that type — the condition
+    cleared, so the row must stop reading as live.
     """
-    if analysis is None or analysis.get("severity") == "none":
+    if analysis is None:
+        return False
+    if analysis.get("severity") == "none":
+        if analysis.get("alert_type"):
+            await resolve_alert(db, user_id, analysis["alert_type"])
         return False
 
     user = await db.get(User, user_id)

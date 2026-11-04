@@ -6,8 +6,8 @@
  *
  * Presets map to `?days=` / `?weeks=` windows (backend caps 365d / 52w — see
  * `timeRangeDays` / `timeRangeWeeks`). Custom mode exposes two native date
- * inputs. Cycling / health / analytics charts are intentionally NOT wired to
- * this context — a follow-up wave consumes the API.
+ * inputs. Health consumes this context (Trends uses the shared REVIEW range);
+ * Cycling / Analytics adopt the same API in their own waves.
  */
 
 import React from 'react';

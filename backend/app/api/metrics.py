@@ -1,7 +1,7 @@
 """Metrics API — readiness, sleep intelligence, respiratory rate, weight, health alerts endpoints."""
 
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
@@ -515,102 +515,55 @@ async def dismiss_health_alert(
     return {"status": "dismissed"}
 
 
+@router.get("/health-check")
+async def get_health_check(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Read-only current health check — the six deterministic signals.
+
+    Runs no ``upsert_alert``, creates no notifications, and writes nothing.
+    The page can therefore show a current check on load; the explicit
+    ``POST /health-alerts/analyze`` remains the action that persists alerts.
+    """
+    from app.services.health_analysis import (
+        collect_health_signals,
+        get_health_preferences,
+    )
+
+    disabled = set(get_health_preferences(current_user)["disabled"])
+    results = await collect_health_signals(db, current_user.id, disabled)
+    return {
+        "checked_at": datetime.now(UTC).isoformat(),
+        "analysis_results": results,
+    }
+
+
 @router.post("/health-alerts/analyze")
 async def run_health_analysis(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Run health analysis on-demand and return all results including signal scores."""
+    """Run the six signals, persist alerts, and return all results.
+
+    ``alerts_generated`` counts only alerts that were actually created; a
+    ``none`` result resolves any active alert of that type (see
+    ``upsert_alert``), so an old warning cannot remain live forever.
+    """
     from app.services.health_analysis import (
-        analyze_illness,
-        analyze_injury_risk,
-        analyze_overtraining,
+        collect_health_signals,
         get_health_preferences,
         upsert_alert,
     )
 
     disabled = set(get_health_preferences(current_user)["disabled"])
+    all_results = await collect_health_signals(db, current_user.id, disabled)
 
-    all_results = []
     alerts_generated = 0
-
-    if "overtraining" not in disabled:
-        try:
-            overtraining = await analyze_overtraining(db, current_user.id)
-            if overtraining:
-                await upsert_alert(db, current_user.id, overtraining)
-                alerts_generated += 1
-            all_results.append(
-                {
-                    "type": "overtraining",
-                    "label": "Overtraining Risk",
-                    "result": overtraining,
-                }
-            )
-        except Exception as e:
-            all_results.append(
-                {"type": "overtraining", "label": "Overtraining Risk", "error": str(e)}
-            )
-
-    if "injury_risk" not in disabled:
-        try:
-            injury = await analyze_injury_risk(db, current_user.id)
-            if injury:
-                await upsert_alert(db, current_user.id, injury)
-                alerts_generated += 1
-            all_results.append(
-                {
-                    "type": "injury_risk",
-                    "label": "Injury Risk",
-                    "result": injury,
-                }
-            )
-        except Exception as e:
-            all_results.append(
-                {"type": "injury_risk", "label": "Injury Risk", "error": str(e)}
-            )
-
-    if "illness" not in disabled:
-        try:
-            illness = await analyze_illness(db, current_user.id)
-            if illness:
-                await upsert_alert(db, current_user.id, illness)
-                alerts_generated += 1
-            all_results.append(
-                {
-                    "type": "illness_risk",
-                    "label": "Illness Risk",
-                    "result": illness,
-                }
-            )
-        except Exception as e:
-            all_results.append(
-                {"type": "illness_risk", "label": "Illness Risk", "error": str(e)}
-            )
-
-    # §3.12 regeneration signals (performance decline, sleep consistency,
-    # resting-HR elevation) — honor per-user health preferences.
-    from app.services.health_analysis import analyze_regeneration_signals
-
-    try:
-        for reg in await analyze_regeneration_signals(db, current_user.id):
-            if await upsert_alert(db, current_user.id, reg):
-                alerts_generated += 1
-            all_results.append(
-                {
-                    "type": reg.get("alert_type"),
-                    "label": reg.get("alert_type", "").replace("_", " ").title(),
-                    "result": reg,
-                }
-            )
-    except Exception as e:
-        all_results.append(
-            {
-                "type": "regeneration_signals",
-                "label": "Regeneration Signals",
-                "error": str(e),
-            }
-        )
+    for item in all_results:
+        result = item.get("result")
+        if result and await upsert_alert(db, current_user.id, result):
+            alerts_generated += 1
 
     # BUG-015: no explicit commit; get_db commits at return.
     return {
