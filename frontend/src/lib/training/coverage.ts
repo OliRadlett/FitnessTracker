@@ -131,6 +131,51 @@ export function planStopsBefore(plan: TrainingPlan, date: string): boolean {
   return dates.reduce((a, b) => (a > b ? a : b)) < date;
 }
 
+/** Contiguous runs of weeks with no authored days, e.g. `[{9,10},{12,20}]`. */
+export function unwrittenRuns(coverage: Coverage): { start: number; end: number }[] {
+  const runs: { start: number; end: number }[] = [];
+  let start: number | null = null;
+  for (const w of coverage.weeks) {
+    if (!w.written && start == null) start = w.weekNumber;
+    if (w.written && start != null) {
+      runs.push({ start, end: w.weekNumber - 1 });
+      start = null;
+    }
+  }
+  if (start != null) runs.push({ start, end: coverage.totalWeeks });
+  return runs;
+}
+
+/**
+ * "week 9", "weeks 9–10", "weeks 9–10 and 12–20".
+ *
+ * The old copy said "Weeks 9–20 are empty", which is false the moment a later week
+ * is written. Real plans have holes, not tails: the owner's went 1–8 written, 9–10
+ * empty, 11 written.
+ */
+export function formatWeekRuns(runs: { start: number; end: number }[]): string {
+  if (runs.length === 0) return '';
+  const label = (r: { start: number; end: number }) =>
+    r.start === r.end ? `${r.start}` : `${r.start}–${r.end}`;
+  const noun = runs.length === 1 && runs[0].start === runs[0].end ? 'week' : 'weeks';
+  const parts = runs.map(label);
+  const joined =
+    parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return `${noun} ${joined}`;
+}
+
+/**
+ * The week the written plan reaches — what the boundary marker means.
+ *
+ * NOT `writtenWeeks / totalWeeks`: that places the marker after the ninth *written*
+ * week, so a plan written 1–8 plus 11 drew its boundary at week 9, before content
+ * that exists.
+ */
+export function lastWrittenWeek(coverage: Coverage, plan: TrainingPlan): number | null {
+  if (!coverage.lastSessionDate) return null;
+  return weekNumberForDate(plan.start_date, plan.end_date, coverage.lastSessionDate);
+}
+
 // ── Per-day read: one title, one number, one status ──────────────────────
 
 export type RowStatus = 'done' | 'missed' | 'partial' | 'rest' | 'today' | 'planned' | 'gap';

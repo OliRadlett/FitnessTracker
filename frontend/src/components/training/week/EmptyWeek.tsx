@@ -4,8 +4,10 @@ import React, { useState } from 'react';
 import { Bike, CalendarRange, Dumbbell, Moon, Plus } from 'lucide-react';
 
 import type { AddableSport } from '@/lib/training/sessionGroups';
-import type { Coverage } from '@/lib/training/coverage';
+import { formatWeekRuns, unwrittenRuns, type Coverage } from '@/lib/training/coverage';
 import { fmtDayShort } from './WeekRows';
+
+const capitalise = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 const WEEKDAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -57,6 +59,8 @@ export function EmptyWeek({
   onViewPlan: () => void;
 }) {
   const [adding, setAdding] = useState<string | null>(null);
+  const runList = unwrittenRuns(coverage);
+  const staleDays = coverage.daysSinceLastSession;
 
   return (
     <>
@@ -66,15 +70,31 @@ export function EmptyWeek({
           {coverage.lastSessionDate && (
             <>
               {' '}
-              The plan&apos;s last session was{' '}
-              <span className="font-medium text-foreground">{fmtDayShort(coverage.lastSessionDate)}</span>
-              {coverage.daysSinceLastSession != null && <> — {coverage.daysSinceLastSession} days ago</>}.
+              {staleDays != null && staleDays > 0 ? (
+                <>
+                  The plan&apos;s last session was{' '}
+                  <span className="font-medium text-foreground">
+                    {fmtDayShort(coverage.lastSessionDate)}
+                  </span>{' '}
+                  — {staleDays} days ago.
+                </>
+              ) : (
+                // Written ahead of today: a hole in the middle of the plan, not a
+                // plan that has run dry. Saying "−2 days ago" was the bug.
+                <>
+                  The plan is written to{' '}
+                  <span className="font-medium text-foreground">
+                    {fmtDayShort(coverage.lastSessionDate)}
+                  </span>
+                  , so this week is a gap in it.
+                </>
+              )}
             </>
           )}{' '}
-          {coverage.uncoveredWeeks > 0 && (
+          {runList.length > 0 && (
             <>
-              {coverage.uncoveredWeeks} of {coverage.totalWeeks} weeks are empty, through{' '}
-              {fmtDayShort(coverage.weeks[coverage.weeks.length - 1].end)}.
+              {capitalise(formatWeekRuns(runList))} {runList.length === 1 ? 'has' : 'have'} no
+              sessions.
             </>
           )}
           {unplannedCount > 0 && (

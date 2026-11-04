@@ -1,9 +1,13 @@
-﻿# Review — 2026-10-15
+# Review — 2026-10-15
 
 Read-only audit of FitTrack at commit **`5f54f40`** (detached HEAD, clean tree).
 One document per domain. Every finding carries a `path:line` evidence anchor, and each was
 checked against the **code**, not against plan checkboxes — the plans proved stale in both
 directions, so several documents below were corrected during consolidation (noted inline).
+
+> **Superseded for current status.** This is a point-in-time audit of `5f54f40`; several of
+> its findings were fixed afterwards. Use [`docs/review-2026-11-04/AUDIT.md`](../review-2026-11-04/AUDIT.md)
+> for the current register and fix record.
 
 > **Snapshot note.** These documents describe `5f54f40`. Before execution `origin/main` had
 > advanced to `4401812` (8 commits, migration head now `101`), so any claim naming a migration

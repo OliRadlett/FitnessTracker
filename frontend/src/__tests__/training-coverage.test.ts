@@ -8,10 +8,13 @@ import type {
   TrainingWeekDay,
 } from '@/lib/api';
 import {
+  formatWeekRuns,
+  lastWrittenWeek,
   planCoverage,
   planStopsBefore,
   planVerdict,
   readDay,
+  unwrittenRuns,
   weekDates,
 } from '@/lib/training/coverage';
 
@@ -147,6 +150,63 @@ describe('weekDates', () => {
       '2026-11-07',
       '2026-11-08',
     ]);
+  });
+});
+
+describe('unwrittenRuns / formatWeekRuns', () => {
+  /** The owner's live plan once sessions were added: 1–8 written, 9–10 empty, 11 written. */
+  const withHole = () => {
+    const plan = realShapedPlan();
+    return {
+      ...plan,
+      days: [
+        ...plan.days,
+        { ...plan.days[0], day_date: '2026-11-03', id: 'd-11-1' },
+        { ...plan.days[0], day_date: '2026-11-06', id: 'd-11-2' },
+      ],
+    } as TrainingPlan;
+  };
+
+  it('names a hole, not a tail', () => {
+    // The old copy said "Weeks 9–20 are empty", false from week 11 onward.
+    const cov = planCoverage(withHole(), TODAY);
+    const runs = unwrittenRuns(cov);
+    expect(runs[0]).toEqual({ start: 9, end: 10 });
+    expect(formatWeekRuns(runs)).toBe('weeks 9–10 and 12–20');
+  });
+
+  it('collapses a contiguous tail into one run', () => {
+    const cov = planCoverage(realShapedPlan(), TODAY);
+    expect(formatWeekRuns(unwrittenRuns(cov))).toBe('weeks 9–20');
+  });
+
+  it('uses the singular for a single empty week', () => {
+    expect(formatWeekRuns([{ start: 3, end: 3 }])).toBe('week 3');
+  });
+
+  it('joins two runs with "and"', () => {
+    expect(
+      formatWeekRuns([
+        { start: 9, end: 10 },
+        { start: 12, end: 20 },
+      ]),
+    ).toBe('weeks 9–10 and 12–20');
+  });
+});
+
+describe('lastWrittenWeek', () => {
+  it('is the week the content reaches, not the count of written weeks', () => {
+    const plan = realShapedPlan();
+    const withHole = {
+      ...plan,
+      days: [...plan.days, { ...plan.days[0], day_date: '2026-11-06', id: 'd-11' }],
+    } as TrainingPlan;
+    const cov = planCoverage(withHole, TODAY);
+
+    // 9 weeks written, but the content reaches week 11 — a count-based boundary
+    // sits at week 9, before a week that has sessions.
+    expect(cov.writtenWeeks).toBe(9);
+    expect(lastWrittenWeek(cov, withHole)).toBe(11);
   });
 });
 

@@ -119,15 +119,14 @@ def test_decimates_large_rides() -> None:
     assert len(payload["ride"]["streams"]["t"]) <= 5000
 
 
-def test_arthur_route_gets_pose_labels() -> None:
+def test_route_name_does_not_change_pose_labels() -> None:
+    """The viewer's presets are location-neutral; a route name must not leak
+    fixture-specific labels into production rides."""
     streams, polyline = _base_streams()
     activity = _activity(streams, polyline)
     route = SimpleNamespace(id=uuid.uuid4(), name="Arthur's Seat Loop")
     activity.route = route
     activity.route_id = route.id
     payload = build_replay(activity)
-    assert payload["ride"]["pose_labels"] == {
-        "lausanne": "Start",
-        "montreux": "Mid",
-    }
+    assert payload["ride"]["pose_labels"] is None
     assert payload["route"]["name"] == "Arthur's Seat Loop"
