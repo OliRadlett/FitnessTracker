@@ -1145,11 +1145,7 @@ async def _recalculate_pr_after_set_change(
     # derived from logged sets, so it must not delete or overwrite a manual
     # record with a lower set-derived e1RM — that is how the 150 kg squat and
     # 125 kg bench entries vanished when a set on those exercises changed.
-    is_manual = (
-        existing_pr is not None
-        and getattr(existing_pr, "session_id", None) is None
-        and getattr(existing_pr, "activity_id", None) is None
-    )
+    is_manual = existing_pr is not None and _is_manual_pr(existing_pr)
 
     # Find the best remaining set across all sessions for this exercise.
     # Only low-rep working sets contend for 1RM records (see
@@ -1613,6 +1609,14 @@ async def create_manual_pr(
         return pr
 
 
+def _is_manual_pr(pr: PersonalRecord) -> bool:
+    """A PR with no session/activity was entered by hand, not derived from a set."""
+    return (
+        getattr(pr, "session_id", None) is None
+        and getattr(pr, "activity_id", None) is None
+    )
+
+
 async def cleanup_orphaned_prs(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -1638,6 +1642,14 @@ async def cleanup_orphaned_prs(
             continue
         exercises_seen.add(pr.exercise_name)
 
+        group = [p for p in prs if p.exercise_name == pr.exercise_name]
+        derived = [p for p in group if not _is_manual_pr(p)]
+
+        # Manual PRs are not orphans: they have no set to lose. Leave them
+        # alone even when the exercise has no sets at all.
+        if not derived:
+            continue
+
         # Find the best remaining set for this exercise. Same contention
         # rules as live PR checks: working sets in the 1RM-valid rep range
         # (the reps < 37 guard also protects the inline Brzycki expression).
@@ -1658,23 +1670,20 @@ async def cleanup_orphaned_prs(
         best_set = best_set_result.scalar_one_or_none()
 
         if best_set is None:
-            # No sets remain — delete all PRs for this exercise
-            for p in prs:
-                if p.exercise_name == pr.exercise_name:
-                    await db.delete(p)
+            # No sets remain — delete only the set-derived PRs.
+            for p in derived:
+                await db.delete(p)
             cleaned.append(f"{pr.exercise_name} (deleted — no sets remain)")
         else:
             best_1rm = brzycki_1rm(best_set.weight_kg, best_set.reps)
             best_session = await db.get(LiftingSession, best_set.session_id)
-            # Update all PRs for this exercise to the best remaining set
-            for p in prs:
-                if p.exercise_name == pr.exercise_name:
-                    p.weight_kg = best_set.weight_kg
-                    p.reps = best_set.reps
-                    p.estimated_1rm = best_1rm
-                    p.session_id = best_set.session_id
-                    if best_session:
-                        p.achieved_date = best_session.session_date
+            for p in derived:
+                p.weight_kg = best_set.weight_kg
+                p.reps = best_set.reps
+                p.estimated_1rm = best_1rm
+                p.session_id = best_set.session_id
+                if best_session:
+                    p.achieved_date = best_session.session_date
             cleaned.append(f"{pr.exercise_name} (updated to best remaining set)")
 
     await db.flush()
