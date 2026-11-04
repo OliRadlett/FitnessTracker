@@ -94,7 +94,10 @@ test.describe('Training Page — deep links', () => {
     // week payload arrived, so a slow load left the card closed for good.
     await page.goto('/fittrack/training?plan=plan-1&day=2026-08-05');
     await page.waitForLoadState('networkidle');
-    await expect(page.locator('#plan-day-2026-08-05')).toBeVisible();
+    const day = page.locator('#plan-day-2026-08-05');
+    await expect(day).toBeVisible();
+    await page.waitForTimeout(700); // smooth scroll
+    await expect(day).toBeInViewport();
     await expect(page.getByRole('checkbox', { name: 'Completed', exact: true })).toBeVisible();
   });
 

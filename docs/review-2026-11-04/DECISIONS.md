@@ -67,7 +67,7 @@ Every finding's `checks` re-read the code/config that proves it. When a bug is f
 
 **Deferred / accepted**
 
-- **AUD-16 — accepted residual risk.** Next.js 14.2.35 still sits in the advisory range; only Next 16.4.5 clears it, and Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image`, so the image-optimizer and middleware-bypass advisories are not reachable; the App Router DoS/cache classes remain. Revisit as a dedicated React 19 + Next 16 project.
+- **AUD-16 — accepted residual risk.** The deployed pin is Next.js 14.2.15; a patch-only 14.2.35 upgrade is available but npm audit still flags the Next range, and only Next 16.4.5 clears it. Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image` import (the `/_next/image` endpoint exists but has an empty remote allowlist), so the middleware-bypass and image-optimizer advisories are not reachable; the App Router DoS/cache classes remain. Revisit as a dedicated React 19 + Next 16 project.
 - Dead-code deletion (project decision is report-only).
 - Full visual contact sheet and prod read-only DB check.
 - Sports-science literature re-fetch; the prior review's citations are used as the reference set, and the science findings that remain are in the secondary register only.

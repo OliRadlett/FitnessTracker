@@ -35,21 +35,33 @@ Status: **closed**. PRs #352, #358 and #361 are merged to `main`; CI was green o
 | AUD-22 | Volume chart scales to its own maximum. | `VolumeTrendChart.tsx` |
 | AUD-23 | Webhook auth failures stay pending/deferred and continue the queue. | `webhook_queue.py`; `test_webhook_queue.py` |
 
-## Re-audit finding (new after the first close)
+## Re-audit findings (new after the first close, all fixed)
 
-- **AUD-24** — the Modal circuit breaker's half-open state let every caller through and `record(False)` did not re-arm the cooldown (it used `setdefault`). Now exactly one trial is claimed per window, a failed trial resets `opened_at`, and success clears the claim. `test_resilience.py` is deterministic (injected clock) and covers one-trial, re-arm, and reset.
+| ID | Finding | Fix |
+|---|---|---|
+| AUD-24 | Modal breaker's half-open let every caller through and a failed trial did not re-arm. | One claimed trial per window; failed trial resets `opened_at`; injected clock + deterministic tests. |
+| AUD-25 | `extend_plan` could not fill a hole (cursor started after the last written day). | Start at the first written day; test weeks 1–2 + 4 written, week 3 filled. |
+| AUD-26 | `extend_plan` accepted an unbounded `until`, staging millions of rows. | Reject `until` > plan start + 730 days; test. |
+| AUD-27 | Lifting page cached `{items,total}` under the shared `['lifting-sessions']` key. | Paginated query moved to `['lifting-sessions','page',200]`. |
+| AUD-28 | `planVerdict` claimed a healthy load with no live engine data. | Explicit `pending` verdict + guarded `shortDate`; test. |
+| AUD-29 | A failed week request rendered as an empty week. | `ErrorState` + Retry branch; test via E2E. |
+| AUD-30 | `?day=` deep link did not scroll when the payload arrived late. | Effect depends on `days.length`; E2E asserts `toBeInViewport`. |
+| AUD-31 | A post-taper TSS edit was overwritten on unlink; `{event_id:null,end_date:X}` lost X. | Editing `planned_tss` clears the stale baseline; explicit `end_date` wins on unlink; tests. |
+| AUD-32 | A revoked user with 50+ pending webhook events starved other users. | Selection excludes `needs_reauth` connections; test with 51 dead + 1 live event. |
+| AUD-33 | The deploy health loop could finish and still exit 0 with production down. | Non-200 now dumps backend logs and exits 1; backend healthcheck added. |
+| AUD-34 | The AUD-16 acceptance record named 14.2.35 while 14.2.15 is deployed. | Record corrected to the deployed pin and the patch-only option. |
 
 ## Accepted with a decision
 
 | ID | Decision |
 |---|---|
-| AUD-16 | **Accepted residual risk, not fixed.** `next@14.2.35` still carries the advisory range; only Next 16.4.5 clears it, and Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image`, so the image-optimizer and middleware-bypass advisories are not reachable; the App Router DoS/cache classes remain. Revisit with a dedicated React 19 + Next 16 migration. |
+| AUD-16 | **Accepted residual risk, not fixed.** The deployed pin is `next@14.2.15`; a patch-only 14.2.35 upgrade is available but npm audit still flags the Next range, and only Next 16.4.5 clears it. Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image` import (the `/_next/image` endpoint exists but has an empty remote allowlist), so the middleware-bypass and image-optimizer advisories are not reachable; the App Router DoS/cache classes remain. Revisit with a dedicated React 19 + Next 16 migration. |
 | AUD-21 | **Accepted full-replace contract.** `PATCH /training-plans/{id}` with `days` replaces the day set; the targeted `/days` endpoints are the non-destructive editor path. The misleading test name was corrected and the omitted-date deletion is asserted. |
 
 ## Verification
 
 - Backend unit: **1790 passed**, 799 deselected.
-- Frontend unit: **741 passed** across 76 files.
+- Frontend unit: **762 passed** across 77 files.
 - Affected integration: **30 passed** (account, taper, lifting API); webhook queue **6 passed**; health **2 passed**.
 - Migration 104: upgrade -> downgrade 103 -> upgrade head, clean.
 - `ruff check backend/` clean, including F821.
