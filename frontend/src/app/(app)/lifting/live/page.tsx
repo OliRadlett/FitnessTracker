@@ -430,6 +430,35 @@ export default function LiveLiftPage() {
         Track your session as it happens. Sets sync automatically — no signal needed.
       </p>
 
+      {remoteActive && (
+        <div className="mb-5 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+          <p className="font-semibold">Unfinished session found</p>
+          <p className="mt-1 text-xs">
+            {remoteActive.sets.length > 0
+              ? `A session from ${remoteActive.session_date} with ${remoteActive.sets.length} set${remoteActive.sets.length === 1 ? '' : 's'} was never finished. Pick it back up or close it.`
+              : `A session from ${remoteActive.session_date} was started but never finished. Resume it or close it.`}
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              onClick={() => live.resumeSession(remoteActive)}
+              className="min-h-[44px] rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-background"
+            >
+              Resume session
+            </button>
+            <button
+              onClick={handleCleanupRemoteActive}
+              disabled={remoteCleanupState === 'cleaning'}
+              className="min-h-[44px] rounded-lg bg-warning/20 px-3 py-2 text-xs font-semibold text-warning disabled:opacity-50"
+            >
+              {remoteCleanupState === 'cleaning' ? 'Closing…' : 'Close it'}
+            </button>
+          </div>
+          {remoteCleanupState === 'error' && (
+            <p className="mt-1 text-xs text-warning">Couldn&apos;t close it — try again.</p>
+          )}
+        </div>
+      )}
+
       {/* Resume check happens server-side too; local state is authoritative */}
       <section className="space-y-5 mb-8">
         <div>
@@ -545,36 +574,7 @@ export default function LiveLiftPage() {
         )}
       </section>
 
-{remoteActive && (
-          <div className="mb-4 p-3 rounded-lg border text-sm bg-warning/10 border-warning/30 text-warning">
-            <p className="font-semibold">Unfinished session found</p>
-            <p className="text-xs mt-1">
-              {remoteActive.sets.length > 0
-                ? `A session from ${remoteActive.session_date} with ${remoteActive.sets.length} set${remoteActive.sets.length === 1 ? '' : 's'} was never finished. Pick it back up or close it.`
-                : `A session from ${remoteActive.session_date} was started but never finished. Resume it or close it.`}
-            </p>
-            <div className="mt-2 flex gap-2">
-              <button
-                onClick={() => live.resumeSession(remoteActive)}
-                className="px-4 py-2 rounded-lg bg-accent text-background font-semibold text-xs"
-              >
-                Resume session
-              </button>
-              <button
-                onClick={handleCleanupRemoteActive}
-                disabled={remoteCleanupState === 'cleaning'}
-                className="px-3 py-1.5 rounded-lg bg-warning/20 text-warning font-semibold text-xs disabled:opacity-50"
-              >
-                {remoteCleanupState === 'cleaning' ? 'Closing…' : 'Close it'}
-              </button>
-            </div>
-            {remoteCleanupState === 'error' && (
-              <p className="text-xs mt-1 text-warning">Couldn&apos;t close it — try again.</p>
-            )}
-          </div>
-        )}
-
-        <button
+      <button
           onClick={handleStart}
           className="w-full min-h-[64px] rounded-2xl bg-accent text-background text-xl font-bold active:scale-[0.98] transition-transform"
         >
