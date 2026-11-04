@@ -89,6 +89,18 @@ test.describe('Lifting Page', () => {
     await expect(page.getByText(/120|140|160/).first()).toBeVisible();
   });
 
+  test('tabs stay selected after choosing a session', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(600);
+
+    const sessionButton = page.locator('main button').filter({ hasText: /bench day/i }).first();
+    await sessionButton.click();
+    await page.getByRole('tab', { name: 'Overview' }).click();
+
+    await expect(page.getByRole('tab', { name: 'Overview' })).toHaveAttribute('aria-selected', 'true');
+  });
+
   // ── Add Exercise Form ───────────────────────────────────────────────────
 
   test('add exercise button is present in detail view', async ({ authenticatedPage: page }) => {

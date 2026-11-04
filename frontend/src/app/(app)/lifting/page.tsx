@@ -137,7 +137,7 @@ export default function LiftingPage() {
   usePageTitle('Lifting');
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
-  const { getParam, setParam } = useDeepLink();
+  const { setParam } = useDeepLink();
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [showNewSession, setShowNewSession] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -153,26 +153,30 @@ export default function LiftingPage() {
   // Tab URL state — syncs with `?tab=<name>` for deep-linking
   const [activeTab, setActiveTab] = useState<LiftingTab>('overview');
 
-  // Deep-link: read tab + session/PR from URL on mount
+  // Deep-link: read tab + session/PR from URL once on mount. Reading through
+  // `useDeepLink().getParam` re-ran this whenever `setParam` changed the URL,
+  // and the still-present `?session=` then forced the tab back to Sessions —
+  // a selected session made Overview/Analytics/PRs unreachable.
   useEffect(() => {
-    const tab = getParam('tab') as LiftingTab | 'templates' | null;
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') as LiftingTab | 'templates' | null;
     if (tab === 'templates') {
       setShowTemplates(true);
       setActiveTab('sessions');
     } else if (tab && TAB_VALUES.includes(tab)) {
       setActiveTab(tab);
     }
-    const sessionId = getParam('session');
+    const sessionId = params.get('session');
     if (sessionId) {
       setSelectedSessionId((prev) => (prev === sessionId ? prev : sessionId));
       if (tab !== 'sessions') setActiveTab('sessions');
     }
-    const prId = getParam('pr');
+    const prId = params.get('pr');
     if (prId) {
       setSelectedPRId(prId);
       setActiveTab('prs');
     }
-  }, [getParam]);
+  }, []);
 
   const handleTabChange = useCallback(
     (tab: LiftingTab) => {

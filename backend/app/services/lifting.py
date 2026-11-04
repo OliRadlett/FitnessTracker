@@ -160,10 +160,17 @@ def estimate_lifting_tss(
 
 
 def refresh_session_tss(
-    session: LiftingSession, bodyweight_kg: float | None = None
+    session: LiftingSession,
+    bodyweight_kg: float | None = None,
+    *,
+    sets: list[LiftingSet] | None = None,
 ) -> None:
-    """Recompute ``estimated_tss`` from the session's current sets (in-memory)."""
-    sets = list(session.sets or [])
+    """Recompute ``estimated_tss`` from the session's current sets (in-memory).
+
+    ``sets`` is for callers that have just written rows and whose relationship
+    collection may not include them yet; it avoids a stale estimate.
+    """
+    sets = list(sets if sets is not None else session.sets or [])
     # Delegated to the canonical helper so the two definitions cannot drift.
     volume = calculate_session_volume(
         [
@@ -178,6 +185,30 @@ def refresh_session_tss(
         session.rpe_session,
         volume_kg=volume,
         bodyweight_kg=bodyweight_kg,
+    )
+
+
+async def refresh_persisted_session_tss(
+    db: AsyncSession, session: LiftingSession, user_id: uuid.UUID
+) -> None:
+    """Recompute TSS from the rows actually in the database.
+
+    ``session.sets`` is eager-loaded when the session is read, but a newly added
+    set is not appended to that collection. Querying the rows is the only way to
+    include it before the response is built.
+    """
+    session_id = getattr(session, "id", None)
+    if session_id is None:
+        # Unit tests that stub the session as a namespace have no persisted id;
+        # there is nothing to query and no row to update.
+        return
+    result = await db.execute(
+        select(LiftingSet).where(LiftingSet.session_id == session_id)
+    )
+    refresh_session_tss(
+        session,
+        await latest_body_weight(db, user_id),
+        sets=list(result.scalars().all()),
     )
 
 
@@ -372,6 +403,9 @@ async def create_session(
         if not s.is_warmup:
             await _check_and_record_pr(db, user_id, s, session)
 
+    # The create path writes sets by session_id, so session.sets is still empty
+    # here. Query the rows before computing the load.
+    await refresh_persisted_session_tss(db, session, user_id)
     await db.flush()
 
     # Reload with sets
@@ -770,6 +804,9 @@ async def add_set(
     if not data.is_warmup:
         await _check_and_record_pr(db, user_id, data, session)
 
+    # The new set is not in the loaded relationship yet; read the rows back so
+    # this write updates the session's load immediately.
+    await refresh_persisted_session_tss(db, session, user_id)
     await db.flush()
     return lifting_set
 
@@ -865,6 +902,8 @@ async def update_set(
     # An edit does not change performance order, so order_index is untouched.
     # LiftingSetUpdate carries no order_index field, so the allowlist loop above
     # cannot have written it either.
+    if session:
+        await refresh_persisted_session_tss(db, session, user_id)
     await db.flush()
     return lifting_set
 
@@ -902,6 +941,8 @@ async def delete_set(db: AsyncSession, set_id: uuid.UUID, user_id: uuid.UUID) ->
     # statement about the data.
     await _renumber_exercise_sets(db, lifting_set.session_id, exercise_name)
 
+    if session:
+        await refresh_persisted_session_tss(db, session, user_id)
     await db.flush()
     return True
 

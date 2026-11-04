@@ -826,6 +826,52 @@ def _validate_days(days: list[TrainingPlanDayCreate]) -> None:
         sports.add(day_data.sport)
 
 
+async def _validate_day_references(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    planned_route_id: uuid.UUID | None = None,
+    lifting_session_id: uuid.UUID | None = None,
+    warmup_template_id: uuid.UUID | None = None,
+) -> None:
+    """Reject references to rows the caller does not own.
+
+    The create/upsert paths write these ids straight from the request body; the
+    week reader then embeds the referenced row's metadata. Ownership has to be
+    checked at the write boundary, not inferred from an unguessable UUID.
+    """
+    if planned_route_id is not None:
+        from app.models.route import Route
+
+        result = await db.execute(
+            select(Route.id).where(
+                Route.id == planned_route_id, Route.user_id == user_id
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Route not found or not owned by you")
+
+    if lifting_session_id is not None:
+        result = await db.execute(
+            select(LiftingSession.id).where(
+                LiftingSession.id == lifting_session_id,
+                LiftingSession.user_id == user_id,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Lifting session not found or not owned by you")
+
+    if warmup_template_id is not None:
+        result = await db.execute(
+            select(WarmupTemplate.id).where(
+                WarmupTemplate.id == warmup_template_id,
+                WarmupTemplate.user_id == user_id,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise ValueError("Warmup template not found or not owned by you")
+
+
 async def _get_plan_or_none(
     db: AsyncSession, user_id: uuid.UUID, plan_id: uuid.UUID
 ) -> TrainingPlan | None:
@@ -880,6 +926,14 @@ async def save_plan_days(
         raise ValueError("Training plan not found")
 
     _validate_days(days)
+    for day_data in days:
+        await _validate_day_references(
+            db,
+            user_id,
+            planned_route_id=day_data.planned_route_id,
+            lifting_session_id=day_data.lifting_session_id,
+            warmup_template_id=day_data.warmup_template_id,
+        )
 
     existing_by_key = {(day.day_date, day.sport): day for day in plan.days}
     incoming_keys: set[tuple[date, str]] = set()
@@ -2243,6 +2297,17 @@ async def update_plan_day(
         if not result.scalar_one_or_none():
             raise ValueError("Lifting session not found or not owned by you")
 
+    warmup_template_id = updates.get("warmup_template_id")
+    if warmup_template_id is not None:
+        result = await db.execute(
+            select(WarmupTemplate).where(
+                WarmupTemplate.id == warmup_template_id,
+                WarmupTemplate.user_id == user_id,
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise ValueError("Warmup template not found or not owned by you")
+
     # Recompute planned_volume_kg from planned_exercises so the two stay
     # in sync (exercises with weight_kg=None yield None volume).
     if updates.get("planned_exercises") is not None:
@@ -2862,6 +2927,13 @@ async def add_plan_day(
         raise ValueError("Training plan not found")
 
     _validate_days([data])
+    await _validate_day_references(
+        db,
+        user_id,
+        planned_route_id=data.planned_route_id,
+        lifting_session_id=data.lifting_session_id,
+        warmup_template_id=data.warmup_template_id,
+    )
 
     if data.day_date < plan.start_date or data.day_date > plan.end_date:
         raise ValueError("Day date is outside the plan range")
