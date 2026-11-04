@@ -80,7 +80,11 @@ export default function Relive3DPage() {
             ? query.error.message
             : 'The replay endpoint returned no data.'}
         </p>
-        <Link href={`/activities/${activityId}`}>Back to the activity</Link>
+        {/* There is no /activities/<id> route — the detail is a query param on
+            the list — so both back links use ?activity=. */}
+        <Link href={`/activities?activity=${activityId}`}>
+          Back to the activity
+        </Link>
       </main>
     );
   }
@@ -106,7 +110,7 @@ export default function Relive3DPage() {
     <main className={styles.stage}>
       <Relive3D
         ride={ride}
-        backHref={`/activities/${activityId}`}
+        backHref={`/activities?activity=${activityId}`}
         eyebrowLabel={`RELIVE · ${sport.toUpperCase()}`}
         mapBudget={{
           allowed: response.map_allowed,
