@@ -425,11 +425,18 @@ export function Relive3D({
         <div className={styles.presetBar}>
           {ghosts && ghosts.length > 0 && (
             <>
-              <span className={styles.ghostLabel}>Ghost</span>
-              <span className={styles.ghostGroup}>
+              <span className={styles.ghostLabel} aria-hidden="true">
+                Ghost
+              </span>
+              <span
+                className={styles.ghostGroup}
+                role="group"
+                aria-label="Ghost rider"
+              >
                 <button
                   type="button"
                   className={`${styles.preset} ${!ghostId ? styles.active : ''}`}
+                  aria-pressed={!ghostId}
                   onClick={() => onGhostChange?.(null)}
                 >
                   Off
@@ -439,6 +446,12 @@ export function Relive3D({
                     key={option.id}
                     type="button"
                     className={`${styles.preset} ${ghostId === option.id ? styles.active : ''}`}
+                    aria-pressed={ghostId === option.id}
+                    aria-label={
+                      option.pb
+                        ? `Race the route best, ${option.label}`
+                        : `Race ${option.label}`
+                    }
                     onClick={() => onGhostChange?.(option.id)}
                     title={option.pb ? 'Fastest ride on this route' : undefined}
                   >
@@ -450,7 +463,7 @@ export function Relive3D({
                   <span className={styles.ghostNote}>loading…</span>
                 )}
               </span>
-              <span className={styles.sep} />
+              <span className={styles.sep} aria-hidden="true" />
             </>
           )}
           {POSES.map((p) => (
@@ -458,6 +471,7 @@ export function Relive3D({
               key={p.id}
               type="button"
               className={`${styles.preset} ${pose === p.id ? styles.active : ''}`}
+              aria-pressed={pose === p.id}
               onClick={() => selectPose(p.id)}
             >
               {ride.poseLabels?.[p.id] ?? p.label}
