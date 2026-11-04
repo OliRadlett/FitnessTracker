@@ -368,3 +368,51 @@ class TestRestDayUnaffected:
         row = _engines(verdict, "rest_day_suggestion")[0]
         assert row["available"] is False
         assert row["reason"]
+
+
+class TestHeadlineMatchesReality:
+    """The headline is the page's largest sentence. It may not invent a plan.
+
+    The dashboard shipped with `"Go ahead with today's plan."` on a page whose
+    own plan card reads "No active training plan" and whose `projection` engine
+    reports `reason: "no active plan"`. The verdict had no plan input at all, so
+    the sentence was unverifiable by construction. These tests pin the input.
+    """
+
+    async def test_no_plan_means_no_plan_is_mentioned(self, db_session, test_user):
+        verdict = await _verdict(db_session, test_user.id)
+        headline = verdict["headline"]
+        assert "today's plan" not in headline.lower(), (
+            f"headline claims a plan while plan_id is None: {headline!r}"
+        )
+        assert "go ahead" not in headline.lower(), (
+            f"headline claims a plan while plan_id is None: {headline!r}"
+        )
+
+    async def test_an_active_plan_still_gets_the_plan_sentence(
+        self, db_session, test_user
+    ):
+        verdict = await _verdict(db_session, test_user.id, plan_id=uuid.uuid4())
+        assert "today's plan" in verdict["headline"].lower()
+
+    async def test_a_rest_signal_outranks_both(self, db_session, test_user):
+        """With a plan *and* a rest signal, the rest sentence wins.
+
+        The plan branch is only for "no rest signal"; it must never mask a rest
+        vote.
+        """
+        rest = _rest_suggestion(should_rest=True, recovery=25.0)
+        verdict = await _verdict(db_session, test_user.id, rest=rest, plan_id=uuid.uuid4())
+        assert "today's plan" not in verdict["headline"].lower()
+
+    async def test_plan_presence_actually_changes_the_string(self, db_session, test_user):
+        """The guard: if the branch is removed, these two become equal.
+
+        A test that only asserts "some headline exists" passes with the bug
+        present — which is how the bug survived. This one fails on a no-op.
+        """
+        without = (await _verdict(db_session, test_user.id))["headline"]
+        with_plan = (
+            await _verdict(db_session, test_user.id, plan_id=uuid.uuid4())
+        )["headline"]
+        assert without != with_plan
