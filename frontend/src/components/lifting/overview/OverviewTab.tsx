@@ -79,6 +79,8 @@ function TodayCard({
   const working = logged?.sets?.filter((s) => !s.is_warmup).length ?? 0;
   const heroSession = logged ?? latest;
   const isToday = !!logged;
+  const week = weekBounds(today);
+  const thisWeek = sessionsInRange(sessions, week.start, week.end);
 
   return (
     <Card className="p-5">
@@ -94,6 +96,10 @@ function TodayCard({
             {logged?.duration_seconds ? <Badge>{Math.round(logged.duration_seconds / 60)} min</Badge> : null}
             {logged?.whoop_strain != null ? <Badge tone="accent">Strain {logged.whoop_strain.toFixed(1)}</Badge> : null}
           </div>
+          <p className="mt-2 text-[12px] text-muted sm:hidden">
+            This week <span className="font-medium text-foreground">{shortWeight(sumVolume(thisWeek))}</span> · {thisWeek.length}{' '}
+            {thisWeek.length === 1 ? 'session' : 'sessions'}
+          </p>
           <p className="mt-2 text-[12px] text-muted">
             {logged
               ? `Logged today · ${shortWeight(logged.total_volume_kg)} · ${logged.sets.length} sets`
@@ -333,7 +339,7 @@ function TrendCard({ chart, onAnalytics }: { chart?: ChartData; onAnalytics: () 
         <div>
           <h3 className="text-[15px] font-semibold">Volume trend</h3>
           <p className="mt-0.5 text-[12px] text-muted">
-            {shortWeight(last)} last week{avg ? ` · ${last >= avg ? '+' : ''}${Math.round(((last - avg) / avg) * 100)}% vs the 4-week average` : ''}
+            {shortWeight(last)} latest week{avg ? ` · ${last >= avg ? '+' : ''}${Math.round(((last - avg) / avg) * 100)}% vs the 4-week average` : ''}
           </p>
         </div>
         <button type="button" onClick={onAnalytics} className="inline-flex h-11 items-center gap-1 px-1 text-[12px] font-medium text-muted hover:text-foreground">
