@@ -65,9 +65,9 @@ Every finding's `checks` re-read the code/config that proves it. When a bug is f
 - No unsafe HTML in the relive/lifting surface.
 - `refetchOnWindowFocus` is globally `false`, so the map is not re-initialised on window focus; the replay query only refetches on mount or explicit invalidation.
 
-**Deferred**
+**Deferred / accepted**
 
-- Next.js major upgrade (breaking; needs its own plan).
+- **AUD-16 — accepted residual risk.** Next.js 14.2.35 still sits in the advisory range; only Next 16.4.5 clears it, and Next 16 needs React 19 plus a broad migration. The app has no `middleware.ts` and no `next/image`, so the image-optimizer and middleware-bypass advisories are not reachable; the App Router DoS/cache classes remain. Revisit as a dedicated React 19 + Next 16 project.
 - Dead-code deletion (project decision is report-only).
 - Full visual contact sheet and prod read-only DB check.
 - Sports-science literature re-fetch; the prior review's citations are used as the reference set, and the science findings that remain are in the secondary register only.
@@ -80,4 +80,8 @@ Every finding's `checks` re-read the code/config that proves it. When a bug is f
 
 ## D10. Git and session hygiene
 
-No git operations were performed against the shared index. The export was created with `git archive` into a separate directory; the verifier only reads. The report files are new and untracked; they belong to this session and can be committed by it later. Another session's modified files were not touched.
+No git operations were performed against the shared index. The export was created with `git archive` into a separate directory; the verifier only reads. Another session's modified files were not touched. The fix work was done in a separate worktree and merged through PRs #352, #358 and #361.
+
+## D11. AUD-16 accepted
+
+This is the only un-fixed finding, and it is accepted rather than open. A `next@14.2.35` patch still reports the advisory range; `npm audit` names Next 16.4.5 as the only fix. That upgrade changes React (19), routing, and cache semantics and is too broad to fold into a stabilisation release. The reachable surface is reduced by the absence of `middleware.ts` and `next/image`, but the App Router DoS/cache classes are not eliminated. The decision is reviewed at the next dependency pass; it is not a claim that the advisory is harmless.

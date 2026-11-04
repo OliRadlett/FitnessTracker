@@ -35,6 +35,15 @@ class TrainingPlan(Base):
         ForeignKey("events.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # The event whose taper is currently applied, and the pre-taper end date, so
+    # unlink can restore the plan instead of leaving a permanent truncated,
+    # tapered skeleton. ``event_id`` alone cannot carry this: unlink sets it null.
+    taper_event_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("events.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    pre_taper_end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # S1 progression rules — per-exercise ramp (mode, start, weekly deltas,
     # deload, training max). Nullable and additive: a plan without rules
     # behaves exactly as before (suggestions are stateless e1RM × %1RM).
@@ -50,7 +59,9 @@ class TrainingPlan(Base):
 
     # Relationships
     user: Mapped["User"] = relationship(back_populates="training_plans")  # type: ignore[name-defined]
-    event: Mapped["Event | None"] = relationship()  # type: ignore[name-defined]
+    event: Mapped["Event | None"] = relationship(  # type: ignore[name-defined]
+        foreign_keys=[event_id]
+    )
     days: Mapped[list["TrainingPlanDay"]] = relationship(
         back_populates="plan",
         cascade="all, delete-orphan",
@@ -80,6 +91,9 @@ class TrainingPlanDay(Base):
         String(20), nullable=False, default="cycle", server_default="cycle"
     )  # cycle, strength, rest
     planned_tss: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Snapshot taken before the first taper write; restoring it on unlink is
+    # what stops link -> unlink -> link compounding 0.4 into 0.16.
+    pre_taper_tss: Mapped[float | None] = mapped_column(Float, nullable=True)
     planned_duration_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     planned_type: Mapped[str] = mapped_column(
         String(20), nullable=False, default="rest"

@@ -998,17 +998,32 @@ async def save_plan_days(
 # ── Event linkage + auto-taper ───────────────────────────────────────────
 
 
+def _restore_taper(plan: TrainingPlan) -> None:
+    """Undo the stored taper: restore end date and every day's TSS baseline."""
+    for day in plan.days:
+        if day.pre_taper_tss is not None:
+            day.planned_tss = day.pre_taper_tss
+            day.pre_taper_tss = None
+    if plan.pre_taper_end_date is not None:
+        plan.end_date = plan.pre_taper_end_date
+    plan.pre_taper_end_date = None
+    plan.taper_event_id = None
+
+
 async def link_event_and_apply_taper(
     db: AsyncSession,
     user_id: uuid.UUID,
     plan: TrainingPlan,
     event_id: uuid.UUID,
 ) -> TrainingPlan:
-    """Link a plan to an event and taper the final days.
+    """Link a plan to an event and taper the final days, once.
 
     - Clamps ``plan.end_date`` to the event date if the plan extends past it.
     - Applies a linear 100% → 40% TSS ramp across the final
-      ``min(event.taper_days, plan length)`` days.
+      ``min(event.taper_days, plan length)`` days, one factor per calendar day
+      (a ride and a lift on the same date share it).
+    - Stores the pre-taper TSS/end date so unlink restores the plan and a later
+      re-link starts from the baseline rather than the tapered values.
     """
     result = await db.execute(
         select(Event).where(Event.id == event_id, Event.user_id == user_id)
@@ -1017,22 +1032,40 @@ async def link_event_and_apply_taper(
     if not event:
         raise ValueError("Event not found")
 
+    # Re-linking the same event is a no-op; a different event starts over.
+    if plan.taper_event_id == event.id:
+        return plan
+    if plan.taper_event_id is not None:
+        _restore_taper(plan)
+
     plan.event_id = event.id
+    plan.pre_taper_end_date = plan.end_date
+    plan.taper_event_id = event.id
     plan.end_date = min(plan.end_date, event.event_date)
 
     plan_length_days = (plan.end_date - plan.start_date).days + 1
     taper_window = min(event.taper_days, plan_length_days)
     if taper_window > 0:
         window_start = plan.end_date - timedelta(days=taper_window - 1)
-        taper_days = sorted(
-            (d for d in plan.days if window_start <= d.day_date <= plan.end_date),
-            key=lambda d: (d.day_date, d.sport),
-        )
-        count = len(taper_days)
-        for i, day in enumerate(taper_days):
-            factor = 1.0 if count <= 1 else 1.0 - 0.6 * (i / (count - 1))
-            if day.planned_tss is not None:
-                day.planned_tss = round(day.planned_tss * factor, 1)
+        taper_days = [
+            day
+            for day in plan.days
+            if window_start <= day.day_date <= plan.end_date
+        ]
+        dates = sorted({day.day_date for day in taper_days})
+        count = len(dates)
+        factor_by_date = {
+            day_date: (1.0 if count <= 1 else 1.0 - 0.6 * (i / (count - 1)))
+            for i, day_date in enumerate(dates)
+        }
+        for day in taper_days:
+            if day.planned_tss is None:
+                continue
+            if day.pre_taper_tss is None:
+                day.pre_taper_tss = day.planned_tss
+            day.planned_tss = round(
+                day.pre_taper_tss * factor_by_date[day.day_date], 1
+            )
 
     await db.flush()
     return plan
@@ -1135,13 +1168,15 @@ async def update_plan(
     if data.days is not None:
         # Taper last so it operates on the final saved set of days.
         plan = await save_plan_days(db, user_id, plan.id, data.days)
-        event_id = update_fields.get("event_id")
-        if event_id:
-            plan = await link_event_and_apply_taper(db, user_id, plan, event_id)
-    else:
-        event_id = update_fields.get("event_id")
-        if event_id:
-            plan = await link_event_and_apply_taper(db, user_id, plan, event_id)
+
+    event_id = update_fields.get("event_id")
+    if event_id:
+        plan = await link_event_and_apply_taper(db, user_id, plan, event_id)
+    elif "event_id" in update_fields and plan.taper_event_id is not None:
+        # Explicit null is an unlink: restore the plan before returning it.
+        _restore_taper(plan)
+        plan.event_id = None
+        await db.flush()
 
     return await _reload_plan(db, plan.id)
 
