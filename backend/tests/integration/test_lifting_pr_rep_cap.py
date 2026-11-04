@@ -151,6 +151,25 @@ class TestManualPrSurvivesRecalc:
         assert len(prs) == 1
         assert prs[0].id == manual.id
 
+    async def test_cleanup_does_not_delete_a_manual_pr(self, db_session, test_user):
+        manual = await lifting_service.create_manual_pr(
+            db_session,
+            test_user.id,
+            PersonalRecordCreate(
+                exercise_name="Back Squat",
+                record_type="1rm",
+                weight_kg=150.0,
+                reps=1,
+                achieved_date=date(2026, 10, 1),
+            ),
+        )
+        await lifting_service.cleanup_orphaned_prs(db_session, test_user.id)
+
+        prs = await lifting_service.get_prs(db_session, test_user.id, "Back Squat")
+        assert len(prs) == 1
+        assert prs[0].id == manual.id
+        assert (prs[0].weight_kg, prs[0].reps) == (150.0, 1)
+
 
 class TestManualPrRepGuard:
     async def test_manual_pr_rejects_high_reps(self, db_session, test_user):
