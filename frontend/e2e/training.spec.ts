@@ -59,12 +59,17 @@ test.describe('Training Page — the plan surface', () => {
     await page.waitForLoadState('networkidle');
     await page.getByRole('tab', { name: 'Plan' }).click();
 
-    await expect(page.getByText(/weeks have no sessions/i)).toBeVisible();
+    // The coverage read, in whichever of its two forms applies: a plan written
+    // end to end says so, and a plan that ran dry names the gap. Asserting only
+    // the gap made this test fail on a complete plan — the state is the point,
+    // not the alarm.
+    await expect(page.getByText(/the plan is written/i)).toBeVisible();
     await expect(page.getByText(/^Week by week$/i)).toBeVisible();
+    await expect(page.getByText(/^Coverage$/i)).toBeVisible();
 
     await page.goto('/fittrack/training?view=plan');
     await page.waitForLoadState('networkidle');
-    await expect(page.getByText(/weeks have no sessions/i)).toBeVisible();
+    await expect(page.getByText(/^Week by week$/i)).toBeVisible();
   });
 
   test('the block editor is still reachable', async ({ authenticatedPage: page }) => {
