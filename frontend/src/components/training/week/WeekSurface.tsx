@@ -167,8 +167,8 @@ export function WeekSurface({
     }
   };
 
-  const moveMissed = (date: string) => {
-    const day = days.find((d) => d.day_date.slice(0, 10) === date);
+  const moveMissed = (dayId: string, date: string) => {
+    const day = days.find((d) => d.id === dayId);
     if (!day) return;
     // Next date in this week that has no plan entry at all.
     const target = dates.find((d) => d > date && !days.some((x) => x.day_date.slice(0, 10) === d));

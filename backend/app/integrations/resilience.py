@@ -41,7 +41,10 @@ class ModalCircuitBreaker:
         self._clock = clock
         self._failures: dict[str, int] = {}
         self._opened_at: dict[str, float] = {}
-        self._half_open: set[str] = set()
+        # task -> time the trial was claimed. A claim that is never recorded
+        # (a caller that skips the remote call) expires instead of wedging the
+        # task forever.
+        self._half_open: dict[str, float] = {}
 
     def allow(self, task: str) -> bool:
         """Whether a Modal call for ``task`` may proceed.
@@ -52,17 +55,19 @@ class ModalCircuitBreaker:
         failures = self._failures.get(task, 0)
         if failures < self.failures_before_open:
             return True
-        if task in self._half_open:
+        now = self._clock()
+        claimed = self._half_open.get(task)
+        if claimed is not None and (now - claimed) < self.cooldown_seconds:
             return False
         opened = self._opened_at.get(task, 0.0)
-        if (self._clock() - opened) < self.cooldown_seconds:
+        if (now - opened) < self.cooldown_seconds:
             return False
-        self._half_open.add(task)
+        self._half_open[task] = now
         return True
 
     def record(self, task: str, ok: bool) -> None:
         """Record a Modal call outcome for ``task``."""
-        self._half_open.discard(task)
+        self._half_open.pop(task, None)
         if ok:
             self._failures[task] = 0
             self._opened_at.pop(task, None)

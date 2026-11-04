@@ -341,6 +341,13 @@ export function planVerdict(
     (snapAxes.find((a) => a.key === 'health') as { key: string; title: string; stance: string; severity: string; guidance?: string } | undefined);
 
   const loadAxis = liveAxes.find((a) => a.key === 'load');
+  const warningAxis =
+    liveAxes.find(
+      (a) => a.key !== 'health' && a.key !== 'load' && a.severity !== 'info',
+    ) ??
+    snapAxes.find(
+      (a) => a.key !== 'health' && a.key !== 'load' && a.severity !== 'info',
+    );
   const liveFatigue = live?.fatigue ?? null;
   const snapFatigue = snapshot?.adaptive?.fatigue ?? null;
 
@@ -370,6 +377,53 @@ export function planVerdict(
   }
 
   const guidance = loadAxis?.guidance ?? live?.summary ?? null;
+  const source = `live · ${shortDate(live?.generated_at ?? '')}`;
+
+  // A warning axis other than health/load is the engine asking for less work
+  // (recovery rest, conformity ease). Do not let the load fall-through turn
+  // that into a green "healthy band" verdict.
+  if (warningAxis) {
+    const needsRest =
+      warningAxis.stance === 'rest' || warningAxis.stance === 'recover';
+    const warningGuidance =
+      'guidance' in warningAxis && typeof warningAxis.guidance === 'string'
+        ? warningAxis.guidance
+        : '';
+    return {
+      headline: needsRest
+        ? `Back off — ${warningAxis.title.toLowerCase()} needs attention`
+        : `Ease this week — ${warningAxis.title.toLowerCase()}`,
+      reason:
+        warningGuidance ||
+        `${warningAxis.title} is flagged ${warningAxis.stance}.`,
+      source,
+      tone: 'caution',
+      action: null,
+      conflict,
+    };
+  }
+
+  if (loadAxis?.stance === 'recover') {
+    return {
+      headline: 'Back off this week',
+      reason: guidance ?? 'The load axis says to recover.',
+      source,
+      tone: 'caution',
+      action: null,
+      conflict,
+    };
+  }
+
+  if (loadAxis?.stance === 'build') {
+    return {
+      headline: 'Add a little load',
+      reason: guidance ?? 'The load axis has room to build.',
+      source,
+      tone: 'ok',
+      action: null,
+      conflict,
+    };
+  }
 
   // No live load axis and no fatigue from either engine: silence is not a clean
   // bill of health. The snapshot may even say "rest"; wait for the engine.
@@ -388,7 +442,7 @@ export function planVerdict(
   return {
     headline: 'Nothing to change — the load is in the healthy band',
     reason: guidance ?? 'No load signal this week.',
-    source: `load · ${shortDate(live?.generated_at ?? '')}`,
+    source,
     tone: liveFatigue && liveFatigue !== 'balanced' ? 'caution' : 'ok',
     action: null,
     conflict,

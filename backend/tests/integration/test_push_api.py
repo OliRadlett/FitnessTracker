@@ -21,7 +21,7 @@ async def test_vapid_key_unconfigured(client) -> None:
 async def test_subscribe_and_list(client) -> None:
     """Register a subscription, list it, then unsubscribe."""
     payload = {
-        "endpoint": f"https://push.example.com/{uuid.uuid4()}",
+        "endpoint": f"https://fcm.googleapis.com/wp/{uuid.uuid4()}",
         "p256dh": "fakep256key",
         "auth": "fakeauthkey",
     }
@@ -69,7 +69,7 @@ async def test_delete_nonexistent_endpoint(client) -> None:
 async def test_duplicate_register_is_idempotent(client) -> None:
     """Registering the same endpoint twice doesn't create two subs."""
     payload = {
-        "endpoint": f"https://push.example.com/{uuid.uuid4()}",
+        "endpoint": f"https://fcm.googleapis.com/wp/{uuid.uuid4()}",
         "p256dh": "k1",
         "auth": "a1",
     }

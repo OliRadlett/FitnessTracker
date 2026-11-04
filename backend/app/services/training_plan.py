@@ -952,10 +952,12 @@ async def save_plan_days(
             # Only apply fields the caller actually sent — untouched columns
             # (completed flags, linked activity/lifting sessions) survive.
             for field, value in day_data.model_dump(exclude_unset=True).items():
+                previous = getattr(row, field, None)
                 setattr(row, field, value)
-                if field == "planned_tss":
-                    # The author just wrote a new TSS. Do not let a later
-                    # unlink restore the pre-link snapshot over their edit.
+                if field == "planned_tss" and value != previous:
+                    # A real edit becomes the new authored baseline. A
+                    # full-array save echoing the current tapered value must
+                    # not wipe the snapshot.
                     row.pre_taper_tss = None
 
     for key, row in list(existing_by_key.items()):
@@ -2367,8 +2369,9 @@ async def update_plan_day(
             updates["planned_volume_kg"] = None
 
     for key, value in updates.items():
+        previous = getattr(day, key, None)
         setattr(day, key, value)
-        if key == "planned_tss":
+        if key == "planned_tss" and value != previous:
             # An explicit edit becomes the new authored baseline.
             day.pre_taper_tss = None
     await db.flush()

@@ -2,19 +2,28 @@
 
 from __future__ import annotations
 
-import ipaddress
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, field_validator
 
+# Browser push endpoints live on a small set of providers. An allowlist is
+# stricter than resolving the host: it also rejects numeric/hex loopback
+# spellings (127.1, 2130706433, 0x7f.0.0.1) and single-label Docker DNS names
+# without a DNS lookup at validation time.
+_ALLOWED_PUSH_HOSTS = (
+    "fcm.googleapis.com",
+    "push.services.mozilla.com",
+    "notify.windows.com",
+    "web.push.apple.com",
+)
+
 
 def _validate_endpoint(value: str) -> str:
-    """Reject non-HTTPS and local/private targets.
+    """Accept only HTTPS endpoints on a known browser push service.
 
     pywebpush POSTs to whatever endpoint a user registers. Without this guard
     an authenticated user can point it at loopback, link-local metadata, or the
-    Docker service network. DNS rebinding is still possible, but the obvious
-    SSRF is closed at registration.
+    Docker service network.
     """
     parsed = urlsplit(value)
     if parsed.scheme != "https" or not parsed.hostname:
@@ -25,24 +34,11 @@ def _validate_endpoint(value: str) -> str:
         raise ValueError("endpoint must use the default https port")
 
     host = parsed.hostname.lower()
-    if host in {"localhost", "localhost.localdomain"} or host.endswith(
-        (".localhost", ".local", ".internal", ".home.arpa")
+    if not any(
+        host == suffix or host.endswith("." + suffix)
+        for suffix in _ALLOWED_PUSH_HOSTS
     ):
-        raise ValueError("endpoint host is local")
-
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return value
-    if (
-        address.is_private
-        or address.is_loopback
-        or address.is_link_local
-        or address.is_reserved
-        or address.is_unspecified
-        or address.is_multicast
-    ):
-        raise ValueError("endpoint host is not public")
+        raise ValueError("endpoint host is not a known browser push service")
     return value
 
 

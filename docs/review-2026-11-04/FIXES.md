@@ -50,6 +50,14 @@ Status: **closed**. PRs #352, #358 and #361 are merged to `main`; CI was green o
 | AUD-32 | A revoked user with 50+ pending webhook events starved other users. | Selection excludes `needs_reauth` connections; test with 51 dead + 1 live event. |
 | AUD-33 | The deploy health loop could finish and still exit 0 with production down. | Non-200 now dumps backend logs and exits 1; backend healthcheck added. |
 | AUD-34 | The AUD-16 acceptance record named 14.2.35 while 14.2.15 is deployed. | Record corrected to the deployed pin and the patch-only option. |
+| AUD-35 | The deploy health probe sent SNI `localhost`, so it could never return 200 and would fail every release. | Probe the real domain with `--resolve host:443:127.0.0.1`. |
+| AUD-36 | Push validation accepted `127.1`/`2130706433`/`0x7f...` and Docker single-label names. | Strict provider allowlist (FCM/Mozilla/Windows/Apple); no host resolution at validation. |
+| AUD-37 | A lost half-open trial claim wedged a Modal task forever. | Claim is time-boxed; an unrecorded claim expires after one cooldown. |
+| AUD-38 | The pending verdict was followed by row 2's "nothing needs to change". | Row 2 is hidden while the verdict is pending. |
+| AUD-39 | A full-array save echoing current `planned_tss` wiped the taper baseline. | Clear only when the value actually changes; unchanged save keeps the snapshot. |
+| AUD-40 | Move on a two-session date acted on the alphabetically-first day. | Row passes its day id; handler looks up by id. |
+| AUD-41 | Two `setParam` calls in one handler lost the first (`w` then `view`). | `setParam` reads the live URL, so sequential writes compose. |
+| AUD-42 | `planVerdict` ignored recovery/conformity warning axes and load `recover`. | Warn axes and load recover/build drive the headline; healthy only for maintain + no warning. |
 
 ## Accepted with a decision
 
@@ -60,9 +68,9 @@ Status: **closed**. PRs #352, #358 and #361 are merged to `main`; CI was green o
 
 ## Verification
 
-- Backend unit: **1790 passed**, 799 deselected.
-- Frontend unit: **762 passed** across 77 files.
-- Affected integration: **30 passed** (account, taper, lifting API); webhook queue **6 passed**; health **2 passed**.
+- Backend unit: **1797 passed**, 803 deselected.
+- Frontend unit: **765 passed** across 78 files.
+- Affected integration: taper **5**, extend **6**, webhook **7**, lifting **22**, account **6**, push **4**; health **2**.
 - Migration 104: upgrade -> downgrade 103 -> upgrade head, clean.
 - `ruff check backend/` clean, including F821.
 - `tsc --noEmit` clean.
