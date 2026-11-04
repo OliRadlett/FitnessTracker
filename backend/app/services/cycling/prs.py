@@ -15,6 +15,7 @@ import logging
 import math
 import uuid
 from datetime import date
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,9 @@ from app.services.cycling.power_curve import (
     POWER_DURATION_BUCKETS,
     best_power_rolling_average,
 )
+
+if TYPE_CHECKING:
+    from app.schemas.cycling import CyclingPowerRecordCreate
 
 logger = logging.getLogger(__name__)
 

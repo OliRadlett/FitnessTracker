@@ -14,6 +14,7 @@ import logging
 import time
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import httpx
 from sqlalchemy import delete, select
@@ -26,6 +27,9 @@ from app.models.daily_metric import DailyMetric
 from app.models.sleep import SleepLog
 from app.models.user import OAuthConnection
 from app.services.sport_filter import is_allowed_sport
+
+if TYPE_CHECKING:
+    from app.models.weight import WeightLog
 
 logger = logging.getLogger(__name__)
 
