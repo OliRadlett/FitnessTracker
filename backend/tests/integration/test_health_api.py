@@ -207,6 +207,38 @@ class TestHealthAnalysis:
         assert "injury_risk" in types
         assert "illness_risk" in types
 
+    async def test_read_only_health_check_does_not_touch_alerts(
+        self, client, test_health_alert
+    ):
+        """GET /health-check computes signals without resolving/writing alerts."""
+        resp = await client.get("/api/v1/metrics/health-check")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "checked_at" in data
+        assert "analysis_results" in data
+        assert {r["type"] for r in data["analysis_results"]} >= {
+            "overtraining",
+            "injury_risk",
+            "illness_risk",
+        }
+
+        alerts = await client.get("/api/v1/metrics/health-alerts?status=all")
+        assert alerts.status_code == 200
+        row = next(a for a in alerts.json() if a["id"] == str(test_health_alert.id))
+        assert row["status"] == "active"
+
+    async def test_none_result_resolves_active_alert(self, client, test_health_alert):
+        """A clear check resolves the old active alert and counts no new alert."""
+        resp = await client.post("/api/v1/metrics/health-alerts/analyze")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["alerts_generated"] == 0
+
+        alerts = await client.get("/api/v1/metrics/health-alerts?status=all")
+        assert alerts.status_code == 200
+        row = next(a for a in alerts.json() if a["id"] == str(test_health_alert.id))
+        assert row["status"] == "resolved"
+
 
 # ── Health AI Analysis ───────────────────────────────────────────────────
 
