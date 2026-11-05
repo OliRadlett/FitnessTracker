@@ -13,6 +13,7 @@ import httpx
 from app.config import get_settings
 from app.integrations.resilience import ModalCircuitBreaker
 from app.services.geo_clusters import geo_cluster_segments
+from app.services.power_provenance import POWER_ESTIMATED, measured_power_clause
 from app.tasks.analytics import (
     backfill_activity_context,
     backfill_free_text_tags,
@@ -1177,7 +1178,7 @@ def analyze_weather_performance_weekly() -> dict:
     """
     import asyncio
 
-    from sqlalchemy import select
+    from sqlalchemy import func, select
 
     from app.database import task_session
     from app.models.activity import Activity
@@ -1235,13 +1236,40 @@ def analyze_weather_performance_weekly() -> dict:
                             f"Weather history backfill failed for user {uid}: {e}"
                         )
 
-                    # Collect cycling activities with weather data
+                    # Collect cycling activities with weather data.
+                    #
+                    # Estimated power is excluded from this sample (and only this
+                    # one): Strava infers those watts partly from heart rate, and
+                    # heart rate rises with heat, so including them puts HR on
+                    # both sides of the regression and can manufacture a
+                    # temperature–power coefficient. Rows with unknown provenance
+                    # stay — `measured_power_clause()` is NULL-safe on purpose.
+                    excluded_result = await db.execute(
+                        select(func.count(Activity.id)).where(
+                            Activity.user_id == uid,
+                            Activity.sport_type == "cycling",
+                            Activity.weather_temperature.isnot(None),
+                            Activity.average_power.isnot(None),
+                            Activity.power_provenance == POWER_ESTIMATED,
+                            Activity.duration_seconds >= 600,
+                        )
+                    )
+                    estimated_excluded = int(excluded_result.scalar() or 0)
+                    if estimated_excluded:
+                        logger.info(
+                            "analyze_weather_performance_weekly: user %s — "
+                            "excluding %d estimated-power ride(s) from the sample",
+                            uid,
+                            estimated_excluded,
+                        )
+
                     result = await db.execute(
                         select(Activity).where(
                             Activity.user_id == uid,
                             Activity.sport_type == "cycling",
                             Activity.weather_temperature.isnot(None),
                             Activity.average_power.isnot(None),
+                            measured_power_clause(),
                             Activity.duration_seconds >= 600,  # >10min
                         ).order_by(Activity.start_date.desc()).limit(200)
                     )

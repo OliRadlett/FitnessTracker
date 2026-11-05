@@ -388,14 +388,26 @@ shipped unused.
 
 The real exposure is the **summary** consumers, which read `average_power` /
 `normalized_power` directly: TSS (`tss.py`), the Modal weather regression
-(`scheduler.py` passes `avg_watts`), plan conformity, and fuel targets. None filters on
-provenance, deliberately — withholding an estimate's TSS would delete load from CTL/ATL for
-any rider without a meter, which is a product decision. So #1 delivers recording and
-labelling; each of those four is a separate, explicit opt-in.
+(`scheduler.py` passes `avg_watts`), plan conformity, and fuel targets.
 
-The weather regression is the sharpest of the four: an estimate is derived partly from heart
-rate, and heart rate rises with heat, so an unrestricted regression can manufacture a
-temperature–power coefficient. Worth doing next, and now possible.
+**Decision (2026-11-05): filter the weather sample, label the rest.** The weather
+correlation is the one place an estimate *fabricates* signal rather than adding noise — the
+estimate is derived partly from heart rate, heart rate rises with heat, so the fit sees HR on
+both axes and can produce a temperature–power coefficient that is really "it was hot, your HR
+was up, and your watts were made of HR". Its sample is now filtered by
+`measured_power_clause()` (NULL-safe, so pre-migration-107 rows stay in) and the task logs how
+many rides it dropped.
+
+TSS, conformity and fuel targets keep the number and carry the label. The deciding argument
+is history, not principle: TSS is stored per activity and feeds CTL/ATL, so a rule applied
+only to newly synced rides would leave one load series built from two models, and recomputing
+the old rows would rewrite training history to fix a second-order accuracy issue. hrTSS is
+also a coarse %HRR model — swapping a reasonable estimate for a coarser one is not obviously
+an improvement. `tss_source="power"` + `power_provenance="estimated"` reads as "power (est.)",
+which is honest without redefining anyone's past.
+
+So `measured_power_clause()` — written, deleted as unused, then rewritten when a caller
+appeared — now has exactly one consumer, and that is the right number.
 
 **#2 Whoop recovery — as built.** Shipped: `whoop_client.get_all_recovery()` over
 `/developer/v2/recovery`; `sync_whoop_cycles` prefetches the window once and joins by

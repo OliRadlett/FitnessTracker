@@ -40,32 +40,58 @@ Where the estimate actually reaches analysis (checked, not assumed)
 distribution and PR detection all read streams. The exposure is the *summary*
 columns, which four analyses consume directly:
 
+* ``tasks/scheduler.py`` weather correlation — **filtered** via
+  :func:`measured_power_clause`. It is the one case where an estimate fabricates
+  signal rather than merely adding noise: the estimate is derived partly from
+  heart rate, and heart rate rises with heat, so the fit sees HR on both axes and
+  can manufacture a temperature–power coefficient.
 * ``services/cycling/tss.py`` — ``np or average_power`` → power-derived TSS, so
   an estimate can carry CTL/ATL/TSB.
-* ``tasks/scheduler.py`` weather analysis — passes ``avg_watts`` into the Modal
-  regression. An estimate derived partly from heart rate makes HR the common
-  cause of both axes, which can manufacture a temperature–power coefficient.
 * ``services/conformity.py`` — plan conformity compares planned watts to
   ``np or average_power``.
 * ``services/nutrition.py`` — fuel targets scale off the same pair.
 
-None of these is filtered here on purpose. Withholding an estimated ride's TSS
-would delete load from the training model for anyone without a meter, which is a
-product decision, not a provenance one. This module records the fact so the read
-path can label it; the analyses above can opt in one at a time.
-
-``tss_source`` is deliberately untouched. A power-derived TSS still records
-``"power"`` when the power was estimated, because changing that vocabulary would
-silently change every existing badge. The two columns are meant to be read
-together: ``tss_source == "power" and power_provenance == "estimated"`` is the
-honest label, and the read path can say "power (est.)" without a migration of
-historical rows.
+The last three are deliberately **not** filtered, and the reason is history
+rather than principle. TSS is stored per activity and feeds CTL/ATL: changing
+the rule only for newly synced rides would leave one load series built from two
+different models, and recomputing the old rows would rewrite training history to
+correct a second-order accuracy issue. hrTSS is not obviously the better number
+either — it is a coarse %HRR model, and swapping a reasonable estimate for a
+coarser one is not a clear win. So the number stays and the label carries the
+truth: ``tss_source == "power"`` with ``power_provenance == "estimated"`` reads
+as "power (est.)". Conformity and fuel inherit the same stance for consistency
+with the load they sit on.
 """
 
 from __future__ import annotations
 
+from sqlalchemy import ColumnElement
+
+from app.models.activity import Activity
+
 POWER_MEASURED = "measured"
 POWER_ESTIMATED = "estimated"
+
+
+def measured_power_clause() -> ColumnElement[bool]:
+    """SQL predicate: this activity's summary power may be treated as measured.
+
+    NULL-safe **by construction** — ``IS DISTINCT FROM`` rather than ``!=``.
+    A plain ``power_provenance != 'estimated'`` evaluates to NULL for an
+    unclassified row, and NULL is not true, so the row would be dropped: exactly
+    the fail-closed behaviour the module docstring forbids. Rows written before
+    migration 107 are unclassified, not estimated.
+
+    Used by the weather-correlation sample (``tasks/scheduler.py``), which is the
+    one analysis where an estimate actively fabricates signal: the estimate is
+    derived partly from heart rate, and heart rate rises with heat, so including
+    estimated rides puts HR on both sides of the regression and can manufacture
+    a temperature–power coefficient.
+
+    Deliberately **not** applied to TSS. See the module docstring: excluding an
+    estimate's load would delete CTL/ATL history for anyone without a meter.
+    """
+    return Activity.power_provenance.is_distinct_from(POWER_ESTIMATED)
 
 
 def from_strava_payload(payload: dict) -> str | None:
