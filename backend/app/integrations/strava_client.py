@@ -199,6 +199,28 @@ class StravaClient:
 
         return await retry_request(_fetch)
 
+    async def get_gear(self, access_token: str, gear_id: str) -> dict:
+        """Fetch one gear item.
+
+        Returns ``id``, ``name`` (brand + model + nickname), ``brand_name``,
+        ``model_name``, ``frame_type`` (1 MTB, 2 CX, 3 road, 4 TT — bikes only),
+        ``primary`` and ``distance`` in **metres**, which is the provider's
+        lifetime total for that item and therefore the only wear signal Strava
+        exposes. There is no create/update/retire endpoint; gear is managed in the
+        Strava UI.
+        """
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/gear/{gear_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
+
     async def get_athlete(self, access_token: str) -> dict:
         """Fetch the authenticated athlete profile."""
 

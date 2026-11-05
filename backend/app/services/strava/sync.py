@@ -494,6 +494,18 @@ async def sync_activities(
     for activity in synced:
         await link_activity_to_route(db, activity, routes=routes)
 
+    # Resolve equipment last, and never fatally: every ride above is already
+    # stored, so a gear failure leaves `gear_id` NULL and retries next sync (the
+    # provider id stays in raw_data). One call per *new* gear, one per gear per
+    # day thereafter — see services/gear.py for the rate-budget reasoning.
+    if synced:
+        try:
+            from app.services.gear import sync_strava_gear
+
+            await sync_strava_gear(db, user_id, connection)
+        except Exception as exc:
+            logger.warning("Strava gear sync failed for user %s: %s", user_id, exc)
+
     return synced
 
 

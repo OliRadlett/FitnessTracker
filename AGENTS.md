@@ -242,9 +242,9 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `110`** — the head is `109` (`107` power provenance, `108`
-`weight_logs.raw_data`, `109` DailyMetric SpO2 + skin temp), `096` is `undo_logs`, and the
-branch was renumbered mid-flight once already (pitfall 34).
+**New migrations continue from `111`** — the head is `110` (`107` power provenance, `108`
+`weight_logs.raw_data`, `109` DailyMetric SpO2 + skin temp, `110` gear), `096` is `undo_logs`,
+and the branch was renumbered mid-flight once already (pitfall 34).
 
 **Training page overhaul** — [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md)
 (IA + editor) with companion [`plans/training-strength-programming.md`](plans/training-strength-programming.md)

@@ -44,6 +44,15 @@ class Activity(Base):
         nullable=True,
         index=True,
     )
+    #: The physical bike/shoes this activity was recorded on, resolved from the
+    #: provider's ``gear_id`` (which was always in ``raw_data`` and unread).
+    #: SET NULL rather than CASCADE: retiring a gear must not delete rides.
+    gear_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gear.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     source: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # strava, wahoo, manual (primary source)
@@ -142,6 +151,7 @@ class Activity(Base):
     # Relationships
     user: Mapped["User"] = relationship(back_populates="activities")  # type: ignore[name-defined]
     route: Mapped["Route | None"] = relationship(back_populates="activities")  # type: ignore[name-defined]
+    gear: Mapped["Gear | None"] = relationship(back_populates="activities")  # type: ignore[name-defined]
     streams: Mapped[list["ActivityStream"]] = relationship(
         back_populates="activity", cascade="all, delete-orphan"
     )

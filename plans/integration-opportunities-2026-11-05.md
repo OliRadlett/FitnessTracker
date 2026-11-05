@@ -349,7 +349,7 @@ one small feature attached, not a Medium-value item.
 |---|---|---|---|---|---|
 | 1 | **Power provenance** — record `device_watts` as `activities.power_provenance`, expose it on the read contract. ~~Exclude it from CP/W′/PR fits~~ — **wrong, see §4 note** | XS | High — every power number becomes either measured or honestly labelled | already in `raw_data` | none |
 | 2 | **Whoop bulk recovery + SpO2 + skin temp** — replace the per-cycle N+1 with `/v2/recovery`; store both new signals; feed the illness composite | S | High — fewer calls *and* the two best early-illness signals we don't have | 2 columns on `DailyMetric` | migration |
-| 3 | **Gear & wear** — `gear_id` → gear table, `GET /gear/{id}` distance, wear thresholds, chain/shoe alerts | S | High — the only maintenance loop a cyclist actually wants | `raw_data` + 1 call per gear item | migration |
+| 3 | **Gear & wear** — shipped (backend only, migration 110): `gear` table, `activities.gear_id`, resolution from `raw_data`, `GET/PATCH /gear`. **No page**, no alerts — explicitly out of scope for this pass | S | High — the app can finally answer "how far has this bike gone" | `gear_id` was already in `raw_data`; one call per gear | migration |
 | 4 | **Whoop sleep-need decomposition** — shipped. ~~Store `sleep_needed.*`~~ **no storage needed**: the sync has always kept the whole sleep record in `SleepLog.raw_data`; the debt model now reads it | XS | Medium — replaces a flat 8-hour target with the athlete's per-night requirement, and explains it | already stored | none |
 | 5 | **Strava streams: `latlng` only** — shipped. ~~`temp`, `grade_smooth`~~ dropped: no consumer exists, so asking for them would add stored-never-read streams | XS | Medium — zero extra calls; replay uses recorded GPS instead of resampling the route shape | none (new rides only — no stream-backfill task exists) | none |
 | 6 | **Wahoo weight write-back** — push the scale's weight to Wahoo (and optionally Strava `PUT /athlete`). ~~FTP/zone push~~ **already shipped** as migration `103` (`/cycling/wahoo-zones`) | S | Medium — the head unit stops estimating calories and W/kg from a weight typed months ago | scopes already granted (`user_write`, `profile:write`) | none |
@@ -483,12 +483,27 @@ decomposition, so the number can explain itself instead of asserting an 8-hour d
 
 ### What #3 needs beyond the field
 
-`gear_id` is a Strava id; the durable object is *the bike in the garage*. A `Gear` table
-(`provider`, `provider_gear_id`, `name`, `kind`, `distance_m`, `retired_at`,
-`wear_threshold_m`) plus `Activity.gear_id` lets shoe mileage survive a gear rename and lets
-a chain-wear alert fire on `distance` deltas rather than a stored total. `PUT
-/activities/{id}` can correct a mis-assigned ride, but only with `activity:write` — so
-`Gear` should start read-only.
+Shipped as a backend slice only — no page, no notifications (deliberate: the data has to
+be right before it is displayed, and a maintenance surface was explicitly out of scope).
+
+Decisions worth keeping:
+
+- **A table, not a string.** `activities.gear_id` alone would treat a Strava rename as a
+  new bike. The durable object is the one in the garage, keyed on
+  `(user_id, provider, provider_gear_id)`.
+- **One call per gear per day** (`GEAR_DISTANCE_TTL`). The read bucket is 100/15 min and
+  1,000/day; a gear's total moves by one ride between syncs, so refreshing it every 30
+  minutes would spend the budget on a number that has not meaningfully changed.
+- **`kind` never guesses "shoes".** Strava omits `frame_type` for shoes *and* for a bike
+  whose type the owner never set, so absence means "other". The alternative is confidently
+  labelling the 10,000 km bike as footwear.
+- **No default wear threshold.** A chain or shoe interval depends on load and conditions, so
+  `wear_threshold_meters` is user-set and NULL by default; with it unset the API returns
+  `wear_percent: null`, not 0. Wear is derived at read time and unclamped — 140% is
+  information, 100% is a lie.
+- **Best effort, never fatal.** Gear resolution runs after the rides are stored, so a
+  provider failure leaves `gear_id` NULL and the next sync retries (the id is still in the
+  payload). The rides are never at risk.
 
 ---
 
