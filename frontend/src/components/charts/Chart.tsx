@@ -15,7 +15,6 @@ import {
   CHART_TOOLTIP_TEXT,
   CHART_FONT_BODY,
   CHART_ZONES,
-  legendWrapperStyle,
   xAxisHeight,
   xTickAngle,
   xTickInterval,
@@ -28,7 +27,7 @@ import {
   ScatterChart, Scatter,
   AreaChart, Area,
   PieChart, Pie, Cell,
-  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceArea as RechartsReferenceArea,
   ReferenceLine as RechartsReferenceLine,
   Brush,
@@ -337,6 +336,12 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
 
   // Label culling: drop overlapping ticks (rotate on top when dense) — never
   // overlap (fixes the Form Trend complaint).
+  //
+  // No X-axis title: it restated the ticks' own vocabulary ("Date", "Week",
+  // "Duration") and, at 30–48 px of axis height, was drawn inside the tick band
+  // — where the brush covered it (measured 314 px² under the brush) and the
+  // legend collided with it. The Y-axis label stays: it carries the unit.
+  // Frames: prototype/chart-chrome/.
   const tickAngle = xTickAngle(pointCount);
   const xAxisProps = {
     dataKey: 'x',
@@ -345,7 +350,6 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     angle: tickAngle,
     textAnchor: (tickAngle === 0 ? 'middle' : 'end') as 'middle' | 'end',
     height: xAxisHeight(pointCount),
-    label: data.x_label ? { value: data.x_label, position: 'insideBottom', offset: -5, fill: CHART_AXIS } : undefined,
     ...commonAxisProps,
   };
 
@@ -372,10 +376,19 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     />
   );
 
-  const renderLegend = () =>
-    data.series.length > 1 ? (
-      <Legend iconSize={10} wrapperStyle={{ ...legendWrapperStyle(isNarrow) }} />
-    ) : null;
+  // Legend is plain HTML under the chart, not Recharts' <Legend>. Recharts put
+  // its bottom legend in the same band as the X-axis title (and under the brush
+  // when one is present); its top placement overlapped the plot's top ticks and
+  // the rotated Y-axis label at 390 px. Rendered here it is a wrapped flex row
+  // outside the SVG, so the only thing it can touch is the page.
+  const legendItems: { name: string; color: string }[] =
+    data.chart_type === 'pie'
+      ? (data.labels ?? []).map((name, i) => ({ name, color: DEFAULT_COLORS[i % DEFAULT_COLORS.length] }))
+      : data.series.map((s, i) => ({
+          name: s.name,
+          color: s.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length],
+        }));
+  const showLegend = legendItems.length > 1;
 
   const renderBrush = () => {
     if (pointCount <= 20) return null;
@@ -432,7 +445,6 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
             )}
             {renderBrush()}
             {renderTooltip()}
-            {renderLegend()}
             {data.series.map((s, i) => (
               <Line
                 key={s.name}
@@ -463,7 +475,6 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
             )}
             {renderReferenceAreas(data.reference_areas, 'left')}
             {renderTooltip()}
-            {renderLegend()}
             {data.series.map((s, i) => (
               <Bar
                 key={s.name}
@@ -504,7 +515,6 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
               {...commonAxisProps} />
             {renderReferenceAreas(data.reference_areas)}
             {renderTooltip()}
-            {renderLegend()}
             {data.series.map((s, i) => (
               <Scatter
                 key={s.name}
@@ -532,7 +542,6 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
             {renderReferenceAreas(data.reference_areas, 'left')}
             {renderBrush()}
             {renderTooltip()}
-            {renderLegend()}
             {data.series.map((s, i) => (
               <Area
                 key={s.name}
@@ -555,7 +564,6 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
         <ResponsiveContainer width="100%" height={effectiveHeight}>
           <PieChart>
             {renderTooltip()}
-            {renderLegend()}
             <Pie
               data={chartData}
               cx="50%"
@@ -590,6 +598,19 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
     <div className={`tnum ${className}`} role="img" aria-label={data.title ? `${data.title} chart` : 'Chart'}>
       {data.title && <h4 className="text-sm font-medium text-muted mb-2">{data.title}</h4>}
       {chartContent}
+      {showLegend && (
+        <ul
+          data-chart-legend=""
+          className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] leading-4 text-muted"
+        >
+          {legendItems.map((item) => (
+            <li key={item.name} className="flex items-center gap-1.5">
+              <span aria-hidden className="h-2 w-2 shrink-0 rounded-sm" style={{ background: item.color }} />
+              {item.name}
+            </li>
+          ))}
+        </ul>
+      )}
       <ChartInsights insights={data.insights} />
     </div>
   );
