@@ -7,6 +7,8 @@ import { useAuthFetch, deleteLiftingSession } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   LiftingSession,
+  LiftingSet,
+  AddSetPayload,
   PersonalRecord,
   CreateSessionPayload,
   CreatePRPayload,
@@ -94,7 +96,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">Strava</span>
           <Link
-            href={`/activities?activity=${activity.id}`}
+            href={`/activity/${activity.id}`}
             className="text-sm font-medium text-foreground truncate max-w-[200px] hover:text-accent transition-colors"
             title="View in Activities"
           >
@@ -145,6 +147,7 @@ export default function LiftingPage() {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showEditSession, setShowEditSession] = useState(false);
   const editFormRef = useRef<HTMLDivElement>(null);
+  const addExerciseRef = useRef<HTMLDivElement>(null);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
@@ -292,6 +295,16 @@ export default function LiftingPage() {
   }, [sessions]);
   const [selectedE1rmExercise, setSelectedE1rmExercise] = useState('');
   const effectiveE1rmExercise = selectedE1rmExercise || e1rmExerciseList[0] || '';
+
+  // `?exercise=<name>` opens Analytics with that exercise selected. Read once
+  // on mount; the main deep-link effect owns tab/session/pr.
+  useEffect(() => {
+    const exercise = new URLSearchParams(window.location.search).get('exercise');
+    if (exercise) {
+      setSelectedE1rmExercise(exercise);
+      setActiveTab('analytics');
+    }
+  }, []);
 
   const { data: e1rmHistoryChart, isLoading: e1rmHistoryLoading } = useQuery<ChartData>({
     queryKey: ['chart-estimated-1rm-history', effectiveE1rmExercise],
@@ -447,6 +460,21 @@ export default function LiftingPage() {
     onError: (err: Error) => setActionError(err.message || 'Failed to backfill links'),
   });
 
+  const addSetMutation = useMutation({
+    mutationFn: ({ sessionId, payload }: { sessionId: string; payload: AddSetPayload }) =>
+      authFetch<LiftingSet>(`/api/v1/lifting/sessions/${sessionId}/sets`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['personal-records'] });
+      queryClient.invalidateQueries({ queryKey: ['lifting-volume'] });
+    },
+    onError: (err: Error) => setActionError(err.message || 'Failed to add set'),
+  });
+
   const updateSetMutation = useMutation({
     mutationFn: ({ setId, data }: { setId: string; data: Record<string, unknown> }) =>
       authFetch<LiftingSession>(`/api/v1/lifting/sets/${setId}`, {
@@ -542,6 +570,15 @@ export default function LiftingPage() {
     );
     return () => window.clearTimeout(timer);
   }, [showEditSession]);
+
+  useEffect(() => {
+    if (!showAddExercise) return;
+    const timer = window.setTimeout(
+      () => addExerciseRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+      60,
+    );
+    return () => window.clearTimeout(timer);
+  }, [showAddExercise]);
 
   // Previous same-focus session — the delta basis for the set ladder.
   const previousSession = useMemo(
@@ -999,6 +1036,11 @@ export default function LiftingPage() {
                 </div>
               )}
 
+              {/* Quick-add: next set for an existing exercise, sticky in view */}
+              <div className="mb-4">
+                <QuickAddSetBar session={sessionDetail} />
+              </div>
+
               {/* Set ladder — read-only review layer, separate from logging/editing */}
               {sessionDetail.sets && sessionDetail.sets.length > 0 && (
                 <div className="mb-4 rounded-lg border border-surface-light/50 p-3 sm:p-4">
@@ -1027,9 +1069,10 @@ export default function LiftingPage() {
 
               {/* Add Exercise Form */}
               {showAddExercise && (
-                <div className="mb-4">
+                <div ref={addExerciseRef} className="mb-4">
                   <AddExerciseForm
                     sessionId={selectedSessionId}
+                    existingSets={sessionDetail.sets}
                     onDone={() => setShowAddExercise(false)}
                   />
                 </div>
@@ -1037,8 +1080,10 @@ export default function LiftingPage() {
 
               {/* Exercise Groups — action surface, collapsed under the ladder */}
               <details className="mt-2">
-                <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] font-medium text-muted hover:text-foreground">
+                <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 rounded-lg border border-accent/30 bg-accent/[0.06] px-3 text-[13px] font-medium text-accent hover:bg-accent/[0.1]">
+                  <Pencil className="h-4 w-4" aria-hidden />
                   Edit sets
+                  <span className="text-[12px] font-normal text-muted">weights, reps, RPE — expand</span>
                 </summary>
                 <div className="mt-3">
               {exerciseGroups.size > 0 ? (
@@ -1050,8 +1095,30 @@ export default function LiftingPage() {
                       sets={sets}
                       onUpdateSet={(setId, data) => updateSetMutation.mutate({ setId, data })}
                       onDeleteSet={(setId) => deleteSetMutation.mutate(setId)}
+                      onAddSet={(name, previous) => {
+                        const nextNumber =
+                          Math.max(
+                            0,
+                            ...sessionDetail.sets
+                              .filter((s) => s.exercise_name === name)
+                              .map((s) => s.set_number),
+                          ) + 1;
+                        addSetMutation.mutate({
+                          sessionId: selectedSessionId,
+                          payload: {
+                            exercise_name: name,
+                            set_number: nextNumber,
+                            weight_kg: previous?.weight_kg ?? 0,
+                            reps: previous?.reps ?? 0,
+                            rpe: previous?.rpe ?? undefined,
+                            is_warmup: previous?.is_warmup ?? false,
+                            is_amrap: false,
+                          },
+                        });
+                      }}
                       isUpdating={updateSetMutation.isPending}
                       isDeleting={deleteSetMutation.isPending}
+                      isAdding={addSetMutation.isPending}
                     />
                   ))}
                 </div>
@@ -1076,10 +1143,6 @@ export default function LiftingPage() {
               <SessionAiAnalysisCard sessionId={selectedSessionId} />
             </div>
 
-            {/* Quick-add: one-line set logging, sticky at the detail bottom */}
-            <div className="mt-6">
-              <QuickAddSetBar session={sessionDetail} />
-            </div>
             </div>
           ) : selectedSessionId && (sessionDetailLoading || !sessionDetailError) ? (
             <div className="space-y-3" aria-label="Loading session detail">

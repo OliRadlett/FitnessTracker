@@ -19,7 +19,7 @@ export function SyncHealthBanner() {
 
   const { data: connections } = useQuery({
     queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections'),
     staleTime: 5 * 60 * 1000,
     enabled: !!token,
     refetchInterval: 5 * 60 * 1000,

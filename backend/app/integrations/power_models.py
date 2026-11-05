@@ -435,7 +435,7 @@ def _maximal_power_at(
 def _friend_vo2max_maximal(power_watts: float, weight_kg: float | None) -> float | None:
     """FRIEND-ergometry VO2max from a MAXIMAL power (ml/kg/min).
 
-    VO2 = 10.649 × W/kg + 3.5 (Nes et al. 2018, PMID 29692203). Deliberately
+    VO2 = 10.649 × W/kg + 3.5 (Kokkinos et al. 2018, PMID 29692203). Deliberately
     duplicated from ``app.services.cycling.vo2max._friend_vo2max`` rather than
     imported: this module is mounted into the bare Modal image, where any
     ``app.services`` import would drag SQLAlchemy along (pitfalls 16/17).
@@ -595,8 +595,8 @@ def fit_personalized_vo2max(
 
     # Estimate VO2max using the FRIEND equation:
     # VO2 = 10.649 * W/kg + 3.5
-    # (1.74 × 6.12 = 10.649; Nes et al. 2018, PMID 29692203 — >4× lower error
-    # than the traditional ACSM 11.016×W/kg+7.)
+    # (1.74 × 6.12 = 10.649; Kokkinos et al. 2018, PMID 29692203 — >30× lower
+    # error than the traditional ACSM 11.016×W/kg+7.)
     # Read power off the regression line at the user's threshold HR
     # (their LTHR when known, else the 170 bpm population fallback), then
     # apply FRIEND.

@@ -1,7 +1,5 @@
 'use client';
 
-import type { CSSProperties } from 'react';
-
 /**
  * Shared Recharts theme tokens — Phase 3 data-viz system (ui-redesign-v2 §3.3).
  *
@@ -60,12 +58,16 @@ export const CHART_TICK_STYLE = {
 } as const;
 
 /**
- * Label-culling rules — overlapping axis/legend labels are rotated or
- * dropped, never overlapped (fixes the Form Trend complaint).
+ * Label-culling rules — overlapping axis labels are rotated or dropped, never
+ * overlapped (fixes the Form Trend complaint).
  *
  * Category X axes show at most ~10 ticks on desktop, ~4 on phones; the
  * rest are dropped via `interval`. Dense date axes additionally rotate
  * so day labels can't collide.
+ *
+ * Legend placement is no longer a Recharts concern: `Chart` renders the legend
+ * as HTML under the plot (see prototype/chart-chrome/), so there is no
+ * `legendWrapperStyle` any more. Names still wrap rather than truncate.
  */
 export function xTickInterval(pointCount: number, isNarrow: boolean): number {
   const maxTicks = isNarrow ? 4 : 10;
@@ -81,22 +83,4 @@ export function xTickAngle(pointCount: number): number {
 /** Extra X-axis height needed when rotated labels hang below the axis. */
 export function xAxisHeight(pointCount: number): number {
   return pointCount > 15 ? 48 : 30;
-}
-
-/**
- * Legend chrome: single shared style, 12px floor, wraps to a second line
- * instead of overlapping. Slice/series names are never truncated away —
- * the pie chart drops slice labels on narrow screens because the legend
- * carries the names there.
- */
-export function legendWrapperStyle(isNarrow: boolean): CSSProperties {
-  return {
-    color: CHART_AXIS,
-    fontSize: CHART_FONT_BODY,
-    lineHeight: '16px',
-    maxWidth: '100%',
-    overflow: 'hidden',
-    // Two-line cap: long multi-series legends clip instead of pushing layout.
-    maxHeight: isNarrow ? '32px' : '36px',
-  };
 }

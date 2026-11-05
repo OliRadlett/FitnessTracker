@@ -116,7 +116,8 @@ def calculate_session_volume(sets: list[dict]) -> float:
 # and a 3×3 at 40 kg identically — it never looked at the work actually done,
 # which is the entire point of a training-load metric.
 #
-# Foster's method: session load = tonnage × session RPE. Raw tonnage is not
+# Bodyweight-normalised volume-load adaptation (NOT Foster's session-RPE: his
+# load is RPE × duration). Raw tonnage is not
 # comparable between a 60 kg lifter and a 120 kg one, so it is divided by
 # bodyweight first, giving a *volume load* in kg lifted per kg bodyweight. That
 # makes the metric scale-free, and it is what separates "an hour of heavy
@@ -434,7 +435,16 @@ async def list_sessions(
     limit: int = 50,
     offset: int = 0,
     session_date: str | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> list[LiftingSession]:
+    """List sessions, optionally by one day or a bounded date range.
+
+    The range filter exists for the calendar view. Callers that only pass
+    ``session_date`` keep the old single-day behaviour; an unbounded call still
+    hits the database with the caller's limit, so the calendar always passes a
+    range rather than filtering an all-time list client-side.
+    """
     query = (
         select(LiftingSession)
         .options(
@@ -444,14 +454,16 @@ async def list_sessions(
         .where(LiftingSession.user_id == user_id)
     )
     if session_date:
-        from datetime import date as _date
-
         try:
-            filter_date = _date.fromisoformat(session_date)
+            filter_date = date.fromisoformat(session_date)
         except ValueError:
             filter_date = None
         if filter_date:
             query = query.where(LiftingSession.session_date == filter_date)
+    if start_date is not None:
+        query = query.where(LiftingSession.session_date >= start_date)
+    if end_date is not None:
+        query = query.where(LiftingSession.session_date <= end_date)
     result = await db.execute(
         query.order_by(LiftingSession.session_date.desc()).limit(limit).offset(offset)
     )

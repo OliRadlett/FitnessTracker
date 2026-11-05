@@ -264,6 +264,17 @@ body {
   transform: none;
 }
 
+/* Calendar: missed days use hatching as the primary cue (not colour alone). */
+.calendar-missed-hatch {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(var(--caution) / 0.12) 0,
+    rgb(var(--caution) / 0.12) 3px,
+    transparent 3px,
+    transparent 7px
+  );
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

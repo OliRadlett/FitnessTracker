@@ -117,7 +117,7 @@ export async function createLiftVideo(
   authFetch: AuthFetch,
   payload: Omit<LiftVideo, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
 ): Promise<LiftVideo> {
-  return authFetch<LiftVideo>('/api/v1/lifting/videos/', {
+  return authFetch<LiftVideo>('/api/v1/lifting/videos', {
     method: 'POST',
     body: JSON.stringify(payload),
   });

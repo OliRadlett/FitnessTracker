@@ -16,7 +16,7 @@ interface SetRow {
   notes: string;
 }
 
-export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDone: () => void }) {
+export function AddExerciseForm({ sessionId, onDone, existingSets = [] }: { sessionId: string; onDone: () => void; existingSets?: LiftingSet[] }) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
@@ -25,6 +25,7 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
     { weight_kg: 0, reps: 0, rpe: undefined, is_warmup: false, is_amrap: false, notes: '' },
   ]);
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   // Fetch all warmup templates
@@ -90,13 +91,20 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
     }
 
     setError('');
+    setIsSubmitting(true);
+    const baseSetNumber = Math.max(
+      0,
+      ...existingSets
+        .filter((s) => s.exercise_name === exerciseName.trim())
+        .map((s) => s.set_number),
+    );
     try {
       // Submit all sets sequentially
       for (let i = 0; i < sets.length; i++) {
         const s = sets[i];
         const payload: AddSetPayload = {
           exercise_name: exerciseName.trim(),
-          set_number: i + 1,
+          set_number: baseSetNumber + i + 1,
           weight_kg: s.weight_kg,
           reps: s.reps,
           rpe: s.rpe,
@@ -117,20 +125,22 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
     } catch {
       setError('Failed to save sets. Some may have been saved.');
       queryClient.invalidateQueries({ queryKey: ['lifting-session', sessionId] });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="p-4 bg-surface-light/30 rounded-lg space-y-4">
+    <form onSubmit={handleSubmit} noValidate className="p-4 bg-surface-light/30 rounded-lg space-y-4">
       <div>
         <label className="block text-xs text-muted mb-1">Exercise *</label>
         <ExerciseAutocomplete
           value={exerciseName}
           onChange={setExerciseName}
           placeholder="e.g. Bench Press"
-          required
           autoFocus
         />
+        {error && <p role="alert" className="mt-1 text-warning text-xs">{error}</p>}
         {exerciseName.trim() && (
           <div className="mt-1.5">
             <PerArmHint exerciseName={exerciseName} />
@@ -277,9 +287,10 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
         </button>
         <button
           type="submit"
-          className="px-4 py-1.5 min-h-[44px] bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors"
+          disabled={isSubmitting}
+          className="px-4 py-1.5 min-h-[44px] bg-positive hover:bg-positive/80 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
         >
-          Save Exercise
+          {isSubmitting ? 'Saving…' : 'Save Exercise'}
         </button>
         <button
           type="button"
@@ -289,8 +300,6 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
           Cancel
         </button>
       </div>
-
-      {error && <p className="text-warning text-sm">{error}</p>}
     </form>
   );
 }

@@ -208,13 +208,13 @@ export async function extendPlan(
   });
 }
 
-/** Delete one day. Completed days are refused (400). */
+/** Delete one day. Completed days are refused (400). Returns the undo claim id. */
 export async function deleteDay(
   authFetch: AuthFetch,
   planId: string,
   dayId: string
-): Promise<void> {
-  return authFetch<void>(`/api/v1/training-plans/${planId}/days/${dayId}`, {
+): Promise<{ undo_log_id: string }> {
+  return authFetch<{ undo_log_id: string }>(`/api/v1/training-plans/${planId}/days/${dayId}`, {
     method: 'DELETE',
   });
 }

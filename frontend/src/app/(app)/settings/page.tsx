@@ -17,6 +17,9 @@ import { HealthAlertSettings } from '@/components/settings/HealthAlertSettings';
 import { IntelligenceStatusCard } from '@/components/settings/IntelligenceStatusCard';
 import { WebPushCard } from '@/components/settings/WebPushCard';
 import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
+import { CyclingMaintenanceCard } from '@/components/settings/CyclingMaintenanceCard';
+import { WahooZonesCard } from '@/components/settings/WahooZonesCard';
+import { WeightPanel } from '@/components/athlete/WeightPanel';
 import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { useUnits } from '@/lib/units';
@@ -145,7 +148,7 @@ export default function SettingsPage() {
 
   async function loadConnections() {
     try {
-      const data = await authFetch<Connection[]>('/api/v1/connections/');
+      const data = await authFetch<Connection[]>('/api/v1/connections');
       setConnections(data);
       setConnectionsError(false);
     } catch {
@@ -432,6 +435,11 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      {/* Body weight logging — moved here from /cycling so the reading page has
+          no logging affordance, and so the health page's "log one on Cycling"
+          pointer has a home that is not a review page. */}
+      <WeightPanel />
+
       {/* Home Location */}
       <Card>
         <CardHeader>
@@ -595,6 +603,10 @@ export default function SettingsPage() {
 
       {/* Modal Intelligence Status */}
       <IntelligenceStatusCard profile={cyclingProfile} isLoading={cyclingProfileLoading} />
+
+      {/* Head-unit zone sync — moved off /cycling, where it owned the first
+          screen of a training page. */}
+      <WahooZonesCard />
 
       {/* Export Data */}
 
@@ -851,6 +863,10 @@ export default function SettingsPage() {
           )}
         </div>
       </Card>
+
+      {/* Cycling data repair — moved off /cycling: rare POSTs that were sitting
+          in the reading path of a training page. */}
+      <CyclingMaintenanceCard />
 
       {/* Exercise Library */}
       <ExerciseManager />

@@ -3,6 +3,7 @@
 
 export * from './types/common';
 export * from './types/activity';
+export * from './types/calendar';
 export * from './types/lifting';
 export * from './types/routes';
 export * from './types/cycling';

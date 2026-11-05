@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import Base, async_session_factory, engine
+from app.http_redirects import RelativeRedirectMiddleware
 from app.logging_config import correlation_id, setup_logging
 
 settings = get_settings()
@@ -78,6 +79,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Total-Count"],
 )
+
+# Same-host redirects must stay relative behind a reverse proxy; an absolute
+# upstream Location drops the Authorization header when the browser follows it.
+app.add_middleware(RelativeRedirectMiddleware)
 
 
 # ── Correlation ID middleware ──────────────────────────────────────────
@@ -216,6 +221,7 @@ from app.api.account import router as account_router
 from app.api.activities import router as activities_router
 from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
+from app.api.calendar import router as calendar_router
 from app.api.charts import router as charts_router
 from app.api.connections import router as connections_router
 from app.api.cross_domain import router as cross_domain_router
@@ -250,6 +256,7 @@ app.include_router(
     connections_router, prefix="/api/v1/connections", tags=["connections"]
 )
 app.include_router(activities_router, prefix="/api/v1/activities", tags=["activities"])
+app.include_router(calendar_router, prefix="/api/v1/calendar", tags=["calendar"])
 app.include_router(lifting_router, prefix="/api/v1/lifting", tags=["lifting"])
 app.include_router(
     videos_router, prefix="/api/v1/lifting/videos", tags=["lifting-videos"]

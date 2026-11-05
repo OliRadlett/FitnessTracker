@@ -1,6 +1,7 @@
 """Lifting API — full CRUD for sessions/sets, PRs, volume endpoints, activity linking, warmup templates."""
 
 import uuid
+from datetime import date
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
@@ -53,8 +54,10 @@ async def create_session(
     session = await lifting_service.create_session(db, current_user.id, data)
     response = LiftingSessionRead.model_validate(session)
     session_id = session.id
-    # No explicit commit: get_db commits at teardown, before BackgroundTasks
-    # run, so the Jev tagger sees the row. (BUG-015: one commit per request.)
+    # Commit before scheduling background writers: they update the same session
+    # row in their own transaction and would otherwise wait on this request's
+    # lock while the request waits for them.
+    await db.commit()
     background_tasks.add_task(
         jev_tagging.tag_lifting_session_by_id, session_id, current_user.id
     )
@@ -69,38 +72,48 @@ async def list_sessions(
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     session_date: str | None = Query(None, description="Filter by date (YYYY-MM-DD)"),
+    start_date: date | None = Query(None, description="Range start (inclusive)"),
+    end_date: date | None = Query(None, description="Range end (inclusive)"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """List lifting sessions with pagination.
 
     Returns the session list with an X-Total-Count response header.
-    Optionally filter by ``session_date`` (BUG-023).
+    Optionally filter by ``session_date`` (BUG-023) or a date range.
     """
     from fastapi.responses import JSONResponse
     from sqlalchemy import func, select
 
     from app.models.lifting import LiftingSession
 
-    # Get total count (with optional date filter)
+    # Get total count (with optional date filters)
     count_query = select(func.count(LiftingSession.id)).where(
         LiftingSession.user_id == current_user.id
     )
     if session_date:
-        from datetime import date as _date
-
         try:
-            filter_date = _date.fromisoformat(session_date)
+            filter_date = date.fromisoformat(session_date)
         except ValueError:
             raise HTTPException(
                 status_code=400, detail="Invalid date format. Use YYYY-MM-DD."
             )
         count_query = count_query.where(LiftingSession.session_date == filter_date)
+    if start_date is not None:
+        count_query = count_query.where(LiftingSession.session_date >= start_date)
+    if end_date is not None:
+        count_query = count_query.where(LiftingSession.session_date <= end_date)
     count_result = await db.execute(count_query)
     total_count = int(count_result.scalar() or 0)
 
     sessions = await lifting_service.list_sessions(
-        db, current_user.id, limit=limit, offset=offset, session_date=session_date
+        db,
+        current_user.id,
+        limit=limit,
+        offset=offset,
+        session_date=session_date,
+        start_date=start_date,
+        end_date=end_date,
     )
     enriched = [LiftingSessionRead.model_validate(s) for s in sessions]
     return JSONResponse(
@@ -280,12 +293,14 @@ async def add_set(
     lifting_set = await lifting_service.add_set(db, session_id, current_user.id, data)
     if not lifting_set:
         raise HTTPException(status_code=404, detail="Session not found")
+    response = LiftingSetRead.model_validate(lifting_set)
+    await db.commit()
     background_tasks.add_task(
         jev_classification.classify_lifting_session_by_id,
         session_id,
         current_user.id,
     )
-    return LiftingSetRead.model_validate(lifting_set)
+    return response
 
 
 @router.patch("/sets/{set_id}", response_model=LiftingSetRead)
@@ -299,12 +314,14 @@ async def update_set(
     lifting_set = await lifting_service.update_set(db, set_id, current_user.id, data)
     if not lifting_set:
         raise HTTPException(status_code=404, detail="Set not found")
+    response = LiftingSetRead.model_validate(lifting_set)
+    await db.commit()
     background_tasks.add_task(
         jev_classification.classify_lifting_session_by_id,
         lifting_set.session_id,
         current_user.id,
     )
-    return LiftingSetRead.model_validate(lifting_set)
+    return response
 
 
 @router.delete("/sets/{set_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -329,6 +346,7 @@ async def delete_set(
     deleted = await lifting_service.delete_set(db, set_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Set not found")
+    await db.commit()
     if session_id is not None:
         background_tasks.add_task(
             jev_classification.classify_lifting_session_by_id,

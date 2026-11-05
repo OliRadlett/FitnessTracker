@@ -27,7 +27,9 @@ const MOCK_SESSION = {
     image: null,
   },
   expires: '2099-12-31T23:59:59.999Z',
-  backendToken: 'test-jwt-token',
+  // Default is the dummy token used with fully mocked API specs. The real-API
+  // gate passes a JWT minted against its disposable seeded database.
+  backendToken: process.env.E2E_BACKEND_TOKEN || 'test-jwt-token',
 };
 
 // ─── API route handler map ──────────────────────────────────────────────────
@@ -71,7 +73,12 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockWhoopWeekly) });
   }],
 
-  // Calendar (MUST come before activities to avoid substring collision)
+  // Calendar view (new aggregate endpoint)
+  ['api/v1/calendar', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCalendarResponse) });
+  }],
+
+  // Legacy calendar endpoint — still used by the activities TimelineView.
   ['api/v1/activities/calendar', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCalendarData) });
   }],
@@ -212,18 +219,71 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.continue();
   }],
 
+  // Duplicate scan state/refresh — before the general routes handler, which
+  // would otherwise answer /duplicates/status with the route list.
+  ['/duplicates/status', (route) => {
+    if (/\/api\/v1\/routes\/duplicates\/status/.test(route.request().url())) {
+      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteScanStatus) });
+      return;
+    }
+    route.continue();
+  }],
+  ['/duplicates/refresh', (route) => {
+    if (/\/api\/v1\/routes\/duplicates\/refresh/.test(route.request().url())) {
+      route.fulfill({ status: 202, body: JSON.stringify({ status: 'queued' }) });
+      return;
+    }
+    route.continue();
+  }],
+
+  // Route history — one segment deeper than the detail handler, so it must be
+  // matched before the general routes handler (which would return the list).
+  ['/history', (route) => {
+    if (/\/api\/v1\/routes\/[^/]+\/history/.test(route.request().url())) {
+      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteHistory) });
+      return;
+    }
+    route.continue();
+  }],
+
   // Routes
   ['api/v1/routes/', (route) => {
-    const url = route.request().url();
-    const routeMatch = url.match(/\/api\/v1\/routes\/([a-z0-9-]+)$/);
+    const url = new URL(route.request().url());
+    const routeMatch = url.pathname.match(/\/api\/v1\/routes\/([a-z0-9-]+)$/);
     if (routeMatch && routeMatch[1] !== 'sync' && routeMatch[1] !== 'upload-gpx') {
       route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteDetail) });
     } else {
-      // B-36: X-Total-Count header drives the count badge + infinite scroll.
+      // The list endpoint filters and sorts server-side; mirror enough of it
+      // that facet/search tests exercise the real contract instead of a
+      // constant array.
+      const q = url.searchParams.get('q')?.toLowerCase() ?? '';
+      const minDistance = Number(url.searchParams.get('min_distance') ?? 0);
+      const maxDistance = Number(url.searchParams.get('max_distance') ?? Number.MAX_SAFE_INTEGER);
+      const minElevation = Number(url.searchParams.get('min_elevation') ?? 0);
+      const maxElevation = Number(
+        url.searchParams.get('max_elevation') ?? Number.MAX_SAFE_INTEGER,
+      );
+      const isLoop = url.searchParams.get('is_loop');
+      const isRidden = url.searchParams.get('is_ridden');
+      const sport = url.searchParams.get('sport_type');
+
+      const filtered = mockData.mockRoutes.filter((route) => {
+        if (q && !route.name.toLowerCase().includes(q)) return false;
+        if (route.distance_meters < minDistance || route.distance_meters > maxDistance) {
+          return false;
+        }
+        const climb = route.elevation_gain_meters ?? 0;
+        if (climb < minElevation || climb > maxElevation) return false;
+        if (isLoop !== null && route.is_loop !== (isLoop === 'true')) return false;
+        if (isRidden !== null && route.is_ridden !== (isRidden === 'true')) return false;
+        if (sport && route.sport_type !== sport) return false;
+        return true;
+      });
+
       route.fulfill({
         status: 200,
-        headers: { 'X-Total-Count': String(mockData.mockRoutes.length) },
-        body: JSON.stringify(mockData.mockRoutes),
+        headers: { 'X-Total-Count': String(filtered.length) },
+        body: JSON.stringify(filtered),
       });
     }
   }],

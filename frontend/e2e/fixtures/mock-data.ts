@@ -685,7 +685,12 @@ export const mockRoutes = [
     country: 'United Kingdom',
     locality: 'Surrey',
     is_loop: true,
+    encoded_polyline:
+      'gavwHbl{A_y@i]e}@iDe{@fYar@lx@mc@npAcSb}AgEd~A~@lwA|BznA^|iAyAtkAwB~rAh@l{ArK|~Af[hxAfk@veAlw@ji@b}@`It{@_Rju@}e@rm@an@`h@il@xf@}e@ti@ka@`n@yc@bp@_o@hl@s`A~`@_sA|N_`BkDybBuXqzAqg@cjAco@gw@so@mh@}k@oa@{g@_c@{f@ii@ij@en@mq@mk@',
+    preview_polyline:
+      'gavwHbl{A_y@i]e}@iDe{@fYar@lx@mc@npAcSb}AgEd~A~@lwA|BznA^|iAyAtkAwB~rAh@l{ArK|~Af[hxAfk@veAlw@ji@b}@`It{@_Rju@}e@rm@an@`h@il@xf@}e@ti@ka@`n@yc@bp@_o@hl@s`A~`@_sA|N_`BkDybBuXqzAqg@cjAco@gw@so@mh@}k@oa@{g@_c@{f@ii@ij@en@mq@mk@',
     sources: [{ id: 'rs-1', provider: 'strava', provider_route_id: 'strava-route-1', provider_name: 'Surrey Hills Loop', synced_at: '2026-08-01T00:00:00Z' }],
+    tags: [],
     surface_profile: { road: 85, gravel: 10, trail: 5 },
     ride_count: 12,
     is_ridden: true,
@@ -707,7 +712,12 @@ export const mockRoutes = [
     country: 'United Kingdom',
     locality: 'London',
     is_loop: true,
+    encoded_polyline:
+      '{p~xHhio@kPaHuQs@aQzFiNfP}IlW_Ef[{@p[PnYd@~VHlU[~Uc@fXLtZvBx[nGxYfLdT|OvKrQ~AfQuDhOuJ|LcMhKsL~JsJxKiIbMaJtMmMrLsRdIgXxCa\\s@_]uFmZeKoUmM}OsMkKmLkIiKyI}JuK_LcMcNkL',
+    preview_polyline:
+      '{p~xHhio@kPaHuQs@aQzFiNfP}IlW_Ef[{@p[PnYd@~VHlU[~Uc@fXLtZvBx[nGxYfLdT|OvKrQ~AfQuDhOuJ|LcMhKsL~JsJxKiIbMaJtMmMrLsRdIgXxCa\\s@_]uFmZeKoUmM}OsMkKmLkIiKyI}JuK_LcMcNkL',
     sources: [{ id: 'rs-2', provider: 'strava', provider_route_id: 'strava-route-2', provider_name: 'Richmond Park', synced_at: '2026-08-01T00:00:00Z' }],
+    tags: [],
     ride_count: 25,
     is_ridden: true,
     last_ridden_date: '2026-08-18',
@@ -728,7 +738,12 @@ export const mockRoutes = [
     country: 'United Kingdom',
     locality: 'Surrey',
     is_loop: false,
+    encoded_polyline:
+      '_|wwHj{y@uT@mRxBcNdFkH`IuAdKbCjLlIrLjN~KpQhJnR|GdQxDvMdApHu@bBoDwBcHiIiK{N{M}RsOyTmPmTgP}QeOkMeMmGmJ',
+    preview_polyline:
+      '_|wwHj{y@uT@mRxBcNdFkH`IuAdKbCjLlIrLjN~KpQhJnR|GdQxDvMdApHu@bBoDwBcHiIiK{N{M}RsOyTmPmTgP}QeOkMeMmGmJ',
     sources: [{ id: 'rs-3', provider: 'komoot', provider_route_id: 'kmt-route-1', provider_name: 'Box Hill', synced_at: '2026-07-15T00:00:00Z' }],
+    tags: [],
     ride_count: 8,
     is_ridden: true,
     last_ridden_date: '2026-08-10',
@@ -749,7 +764,12 @@ export const mockRoutes = [
     country: 'United Kingdom',
     locality: 'South Downs',
     is_loop: false,
+    encoded_polyline:
+      'sm}tHzizBunAu_EolA{{DehAoxDmbAsuDw{@qsD{t@irDsn@arDsi@wrDqf@ktDoe@yvD{f@{yDij@q}Doo@iaE{u@geEw|@yhEkcAalE}hAqnE_mAipEynAeqEqnA_qE}kA{oEmgA{mEmaAckEuz@ygE{s@adEym@e`Eai@k|Def@}xDqe@_vD',
+    preview_polyline:
+      'sm}tHzizBunAu_EolA{{DehAoxDmbAsuDw{@qsD{t@irDsn@arDsi@wrDqf@ktDoe@yvD{f@{yDij@q}Doo@iaE{u@geEw|@yhEkcAalE}hAqnE_mAipEynAeqEqnA_qE}kA{oEmgA{mEmaAckEuz@ygE{s@adEym@e`Eai@k|Def@}xDqe@_vD',
     sources: [{ id: 'rs-4', provider: 'komoot', provider_route_id: 'kmt-route-2', provider_name: 'South Downs Way', synced_at: '2026-06-01T00:00:00Z' }],
+    tags: [],
     ride_count: 0,
     is_ridden: false,
     created_at: '2026-06-01T00:00:00Z',
@@ -759,8 +779,64 @@ export const mockRoutes = [
 
 export const mockRouteDetail = {
   ...mockRoutes[0],
-  encoded_polyline: 'encoded_polyline_data_here',
-  elevation_profile: { elevations: [100, 120, 150, 200, 250, 300, 280, 220, 180, 140, 100] },
+  elevation_profile: {
+    distance: [0, 5000, 12000, 20000, 30000, 42000, 52000, 65000],
+    elevation: [100, 120, 150, 200, 250, 300, 280, 220],
+  },
+  surface_profile: { paved: 0.78, compacted_gravel: 0.14, gravel: 0.08 },
+  terrain_classification: {
+    terrain_type: 'rolling',
+    climb_count: 2,
+    total_climb_m: 411,
+    climb_rate_pct: 0.79,
+  },
+};
+
+export const mockRouteHistory = {
+  route_id: 'route-1',
+  route_name: 'Surrey Hills Loop',
+  total_rides: 2,
+  personal_best: {
+    activity_id: 'act-1',
+    date: '2026-08-20T08:00:00Z',
+    duration_seconds: 8100,
+    average_power: 210,
+  },
+  rides: [
+    {
+      activity_id: 'act-1',
+      date: '2026-08-20T08:00:00Z',
+      duration_seconds: 8100,
+      distance_meters: 65000,
+      average_power: 210,
+      tss: 180,
+    },
+    {
+      activity_id: 'act-2',
+      date: '2026-07-12T09:00:00Z',
+      duration_seconds: 8400,
+      distance_meters: 64800,
+      average_power: 198,
+      tss: 170,
+    },
+  ],
+};
+
+// The duplicate scan is a background job; these drive Maintain's scan states.
+export const mockRouteScanStatus = {
+  state: 'never',
+  started_at: null,
+  finished_at: null,
+  pairs: null,
+  error: null,
+};
+
+export const mockRouteScanRunning = {
+  state: 'running',
+  started_at: '2026-08-20T08:00:00Z',
+  finished_at: null,
+  pairs: null,
+  error: null,
 };
 
 // ─── Goals ───────────────────────────────────────────────────────────────────
@@ -1458,3 +1534,5 @@ export const mockFtpEstimate = {
   accepted: false,
   previous_ftp: 260,
 };
+
+export { mockCalendarResponse } from './calendar-mock';

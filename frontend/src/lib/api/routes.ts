@@ -14,6 +14,7 @@ import type {
   HomeAreaHeatmapResponse,
   RouteCollection,
   RouteCollectionCreate,
+  RouteScanStatus,
 } from './types';
 
 export async function getRoutes(
@@ -56,6 +57,18 @@ export async function syncRoutes(token?: string): Promise<RouteSyncResult[]> {
 
 export async function getDuplicateRoutes(token?: string): Promise<DuplicatePair[]> {
   return apiFetch<DuplicatePair[]>('/api/v1/routes/duplicates', {}, token);
+}
+
+export async function getRouteScanStatus(token?: string): Promise<RouteScanStatus> {
+  return apiFetch<RouteScanStatus>('/api/v1/routes/duplicates/status', {}, token);
+}
+
+export async function refreshRouteScan(token?: string): Promise<{ status: string }> {
+  return apiFetch<{ status: string }>(
+    '/api/v1/routes/duplicates/refresh',
+    { method: 'POST' },
+    token,
+  );
 }
 
 export async function mergeRoutes(

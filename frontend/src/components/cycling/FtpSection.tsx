@@ -247,7 +247,7 @@ export function FtpSection({
                     <td className="py-2 text-right">
                       {pr.activity_id ? (
                         <Link
-                          href={`/activities?activity=${pr.activity_id}`}
+                          href={`/activity/${pr.activity_id}`}
                           className="text-xs text-accent hover:text-accent-hover transition-colors"
                         >
                           Link →

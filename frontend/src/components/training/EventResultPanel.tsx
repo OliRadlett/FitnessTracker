@@ -286,7 +286,7 @@ function Retrospective({ eventId }: { eventId: string }) {
               {data.race_day_activity ? (
                 <p>
                   Race-day effort:{' '}
-                  <a href={`/activities?activity=${data.race_day_activity.id}`} className="text-accent hover:text-accent/80">
+                  <a href={`/activity/${data.race_day_activity.id}`} className="text-accent hover:text-accent/80">
                     {data.race_day_activity.name}
                   </a>{' '}
                   <span className="text-foreground">

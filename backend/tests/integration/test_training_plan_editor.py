@@ -90,7 +90,8 @@ class TestDeletePlanDay:
         resp = await client.delete(
             f"/api/v1/training-plans/{test_training_plan.id}/days/{target_id}"
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        assert "undo_log_id" in resp.json()
 
         remaining = (
             (

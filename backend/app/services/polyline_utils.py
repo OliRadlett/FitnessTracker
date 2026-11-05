@@ -76,6 +76,34 @@ def encode_polyline(points: Sequence[tuple[float, float]]) -> str:
     return "".join(encoded)
 
 
+# ── Display preview ──────────────────────────────────────────────────────────
+
+
+def preview_polyline(encoded: str | None, max_points: int = 90) -> str | None:
+    """Return a decimated copy of an encoded polyline for display only.
+
+    The list endpoint needs a shape it can draw, not navigation-grade geometry.
+    Uniform index sampling keeps the silhouette while bounding the payload
+    (a 2,000-point route becomes ~90 points, ~500 bytes). The full polyline
+    stays on ``GET /routes/{id}`` for GPX export and 3D.
+
+    Never raises: one corrupt row must not fail a whole list request.
+    """
+    if not encoded:
+        return None
+    try:
+        points = decode_polyline(encoded)
+    except (IndexError, TypeError, ValueError):
+        return None
+    if len(points) <= max_points:
+        return encoded
+
+    step = len(points) / float(max_points)
+    sampled = [points[int(i * step)] for i in range(max_points - 1)]
+    sampled.append(points[-1])
+    return encode_polyline(sampled)
+
+
 # ── Haversine distance ───────────────────────────────────────────────────────
 
 _EARTH_RADIUS_M = 6_371_000  # mean Earth radius in meters

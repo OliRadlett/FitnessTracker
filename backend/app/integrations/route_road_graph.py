@@ -99,7 +99,9 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
             refs = [n.ref for n in w.nodes]
             if len(refs) < 2:
                 return
-            ways.append((w.id, w.tags.get("name"), highway, refs))
+            ways.append(
+                (w.id, w.tags.get("name"), highway, refs, w.tags.get("surface"))
+            )
             wanted_nodes.update(refs)
 
     _WayCollector().apply_file(pbf_path)
@@ -124,7 +126,7 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
     # ``key`` stays way-scoped (way_id:idx): edge_set/Jaccard/embedding keys
     # are unchanged.
     out: list[tuple] = []
-    for way_id, name, highway, refs in ways:
+    for way_id, name, highway, refs, surface in ways:
         prev = None
         prev_ref = None
         idx = 0
@@ -148,6 +150,7 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
                         [prev, pt],
                         name,
                         highway,
+                        surface,
                     )
                 )
             prev = pt
@@ -177,6 +180,7 @@ def _match_routes_road_modal(
         from road_graph import (  # type: ignore
             RoadEdge,
             RoadGraph,
+            edges_from_tuples,
             haversine_distance,
             snap_polyline,
         )
@@ -184,6 +188,7 @@ def _match_routes_road_modal(
         from app.services.road_graph import (  # type: ignore
             RoadEdge,
             RoadGraph,
+            edges_from_tuples,
             haversine_distance,
             snap_polyline,
         )
@@ -218,21 +223,7 @@ def _match_routes_road_modal(
     if pbf_path is not None:
         # bbox-filtered at parse time — much lighter than a whole-cache JSON load.
         raw = _build_edges_from_pbf(pbf_path, bbox)
-        edges = [
-            RoadEdge(
-                key=k,
-                u=u,
-                v=v,
-                polyline=pts,
-                length_m=sum(
-                    haversine_distance(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1])
-                    for i in range(1, len(pts))
-                ),
-                name=nm,
-                highway=hw,
-            )
-            for (k, u, v, pts, nm, hw) in raw
-        ]
+        edges = edges_from_tuples(raw)
     elif os.path.exists(geojson_path):
         try:
             from road_graph import roads_from_geojson  # type: ignore
@@ -307,7 +298,7 @@ def _build_road_graph_modal(
     )
 
     features = []
-    for (key, _u, _v, pts, name, highway) in edges:
+    for (key, _u, _v, pts, name, highway, surface) in edges:
         lat = (pts[0][0] + pts[1][0]) / 2.0
         lng = (pts[0][1] + pts[1][1]) / 2.0
         if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
@@ -319,6 +310,7 @@ def _build_road_graph_modal(
                     "way_id": key.split(":")[0],
                     "name": name,
                     "highway": highway,
+                    "surface": surface,
                 },
                 "geometry": {
                     "type": "LineString",

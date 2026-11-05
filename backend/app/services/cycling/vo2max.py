@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.activity import Activity, ActivityStream
 from app.models.daily_metric import DailyMetric
 from app.models.weight import WeightLog
+from app.services.cycling import timeaxis
 
 # ── VO2max Estimation ─────────────────────────────────────────────────────
 
@@ -30,9 +31,10 @@ class Vo2maxEstimate:
 def _friend_vo2max(power_watts: float, weight_kg: float) -> float:
     """FRIEND-ergometry equation: VO2 (ml/kg/min) = 1.74 × (W × 6.12/kg) + 3.5.
 
-    From the FRIEND study (Nes et al., 2018, PubMed 29692203), which found
-    the FRIEND equation has >4× lower prediction error than the traditional
-    ACSM leg-ergometry equation. The coefficient 1.74 × 6.12 = 10.649.
+    From the FRIEND study (Kokkinos et al., 2018, PubMed 29692203), which
+    found the FRIEND equation has >30× lower prediction error than the
+    traditional ACSM leg-ergometry equation. The coefficient 1.74 × 6.12 =
+    10.649.
 
     Like ACSM, this is a submaximal-to-VO2max estimate: best applied to
     sustained maximal efforts (e.g. 5-min best power).
@@ -44,22 +46,25 @@ def _acsm_vo2max_legacy(power_watts: float, weight_kg: float) -> float:
     """Deprecated: pre-FRIEND ACSM leg-ergometry VO2 (ml/kg/min) = 11.016 × W/kg + 7.
 
     Kept for audit / historical reference only — do not use for new estimates.
-    The FRIEND equation (_friend_vo2max) is ~30× more accurate (Nes et al., 2018).
+    The FRIEND equation (_friend_vo2max) is ~30× more accurate
+    (Kokkinos et al., 2018).
     """
     return (11.016 * power_watts) / weight_kg + 7.0
 
 
-# Scope of the VO2max fitness bands below (F6): general-population
-# reference bands, NOT age/sex-adjusted. Show this scope wherever a
+# Scope of the VO2max fitness bands below (F6): cycling-fitness bands, NOT a
+# population percentile and NOT age/sex-adjusted. Show this scope wherever a
 # classification is displayed so a 55-year-old is not judged against a
-# 25-year-old's "Average".
-VO2_CLASS_SCOPE = "general-population bands (not age/sex-adjusted)"
+# 25-year-old's "Average", and so "Average" is not read as "population median".
+VO2_CLASS_SCOPE = (
+    "cycling-fitness bands (not age/sex-adjusted; not a population percentile)"
+)
 
 
 def _classify_vo2max(vo2max: float) -> str:
     """Classify VO2max value into a fitness category.
 
-    Based on general population norms (ml/kg/min):
+    Cycling-fitness classes (ml/kg/min), not a population percentile:
     <35: Poor, 35-45: Below average, 45-55: Average, 55-65: Good, 65-75: Excellent, >75: Superior
 
     F6 scope: these bands are NOT age/sex-adjusted. Consumers must label
@@ -87,9 +92,10 @@ async def estimate_vo2max(
 ) -> Vo2maxEstimate | None:
     """Estimate VO2max from power and/or heart rate data.
 
-    Method 1 (Power-based): Uses the FRIEND-ergometry equation (Nes et al., 2018):
+    Method 1 (Power-based): Uses the FRIEND-ergometry equation
+    (Kokkinos et al., 2018):
         VO2 (ml/kg/min) = (10.649 × watts) / body_mass_kg + 3.5
-        (1.74 × 6.12 = 10.649; the FRIEND study found >4× lower error
+        (1.74 × 6.12 = 10.649; the FRIEND study found >30× lower error
         than the traditional ACSM 11.016 × W/kg + 7.) Uses best 5-min
         power as proxy for VO2max power.
         Confidence: 0.7 if weight available, 0.4 without weight (75kg assumed).
@@ -133,7 +139,7 @@ async def estimate_vo2max(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.7,
-                        f"FRIEND power-based (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
+                        f"FRIEND field estimate (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
                     )
                 )
         else:
@@ -145,7 +151,7 @@ async def estimate_vo2max(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.4,
-                        f"FRIEND power-based (5-min: {power_5min}W, no weight — estimated with 75kg)",
+                        f"FRIEND field estimate (5-min: {power_5min}W, no weight — estimated with 75kg)",
                     )
                 )
 
@@ -165,7 +171,7 @@ async def estimate_vo2max(
                 (
                     round(vo2_ml_kg_min, 1),
                     0.5,
-                    f"FRIEND power-based (8-min {power_8min}W scaled to 5-min equiv {power_5min_equiv}W via Riegel, {power_5min_equiv / weight_kg:.1f} W/kg)",
+                    f"FRIEND field estimate (8-min {power_8min}W scaled to 5-min equiv {power_5min_equiv}W via Riegel, {power_5min_equiv / weight_kg:.1f} W/kg)",
                 )
             )
 
@@ -367,6 +373,8 @@ class DecouplingResult:
     classification: str  # "Excellent", "Acceptable", "Aerobic Deficiency"
     duration_seconds: int
     activity_id: uuid.UUID | None = None
+    steady: bool | None = None
+    variability_index: float | None = None
 
 
 def _classify_decoupling(pct: float) -> str:
@@ -384,9 +392,80 @@ def _classify_decoupling(pct: float) -> str:
         return "Aerobic Deficiency"
 
 
+def _decoupling_time_aware(
+    power_data: list[float],
+    hr_data: list[float],
+    time_s: list[float],
+) -> dict | None:
+    """Decoupling on the stream's time axis, split at half the elapsed time.
+
+    The shipped implementation split by sample count and computed NP per half
+    from sample windows; on a 2 s stream both halves and windows are wrong.
+    The steady flag is a validity gate: a variable ride (VI > 1.10) is not a
+    steady aerobic effort, so its decoupling should be read with caution.
+    """
+    triples: list[tuple[float, float, float]] = []
+    for raw_time, raw_power, raw_hr in zip(time_s, power_data, hr_data):
+        if raw_time is None or raw_power is None or raw_hr is None:
+            continue
+        try:
+            t = float(raw_time)
+            p = float(raw_power)
+            h = float(raw_hr)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(t) and math.isfinite(p) and math.isfinite(h) and h > 0:
+            triples.append((t, p, h))
+    if len(triples) < 60:
+        return None
+
+    start, end = triples[0][0], triples[-1][0]
+    if end <= start:
+        return None
+    split = start + (end - start) / 2.0
+    first = [row for row in triples if row[0] <= split]
+    second = [row for row in triples if row[0] > split]
+
+    def efficiency(rows: list[tuple[float, float, float]]) -> float | None:
+        if len(rows) < 30:
+            return None
+        normalised = timeaxis.normalized_power(
+            [row[0] for row in rows], [row[1] for row in rows]
+        )
+        if normalised is None or normalised <= 0:
+            return None
+        mean_hr = sum(row[2] for row in rows) / len(rows)
+        return normalised / mean_hr
+
+    ratio_1 = efficiency(first)
+    ratio_2 = efficiency(second)
+    if not ratio_1 or not ratio_2 or ratio_1 <= 0:
+        return None
+
+    normalised_all = timeaxis.normalized_power(
+        [row[0] for row in triples], [row[1] for row in triples]
+    )
+    mean_power = sum(row[1] for row in triples) / len(triples)
+    variability_index = (
+        round(normalised_all / mean_power, 3)
+        if normalised_all and mean_power > 0
+        else None
+    )
+    decoupling_pct = ((ratio_1 - ratio_2) / ratio_1) * 100
+    return {
+        "decoupling_pct": round(decoupling_pct, 1),
+        "first_half_ratio": round(ratio_1, 4),
+        "second_half_ratio": round(ratio_2, 4),
+        "classification": _classify_decoupling(decoupling_pct),
+        "steady": variability_index is not None and variability_index <= 1.10,
+        "variability_index": variability_index,
+    }
+
+
 def compute_decoupling_from_streams(
     power_data: list[float],
     hr_data: list[float],
+    time_s: list[float] | None = None,
 ) -> dict | None:
     """Compute HR vs power decoupling from stream data.
 
@@ -404,6 +483,9 @@ def compute_decoupling_from_streams(
 
     if not power_data or not hr_data:
         return None
+
+    if time_s:
+        return _decoupling_time_aware(power_data, hr_data, time_s)
 
     # Ensure same length
     min_len = min(len(power_data), len(hr_data))
@@ -448,6 +530,8 @@ def compute_decoupling_from_streams(
         "first_half_ratio": round(ratio_1, 4),
         "second_half_ratio": round(ratio_2, 4),
         "classification": _classify_decoupling(decoupling_pct),
+        "steady": None,
+        "variability_index": None,
     }
 
 
@@ -491,6 +575,16 @@ async def compute_decoupling_for_activity(
     )
     hr_stream = result.scalar_one_or_none()
 
+    result = await db.execute(
+        select(ActivityStream)
+        .where(
+            ActivityStream.activity_id == activity_id,
+            ActivityStream.stream_type == "time",
+        )
+        .limit(1)
+    )
+    time_stream = result.scalar_one_or_none()
+
     if not power_stream or not hr_stream:
         return None
 
@@ -500,11 +594,17 @@ async def compute_decoupling_for_activity(
     hr_data_raw = (
         hr_stream.data.get("data", []) if isinstance(hr_stream.data, dict) else []
     )
+    time_data_raw = (
+        time_stream.data.get("data", []) if time_stream and isinstance(time_stream.data, dict) else []
+    )
 
     power_data = [float(p) for p in power_data_raw if p is not None]
     hr_data = [float(h) for h in hr_data_raw if h is not None]
+    time_data = [float(t) for t in time_data_raw if t is not None]
 
-    result = compute_decoupling_from_streams(power_data, hr_data)
+    result = compute_decoupling_from_streams(
+        power_data, hr_data, time_data or None
+    )
     if not result:
         return None
 
@@ -515,6 +615,8 @@ async def compute_decoupling_for_activity(
         classification=result["classification"],
         duration_seconds=activity.duration_seconds or 0,
         activity_id=activity_id,
+        steady=result.get("steady"),
+        variability_index=result.get("variability_index"),
     )
 
 
@@ -567,9 +669,16 @@ async def compute_decoupling_history(
             ActivityStream.stream_type == "heartrate",
         )
     )
+    time_result = await db.execute(
+        select(ActivityStream).where(
+            ActivityStream.activity_id.in_(activity_ids),
+            ActivityStream.stream_type == "time",
+        )
+    )
 
     power_streams = {s.activity_id: s for s in power_result.scalars().all()}
     hr_streams = {s.activity_id: s for s in hr_result.scalars().all()}
+    time_streams = {s.activity_id: s for s in time_result.scalars().all()}
 
     history = []
     for act in activities:
@@ -580,11 +689,16 @@ async def compute_decoupling_history(
 
         power_raw = ps.data.get("data", []) if isinstance(ps.data, dict) else []
         hr_raw = hs.data.get("data", []) if isinstance(hs.data, dict) else []
+        ts = time_streams.get(act.id)
+        time_raw = ts.data.get("data", []) if ts and isinstance(ts.data, dict) else []
 
         power_data = [float(p) for p in power_raw if p is not None]
         hr_data = [float(h) for h in hr_raw if h is not None]
+        time_data = [float(t) for t in time_raw if t is not None]
 
-        dec_result = compute_decoupling_from_streams(power_data, hr_data)
+        dec_result = compute_decoupling_from_streams(
+            power_data, hr_data, time_data or None
+        )
         if dec_result:
             history.append(
                 {
@@ -595,6 +709,8 @@ async def compute_decoupling_history(
                     "second_half_ratio": dec_result["second_half_ratio"],
                     "classification": dec_result["classification"],
                     "duration_seconds": act.duration_seconds or 0,
+                    "steady": dec_result.get("steady"),
+                    "variability_index": dec_result.get("variability_index"),
                 }
             )
 

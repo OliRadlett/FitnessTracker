@@ -21,6 +21,7 @@ from app.services.big3 import canonical_big3_bucket, canonical_big3_total
 from app.services.cycling import (
     CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
+    VO2_CLASS_SCOPE,
     _classify_decoupling,
     _classify_vo2max,
     compute_decoupling_history,
@@ -2124,9 +2125,9 @@ class ChartService:
 
         # Generate insights
         insights = []
-        # F6: classifications are general-population bands, not
-        # age/sex-adjusted — say so wherever the label is shown.
-        scope_note = "Bands are general-population references, not age/sex-adjusted."
+        # F6: use the single scope label, so the chart copy cannot drift from
+        # the classifier (it previously called these general-population bands).
+        scope_note = f"Bands: {VO2_CLASS_SCOPE}."
         if len(vo2_values) >= 2:
             first = vo2_values[0]
             latest = vo2_values[-1]
@@ -2317,11 +2318,11 @@ class ChartService:
                 )
             elif latest > 8:
                 insights.append(
-                    f"CTL rose {latest:.0f} points this week — above the safe ramp rate (+3 to +8/wk). Injury risk increases."
+                    f"CTL rose {latest:.0f} points this week — above the safe ramp range (+3 to +5/wk; +8 is the ceiling). Injury risk increases."
                 )
             elif latest >= 3:
                 insights.append(
-                    f"CTL rose {latest:.0f} points this week — inside the optimal build band (+3 to +8/wk)."
+                    f"CTL rose {latest:.0f} points this week — inside the build band (+3 to +5 safe; up to +8 is the ceiling)."
                 )
             else:
                 insights.append(

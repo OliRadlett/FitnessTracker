@@ -12,6 +12,7 @@ import {
   useAuthFetch,
 } from '@/lib/api';
 import type { CreateTrainingPlanDayPayload, SubstituteDayPayload } from '@/lib/api';
+import { performUndo } from '@/lib/api/undo';
 
 /**
  * The atomic structural day operations (add / delete / swap / move /
@@ -55,6 +56,12 @@ export function usePlanDayOps(planId: string | null) {
         if (!planId) throw new Error('No plan selected');
         return deleteDay(authFetch, planId, dayId);
       },
+      onSettled: invalidate,
+    }),
+
+    /** Undo a delete by the claim id returned from `deleteDay`. */
+    undoDelete: useMutation({
+      mutationFn: (logId: string) => performUndo(authFetch, logId),
       onSettled: invalidate,
     }),
 

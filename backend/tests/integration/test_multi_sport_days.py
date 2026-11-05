@@ -567,7 +567,7 @@ class TestUndoOnASharedDate:
         resp = await client.delete(
             f"/api/v1/training-plans/{plan.id}/days/{ride.id}"
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
 
         claims = (await client.get("/api/v1/undo")).json()
         claim = next((c for c in claims if c["kind"] == "plan_day_delete"), None)

@@ -856,27 +856,13 @@ def recompute_route_similarity() -> dict:
     non-destructively (with an audit log for undo).
     """
     import asyncio
-    import uuid as _uuid
-
-    from sqlalchemy import delete, func, select
-
-    from app.config import get_settings
-    from app.database import task_session
-    from app.integrations.route_intelligence import (
-        _pairs_for_routes,
-        compute_route_similarity_on_modal,
-    )
-    from app.models.route import Route, RouteSimilarity
-    from app.services.polyline_utils import decode_polyline
-    from app.services.road_matching import load_metric, road_signals
-    from app.services.route_matching import score_route_pair
-    from app.services.route_service import merge_routes
 
     async def _run():
-        settings = get_settings()
-        auto = settings.route_match_auto_threshold
-        review = settings.route_match_threshold
-        gate = settings.route_match_gate
+        from sqlalchemy import func, select
+
+        from app.database import task_session
+        from app.models.route import Route
+        from app.services.route_similarity import recompute_user_similarity
 
         async with task_session() as db:
             result = await db.execute(
@@ -892,106 +878,9 @@ def recompute_route_similarity() -> dict:
 
             for user_id in user_ids:
                 try:
-                    routes = (
-                        await db.execute(
-                            select(Route).where(Route.user_id == user_id)
-                        )
-                    ).scalars().all()
-                    routes_data = [
-                        {
-                            "id": str(r.id),
-                            "polyline": decode_polyline(r.encoded_polyline),
-                            "distance_meters": r.distance_meters,
-                        }
-                        for r in routes
-                    ]
-                    graph = compute_route_similarity_on_modal(
-                        routes_data,
-                        _pairs_for_routes(len(routes_data)),
-                        auto_threshold=auto,
-                        review_floor=review,
-                        gate=gate,
-                    )
-                    pairs = graph.get("pairs", [])
-
-                    # Phase 2 — re-blend matched pairs with the road edge Jaccard
-                    # and route-embedding similarity when available.
-                    by_id = {str(r.id): r for r in routes}
-                    points_by_id = {d["id"]: d["polyline"] for d in routes_data}
-                    metric = await load_metric(db, user_id)
-                    for p in pairs:
-                        a = by_id.get(p["a"])
-                        b = by_id.get(p["b"])
-                        if a is None or b is None:
-                            continue
-                        rj, es = road_signals(a, b, metric)
-                        if rj is None and es is None:
-                            continue
-                        bd = score_route_pair(
-                            points_by_id[p["a"]],
-                            points_by_id[p["b"]],
-                            length_a=a.distance_meters,
-                            length_b=b.distance_meters,
-                            auto_threshold=auto,
-                            review_floor=review,
-                            gate=gate,
-                            road_jaccard=rj,
-                            embedding_similarity=es,
-                        )
-                        p.update(bd.to_dict())
-
-                    # Refresh the cached graph for this user.
-                    await db.execute(
-                        delete(RouteSimilarity).where(
-                            RouteSimilarity.user_id == user_id
-                        )
-                    )
-                    for p in pairs:
-                        db.add(
-                            RouteSimilarity(
-                                user_id=user_id,
-                                route_a_id=_uuid.UUID(p["a"]),
-                                route_b_id=_uuid.UUID(p["b"]),
-                                score=p["total"],
-                                tier=p["tier"],
-                                breakdown=p,
-                            )
-                        )
-
-                    # Auto-merge high-confidence pairs (skip already-merged ids).
-                    #
-                    # Gated: the plan records auto-merge as off because no
-                    # threshold has been validated, and this loop used to run
-                    # regardless — it silently merged a route at 0.826 on
-                    # 28 Sep. Detection is unaffected; pairs are still cached
-                    # above and still surface for review.
-                    merged_away: set[str] = set()
-                    if not settings.route_auto_merge_enabled:
-                        logger.info(
-                            "Auto-merge disabled; %d duplicate pair(s) left for "
-                            "review",
-                            sum(1 for p in pairs if p["tier"] == "auto"),
-                        )
-                    else:
-                        for p in pairs:
-                            if p["tier"] != "auto":
-                                continue
-                            if p["a"] in merged_away or p["b"] in merged_away:
-                                continue
-                            merged = await merge_routes(
-                                db,
-                                _uuid.UUID(p["a"]),
-                                _uuid.UUID(p["b"]),
-                                user_id,
-                                score=p["total"],
-                                breakdown=p,
-                            )
-                            if merged is not None:
-                                merged_away.add(p["b"])
-                                merged_count += 1
-
-                    await db.commit()
-                    total_pairs += len(pairs)
+                    summary = await recompute_user_similarity(db, user_id)
+                    total_pairs += int(summary.get("pairs") or 0)
+                    merged_count += int(summary.get("merged") or 0)
                     users_done += 1
                 except Exception as e:
                     logger.error(
@@ -1007,6 +896,28 @@ def recompute_route_similarity() -> dict:
             }
 
     return asyncio.run(_run_task_guarded("recompute_route_similarity", _run))
+
+
+@celery_app.task(name="app.tasks.scheduler.recompute_user_route_similarity")
+def recompute_user_route_similarity(user_id: str) -> dict:
+    """On-demand scan for one user (queued by POST /routes/duplicates/refresh).
+
+    The work body lives in ``services/route_similarity.py`` so the weekly task
+    and the API share the same flow and the same scan-state reporting. It takes
+    a per-user Redis lock itself; a task-level guard would serialise every user
+    behind one lock and leave a stale hour-long block after a worker restart.
+    """
+    import asyncio
+    import uuid as _uuid
+
+    from app.database import task_session
+    from app.services.route_similarity import recompute_user_similarity
+
+    async def _run():
+        async with task_session() as db:
+            return await recompute_user_similarity(db, _uuid.UUID(user_id))
+
+    return asyncio.run(_run())
 
 
 @celery_app.task(name="app.tasks.scheduler.fit_personalized_power_models")

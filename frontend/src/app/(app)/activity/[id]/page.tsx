@@ -26,6 +26,7 @@ import { seriesArea } from '@/lib/route-shape';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { RouteShape } from '@/components/activity/RouteShape';
 import { StreamChart } from '@/components/activity/StreamChart';
+import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
 import { ErrorState } from '@/components/ui/ErrorState';
 
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -313,6 +314,12 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
         ))}
       </dl>
 
+      {isRide && analysis?.normalized_power_convention === 'includes_coasting_zeros' ? (
+        <p className="mt-2 text-[10px] leading-relaxed text-muted/45">
+          NP includes coasting zeros. Provider summaries may exclude them, so the two numbers are not directly comparable.
+        </p>
+      ) : null}
+
       {isEndurance ? (
         <>
           <section className="mt-8">
@@ -416,6 +423,13 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
                 Time in zone
               </SectionTitle>
               <ZoneBars zones={analysis.power_zones} />
+            </section>
+          )}
+
+          {isRide && (
+            <section className="mt-9">
+              <SectionTitle>Fuel plan</SectionTitle>
+              <FuelPlanCard activity={activity} />
             </section>
           )}
         </>
