@@ -148,9 +148,9 @@ async def get_scan_state(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
     row = (
         await db.execute(
-            select(func.count(RouteSimilarity.id), func.max(RouteSimilarity.computed_at)).where(
-                RouteSimilarity.user_id == user_id
-            )
+            select(
+                func.count(RouteSimilarity.id), func.max(RouteSimilarity.computed_at)
+            ).where(RouteSimilarity.user_id == user_id)
         )
     ).one()
     count, latest = int(row[0] or 0), row[1]
@@ -231,7 +231,9 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
         gate = settings.route_match_gate
 
         routes = (
-            (await db.execute(select(Route).where(Route.user_id == user_id))).scalars().all()
+            (await db.execute(select(Route).where(Route.user_id == user_id)))
+            .scalars()
+            .all()
         )
         if len(routes) < 2:
             await _set_state(
@@ -289,8 +291,9 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
             if a is None or b is None:
                 continue
             rj, es = road_signals(a, b, metric)
-            if rj is None and es is None:
-                continue
+            # Road/embedding are optional enrichment, not a requirement. A
+            # user with no Phase-2 data must still get geometry-only rows;
+            # skipping here emptied the cache for exactly those accounts.
             bd = score_route_pair(
                 points_by_id[p["a"]],
                 points_by_id[p["b"]],
@@ -304,7 +307,9 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
             )
             p.update(bd.to_dict())
 
-        await db.execute(delete(RouteSimilarity).where(RouteSimilarity.user_id == user_id))
+        await db.execute(
+            delete(RouteSimilarity).where(RouteSimilarity.user_id == user_id)
+        )
         for p in pairs:
             db.add(
                 RouteSimilarity(

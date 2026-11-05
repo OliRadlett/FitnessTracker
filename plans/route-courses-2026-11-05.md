@@ -159,6 +159,10 @@ cached pairs remain review-band because they are different variants sharing
 roads, not exact rotations; precision did not regress. This changes scores only
 after the similarity cache is rebuilt.
 
+The scan also no longer skips pairs when road/embedding signals are absent
+(`(None, None)`); that bug emptied the cache on accounts with 0/86 road matches.
+Road signals are optional enrichment; the geometric engine always runs.
+
 ## 7. Quality gate
 
 - `alembic upgrade head` then `downgrade 106` then `upgrade head` on a
