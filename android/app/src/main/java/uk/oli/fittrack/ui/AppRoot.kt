@@ -14,6 +14,7 @@ import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.done.DoneScreen
 import uk.oli.fittrack.ui.live.LiveScreen
+import uk.oli.fittrack.ui.log.SessionDetailScreen
 import uk.oli.fittrack.ui.signin.SignInScreen
 import uk.oli.fittrack.ui.today.TodayScreen
 import uk.oli.fittrack.ui.you.YouScreen
@@ -25,7 +26,9 @@ object Routes {
     const val DONE = "done"
     const val SIGNIN = "signin"
     const val TAB = "tab/{name}"
+    const val SESSION = "session/{id}"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
+    fun session(id: String) = "session/$id"
 }
 
 /**
@@ -38,6 +41,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val restUntil by vm.restUntil.collectAsStateWithLifecycle()
     val now by vm.now.collectAsStateWithLifecycle()
     val auth by vm.auth.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
 
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
@@ -48,6 +52,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             TodayScreen(
                 session = session,
                 signedIn = auth.signedIn,
+                history = history,
+                onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                 onSignIn = { nav.navigate(Routes.SIGNIN) },
                 onStart = {
                     vm.startSession()
@@ -78,6 +84,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     session = current,
                     restUntil = restUntil,
                     now = now,
+                    history = history,
                     onLog = vm::logSet,
                     onBack = { nav.popBackStack() },
                     onFinish = { nav.navigate(Routes.DONE) }
@@ -92,11 +99,22 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             } else {
                 DoneScreen(
                     session = current,
+                    previous = history.firstOrNull { it.planTitle == current.plan.title },
                     onDone = {
                         vm.finishSession()
                         nav.popBackStack(Routes.TODAY, false)
                     }
                 )
+            }
+        }
+
+        composable(Routes.SESSION) { entry ->
+            val id = entry.arguments?.getString("id")
+            val finished = history.firstOrNull { it.id == id }
+            if (finished == null) {
+                LaunchedEffect(Unit) { nav.popBackStack() }
+            } else {
+                SessionDetailScreen(finished, onBack = { nav.popBackStack() })
             }
         }
 

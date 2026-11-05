@@ -18,8 +18,10 @@ import { IntelligenceStatusCard } from '@/components/settings/IntelligenceStatus
 import { WebPushCard } from '@/components/settings/WebPushCard';
 import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
 import { CyclingMaintenanceCard } from '@/components/settings/CyclingMaintenanceCard';
+import { CyclingProfileCard } from '@/components/settings/CyclingProfileCard';
 import { WahooZonesCard } from '@/components/settings/WahooZonesCard';
 import { AthleteProfileCard } from '@/components/settings/AthleteProfileCard';
+import { HealthEventsCard } from '@/components/settings/HealthEventsCard';
 import { WeightPanel } from '@/components/athlete/WeightPanel';
 import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -360,6 +362,8 @@ export default function SettingsPage() {
 
       <AthleteProfileCard />
 
+      <HealthEventsCard />
+
       {/* Preferences */}
       <Card>
         <CardHeader>
@@ -442,6 +446,11 @@ export default function SettingsPage() {
           no logging affordance, and so the health page's "log one on Cycling"
           pointer has a home that is not a review page. */}
       <WeightPanel />
+
+      {/* Cycling thresholds (FTP, weight, LTHR, FTP estimate) — moved off the
+          page they drive: FTP changes zones, TSS and every W/kg on /cycling, and
+          a training page should not be the only place it can be edited. */}
+      <CyclingProfileCard />
 
       {/* Home Location */}
       <Card>

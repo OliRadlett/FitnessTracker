@@ -17,14 +17,21 @@ against those decisions.
   logged.
 - Done: volume, sets, duration and top set, computed from the log.
 - Process death costs nothing: the session is written to disk after every set.
+- **History**: finishing a session (early or complete) writes it to
+  `history.json`, capped at 200. Today then shows "Last time 92.5 × 4 @7 · today"
+  and a 7-day volume strip; the next session prefills from what you actually
+  lifted, not from the plan.
+- **The log**: Today → **Log** lists finished sessions by week with sets and
+  volume; tapping one opens a read-only detail. Nothing on that screen can edit
+  history, deliberately.
 - Account: Google Sign-In through Credential Manager, verified server-side
   ([docs/ANDROID-AUTH.md](../docs/ANDROID-AUTH.md)). You → **Continue with Google**.
 
 ## What does not work yet
 
-- No sync: signing in stores a verified token and nothing uses it yet. The plan
-  is still a seeded constant (`data/SessionStore.kt › SeedPlan`).
-- No history: the week strip and load numbers are absent rather than fake.
+- No sync: history and the session log live on the phone only. Signing in stores
+  a verified token and nothing uses it yet. The plan is still a seeded constant
+  (`data/SessionStore.kt › SeedPlan`).
 - No widgets, Health Connect, background sync or notifications.
 - Sign-in is not a gate — the gym flow works before you authenticate. Logging a
   set must never wait on a network round trip.

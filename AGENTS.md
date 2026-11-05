@@ -114,11 +114,11 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption, lifting TSS). Full Celery task list in [`backend/app/tasks/scheduler.py`](backend/app/tasks/scheduler.py).
 
-## Database (45 tables, UUID PKs)
+## Database (46 tables, UUID PKs)
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight`, `UndoLog` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `HealthEvent`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight`, `UndoLog` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |
@@ -265,12 +265,12 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `114`** — the head is `113` (`107` user demographics, `108`/`109`
-segment groups + line geometry, `110` power provenance, `111` `weight_logs.raw_data`, `112`
-DailyMetric SpO2 + skin temp, `113` gear), `096` is `undo_logs`, and this branch was renumbered
-**twice** in one sitting because `main` kept claiming the numbers (pitfall 34). Check
-`git ls-tree origin/main backend/alembic/versions/` immediately before renumbering, and again
-before opening the PR.
+**New migrations continue from `115`** — the head is `114` (`107` user demographics, `108`/`109`
+segment groups + line geometry, `110` health events, `111` power provenance, `112`
+`weight_logs.raw_data`, `113` DailyMetric SpO2 + skin temp, `114` gear), `096` is `undo_logs`,
+and this branch was renumbered **three times** in one sitting because `main` kept claiming the
+numbers (pitfall 34). Check `git ls-tree origin/main backend/alembic/versions/` immediately
+before renumbering, and again before opening the PR.
 
 **Training page overhaul** — [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md)
 (IA + editor) with companion [`plans/training-strength-programming.md`](plans/training-strength-programming.md)

@@ -232,6 +232,7 @@ from app.api.events import router as events_router
 from app.api.export import router as export_router
 from app.api.gear import router as gear_router
 from app.api.goals import router as goals_router
+from app.api.health_events import router as health_events_router
 from app.api.lifting import router as lifting_router
 from app.api.llm_analysis import router as llm_analysis_router
 from app.api.metrics import router as metrics_router
@@ -272,6 +273,7 @@ app.include_router(segments_router, prefix="/api/v1/segments", tags=["segments"]
 app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
 app.include_router(gear_router, prefix="/api/v1/gear", tags=["gear"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
+app.include_router(health_events_router, prefix="/api/v1", tags=["metrics"])
 app.include_router(
     notifications_router, prefix="/api/v1/notifications", tags=["notifications"]
 )

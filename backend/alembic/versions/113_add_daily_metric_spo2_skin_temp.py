@@ -17,8 +17,8 @@ full re-fetch of every cycle for two optional fields.
 No index: both are read inside a 7/30-day window that already uses the
 ``(user_id, metric_date)`` index.
 
-Revision ID: 112
-Revises: 111
+Revision ID: 113
+Revises: 112
 Create Date: 2026-11-05
 """
 
@@ -26,8 +26,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "112"
-down_revision = "111"
+revision = "113"
+down_revision = "112"
 branch_labels = None
 depends_on = None
 

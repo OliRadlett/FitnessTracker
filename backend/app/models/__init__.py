@@ -8,6 +8,7 @@ from app.models.exercise import Exercise
 from app.models.gear import Gear
 from app.models.goal import Goal, GoalCheckIn
 from app.models.health_alert import HealthAlert
+from app.models.health_event import HealthEvent
 from app.models.lift_video_analysis import LiftVideoAnalysis
 from app.models.lifting import (
     LiftingSession,
@@ -64,6 +65,7 @@ __all__ = [
     "Goal",
     "GoalCheckIn",
     "HealthAlert",
+    "HealthEvent",
     "LiftVideo",
     "LiftVideoAnalysis",
     "LiftingSession",

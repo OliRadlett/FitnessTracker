@@ -19,8 +19,8 @@ terrain columns, whose "clear" is read back as ``IS NULL``; AGENTS.md pitfall
 28). This column is a document that is never cleared, and a JSON ``null`` inside
 it legitimately means "the scale sent no value here", which must survive.
 
-Revision ID: 111
-Revises: 110
+Revision ID: 112
+Revises: 111
 Create Date: 2026-11-05
 """
 
@@ -29,8 +29,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "111"
-down_revision = "110"
+revision = "112"
+down_revision = "111"
 branch_labels = None
 depends_on = None
 
