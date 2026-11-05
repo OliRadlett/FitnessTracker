@@ -202,6 +202,31 @@ class StravaClient:
 
         return await retry_request(_fetch)
 
+    async def get_activity_laps(
+        self, access_token: str, activity_id: int
+    ) -> list[dict]:
+        """Fetch an activity's laps — the provider's own session structure.
+
+        Each lap carries ``lap_index``, ``elapsed_time``, ``moving_time``,
+        ``distance``, ``average_watts``, ``device_watts``, ``average_heartrate``,
+        ``max_speed``, ``total_elevation_gain`` and — the useful part —
+        ``start_index``/``end_index``, which slice straight into the streams.
+
+        One call per activity, so it rides along with the stream fetch at sync
+        time and is never backfilled (the read bucket is 1,000/day).
+        """
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/activities/{activity_id}/laps",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
+
     async def get_gear(self, access_token: str, gear_id: str) -> dict:
         """Fetch one gear item.
 
