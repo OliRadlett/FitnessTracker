@@ -4,6 +4,7 @@
 export * from './types';
 export * from './fetch';
 export * from './lifting';
+export * from './calendar';
 export * from './routes';
 export * from './goals';
 export * from './trainingPlans';
