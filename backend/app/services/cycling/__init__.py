@@ -54,6 +54,7 @@ from app.services.cycling.tss import (
     get_daily_tss,
 )
 from app.services.cycling.vo2max import (
+    VO2_CLASS_SCOPE,
     DecouplingResult,
     Vo2maxEstimate,
     _classify_decoupling,
