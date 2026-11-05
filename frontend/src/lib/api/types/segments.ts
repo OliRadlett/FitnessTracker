@@ -48,11 +48,15 @@ export interface SegmentEffort {
   activity_name: string | null;
   started_at: string | null;
   elapsed_seconds: number;
+  moving_seconds?: number | null;
   avg_power_watts: number | null;
   avg_hr: number | null;
   avg_speed_mps: number;
   effort_vam: number | null;
+  assisted?: boolean | null;
   is_pr: boolean;
+  line_id?: string | null;
+  line_km?: number[] | null;
 }
 
 export interface SegmentDetail {
@@ -81,4 +85,66 @@ export interface ClimbDetail {
 export interface SegmentRecomputeResponse {
   route_id: string;
   recomputed: number;
+}
+
+// ── Stable segment groups (migration 106/107) ───────────────────────────────
+
+export interface SegmentGroupBest {
+  seconds: number;
+  moving_seconds: number | null;
+  power_watts: number | null;
+  vam: number | null;
+  date: string | null;
+}
+
+export interface SegmentGroupPrediction {
+  seconds: number;
+  vam: number | null;
+  power_watts: number | null;
+  confidence: number | null;
+}
+
+/**
+ * One physical/defined segment, merged across every route line. `kind` is
+ * `climb` today; sprints/descents/custom reuse this shape.
+ */
+export interface SegmentGroup {
+  id: string;
+  kind: string;
+  name: string;
+  canonical_name: string;
+  display_name: string | null;
+  name_source: string;
+  area: string | null;
+  region: string | null;
+  country: string | null;
+  route_name: string | null;
+  distance_m: number;
+  gain_m: number;
+  avg_gradient_pct: number;
+  max_gradient_pct: number;
+  steepest_200m_pct: number;
+  sustained_share: number;
+  /** 49 × [distance_m, elevation_m, gradient_pct] */
+  profile: number[][];
+  category: string | null;
+  difficulty: number | null;
+  attempts: number;
+  best: SegmentGroupBest | null;
+  last_ridden: string | null;
+  route_count: number;
+  prediction: SegmentGroupPrediction | null;
+}
+
+export interface SegmentGroupDetail {
+  group: SegmentGroup;
+  segments: Segment[];
+  efforts: SegmentEffort[];
+  route_names: string[];
+}
+
+export interface SegmentGroupList {
+  items: SegmentGroup[];
+  total: number;
+  counts: { ridden: number; to_ride: number; all: number };
 }

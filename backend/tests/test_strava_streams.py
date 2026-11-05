@@ -1,18 +1,29 @@
 """Which activity streams we ask Strava for, and why that list is a contract.
 
-``keys`` is comma-separated, so an extra stream type costs **no extra API call**
+Two independent reasons the list cannot be trimmed casually.
+
+**Full GPS is not optional.** The climb matcher cannot recover a 1 km climb from a
+56–111 km summary polyline (an experiment recovered 9 of 38 known efforts), so
+``latlng`` has to be in the request. ``services/replay.py`` reads it too: without
+it every Strava ride falls back to interpolating the route polyline, which is a
+*shape* — switchbacks flattened, and any part of the ride that left the matched
+route smoothed away.
+
+**``keys`` is comma-separated**, so an extra stream type costs *no extra API call*
 — only bytes. The usual "is this worth a request?" test therefore does not apply;
-the question is whether anything will read the data. Two neighbouring streams
-(``temp``, ``grade_smooth``) are deliberately not requested for that reason, and
-the absence is asserted so adding them is a decision rather than a drift.
+the question is whether anything will read the data. ``temp`` and ``grade_smooth``
+are deliberately absent for that reason, and the absence is asserted so adding
+them is a decision rather than a drift.
 """
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from app.integrations.strava_client import (
     DEFAULT_STREAM_TYPES,
+    StravaClient,
     stream_keys,
 )
 
@@ -28,16 +39,51 @@ _REQUIRED = {
 }
 
 
+class _FakeResponse:
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self):
+        return [{"type": "latlng", "data": [[55.9, -3.2]]}]
+
+
+class _FakeClient:
+    captured: dict | None = None
+
+    def __init__(self, *args, **kwargs) -> None:
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args) -> None:
+        return None
+
+    async def get(self, url, headers=None, params=None):
+        _FakeClient.captured = {"url": url, "headers": headers, "params": params}
+        return _FakeResponse()
+
+
+async def test_activity_streams_request_latlng(monkeypatch):
+    """The request itself carries latlng — no network, just the keys we send."""
+    monkeypatch.setattr(httpx, "AsyncClient", _FakeClient)
+    client = StravaClient()
+
+    streams = await client.get_activity_streams("token", 123)
+
+    assert "latlng" in streams
+    assert _FakeClient.captured is not None
+    keys = _FakeClient.captured["params"]["keys"].split(",")
+    assert "latlng" in keys
+    # The existing consumers still get their streams.
+    assert {"distance", "time", "altitude", "watts"} <= set(keys)
+
+
 class TestDefaultStreams:
     def test_keeps_the_streams_the_pipeline_depends_on(self):
         assert _REQUIRED <= set(DEFAULT_STREAM_TYPES)
 
-    def test_requests_latlng_for_exact_replay_geometry(self):
-        """replay.py prefers recorded GPS over resampling the route polyline.
-
-        The fallback is a *shape*, so a switchback or a detour off the matched
-        route is smoothed away. Asking for latlng is free (same request).
-        """
+    def test_requests_latlng_for_segment_matching_and_replay(self):
         assert "latlng" in DEFAULT_STREAM_TYPES
 
     def test_does_not_collect_streams_nothing_reads(self):

@@ -31,7 +31,7 @@ from app.services.power_provenance import (
 )
 
 MIGRATIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
-POWER_MIGRATION = MIGRATIONS / "108_add_activity_power_provenance.py"
+POWER_MIGRATION = MIGRATIONS / "110_add_activity_power_provenance.py"
 
 
 class TestStravaPayload:
@@ -94,8 +94,8 @@ class TestBackfillMigration:
     """
 
     def test_chains_onto_the_head_it_was_written_against(self):
-        assert _MIGRATION.revision == "108"
-        assert _MIGRATION.down_revision == "107"
+        assert _MIGRATION.revision == "110"
+        assert _MIGRATION.down_revision == "109"
 
     def test_does_not_label_powerless_activities(self):
         """Strava reports ``device_watts: false`` for runs too.

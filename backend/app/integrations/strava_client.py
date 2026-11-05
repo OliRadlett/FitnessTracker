@@ -22,10 +22,12 @@ STRAVA_API_BASE = "https://www.strava.com/api/v3"
 # trade-off: the question is not "is this worth a request?" but "is this worth
 # storing?".
 #
-# ``latlng`` earns its place because ``services/replay.py`` reads it. Without it
-# every Strava ride falls back to interpolating the route polyline, which
-# resamples a *shape* — losing switchbacks, and any part of the ride that left
-# the matched route — instead of using the recorded GPS.
+# ``latlng`` earns its place twice over. ``services/replay.py`` reads it: without
+# it every Strava ride falls back to interpolating the route polyline, which
+# resamples a *shape* — losing switchbacks, and any part of the ride that left the
+# matched route. And climb matching needs a sample-level trace: the summary
+# polyline is too coarse to recover a 1 km climb on a 100 km ride (an experiment
+# recovered only 9 of 38 known efforts from it).
 #
 # Deliberately absent: ``temp`` and ``grade_smooth``. Neither has a consumer in
 # this codebase (FIT imports store a ``temperature`` stream and nothing reads
@@ -182,7 +184,8 @@ class StravaClient:
         integrating velocity.
 
         ``latlng`` is included by default (see ``DEFAULT_STREAM_TYPES``) so
-        replay can use the recorded GPS instead of resampling the route shape.
+        replay uses the recorded GPS instead of resampling the route shape, and
+        so segment matching has a sample-level trace to align against.
         """
         keys = stream_keys(stream_types)
 

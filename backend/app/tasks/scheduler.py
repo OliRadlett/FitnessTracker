@@ -21,6 +21,7 @@ from app.tasks.analytics import (
     backfill_streams_for_all_activities,
     compute_athlete_insights_nightly,
     compute_route_quality_scores,
+    match_segment_efforts,
     recompute_ride_segments,
     refresh_weather_forecasts,
     weekly_llm_analysis,

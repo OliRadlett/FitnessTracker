@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class SegmentRead(BaseModel):
@@ -57,11 +57,18 @@ class SegmentEffortRead(BaseModel):
     activity_name: str | None = None
     started_at: datetime | None = None
     elapsed_seconds: float
+    moving_seconds: float | None = None
     avg_power_watts: float | None = None
     avg_hr: float | None = None
     avg_speed_mps: float
     effort_vam: float | None = None
+    # true = assisted, false = human, None = not yet classified. Ranking only
+    # uses false; the other values are returned so the UI can label them.
+    assisted: bool | None = None
     is_pr: bool = False
+    # The line (route detection) this effort was measured on.
+    line_id: uuid.UUID | None = None
+    line_km: list[float] | None = None
 
 
 class SegmentDetail(BaseModel):
@@ -99,3 +106,74 @@ class SegmentRecomputeResponse(BaseModel):
 
     route_id: uuid.UUID
     recomputed: int = 0
+
+
+# ── Stable segment groups (the /segments page) ───────────────────────────────
+
+
+class SegmentGroupBest(BaseModel):
+    """The best human-powered attempt on a group, under the comparable rule."""
+
+    seconds: float
+    moving_seconds: float | None = None
+    power_watts: float | None = None
+    vam: float | None = None
+    date: datetime | None = None
+
+
+class SegmentGroupPrediction(BaseModel):
+    seconds: float
+    vam: float | None = None
+    power_watts: float | None = None
+    confidence: float | None = None
+
+
+class SegmentGroupRead(BaseModel):
+    """One physical/defined segment, merged across every route line."""
+
+    id: uuid.UUID
+    kind: str
+    name: str
+    canonical_name: str
+    display_name: str | None = None
+    name_source: str = "route"
+    area: str | None = None
+    region: str | None = None
+    country: str | None = None
+    # Fallback identity when the group has no OSM area yet.
+    route_name: str | None = None
+    distance_m: float
+    gain_m: float
+    avg_gradient_pct: float
+    max_gradient_pct: float
+    steepest_200m_pct: float = 0.0
+    sustained_share: float = 0.0
+    # 49 × [distance_m, elevation_m, gradient_pct]
+    profile: list[list[float]] = []
+    category: str | None = None
+    difficulty: float | None = None
+    attempts: int = 0
+    best: SegmentGroupBest | None = None
+    last_ridden: datetime | None = None
+    route_count: int = 1
+    # Only returned for an unridden group; the UI never shows it beside a PR.
+    prediction: SegmentGroupPrediction | None = None
+
+
+class SegmentGroupDetail(BaseModel):
+    group: SegmentGroupRead
+    segments: list[SegmentRead] = []
+    efforts: list[SegmentEffortRead] = []
+    route_names: list[str] = []
+
+
+class SegmentGroupList(BaseModel):
+    items: list[SegmentGroupRead] = []
+    total: int = 0
+    counts: dict[str, int] = {}
+
+
+class SegmentGroupUpdate(BaseModel):
+    """Empty / null resets to the generated name."""
+
+    display_name: str | None = Field(default=None, max_length=200)
