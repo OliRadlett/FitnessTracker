@@ -3,16 +3,16 @@
 Approximate best-effort power (W/kg) by percentile and duration, based on
 Andrew Coggan's cycling power profile chart.
 
-F6 scope: values are population norms for TRAINED MALE riders — not
-age/sex-adjusted. Show this scope wherever the norms are displayed
-(``POWER_PROFILE_SCOPE``); a female or junior rider judged against these
-bands without the label will read artificially low.
+F6 scope: the table's median is recreational-to-trained male, not an elite
+trained cohort, and it is not age/sex-adjusted. Show this scope wherever the
+norms are displayed (``POWER_PROFILE_SCOPE``); a female or junior rider judged
+against these bands without the label will read artificially low.
 """
 
 import math
 
 # F6 scope label for these bands (shown wherever the norms are displayed).
-POWER_PROFILE_SCOPE = "trained-male-rider norms (Coggan power profile; not age/sex-adjusted)"
+POWER_PROFILE_SCOPE = "recreational-to-trained male-rider norms (Coggan-style power profile; not age/sex-adjusted)"
 
 # duration_seconds -> {percentile: wkg}
 POWER_PROFILE_WKG: dict[int, dict[int, float]] = {
@@ -35,7 +35,8 @@ def percentile_wkg_at(duration_seconds: int, percentile: int) -> float:
     ln(duration)), mirroring ``_maximal_power_at`` in
     ``app/integrations/power_models.py``. Power-duration is near-linear in
     log(t), so straight linear interpolation in seconds biases mid-bucket
-    reads. Scope: trained-male-rider norms (see ``POWER_PROFILE_SCOPE``).
+    reads. Scope: recreational-to-trained male-rider norms (see
+    ``POWER_PROFILE_SCOPE``).
     """
     table = POWER_PROFILE_WKG
     durations = PROFILE_DURATIONS
