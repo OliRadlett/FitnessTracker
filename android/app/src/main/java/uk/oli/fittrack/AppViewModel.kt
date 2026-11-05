@@ -87,8 +87,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var syncing = false
 
     /**
-     * Pull lifting history so the log and "last time" start from real data
-     * instead of an empty phone.
+     * Sync in both directions: push sessions that only exist on this phone, then
+     * pull the rest.
      *
      * Fail-open on purpose: sync is an enhancement, and a phone with no signal
      * must still be able to train. Failures surface in You, not as a blocker.
@@ -99,10 +99,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         syncing = true
         viewModelScope.launch {
             try {
+                pushPending(token)
                 val remote = liftingApi.sessions(token)
                 if (remote.isNotEmpty()) {
-                    // Server and phone ids differ for the same workout until push
-                    // exists, so dedupe on id and accept both.
                     val merged = HistoryEngine
                         .newestFirst((_history.value + remote).distinctBy { it.id })
                         .take(HistoryStore.MAX)
@@ -116,6 +115,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } finally {
                 syncing = false
             }
+        }
+    }
+
+    /**
+     * Upload every session the server has not seen. `live_key` makes this safe to
+     * repeat: a retry after a lost response finds the existing row rather than
+     * creating a second copy, and the id is rewritten to the server's.
+     */
+    private suspend fun pushPending(token: String) {
+        for (pending in _history.value.filterNot { it.synced }) {
+            val serverId = try {
+                liftingApi.createSession(token, pending)
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not save the session."
+                return
+            }
+            val updated = HistoryEngine
+                .newestFirst(
+                    _history.value.map {
+                        if (it.id == pending.id) it.copy(id = serverId, synced = true) else it
+                    }.distinctBy { it.id }
+                )
+                .take(HistoryStore.MAX)
+            _history.value = updated
+            historyStore.save(updated)
         }
     }
 
@@ -214,6 +238,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun finishSession() {
         val current = _session.value
+        var justFinished = false
         if (current != null && current.sets.isNotEmpty()) {
             val entry = FinishedSession(
                 id = current.id,
@@ -225,10 +250,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val updated = HistoryEngine.newestFirst(_history.value + entry).take(HistoryStore.MAX)
             _history.value = updated
             historyStore.save(updated)
+            justFinished = true
         }
         restJob?.cancel()
         _restUntil.value = null
         _session.value = null
         store.clear()
+
+        // Upload in the background: finishing must not wait on the network, and
+        // an offline session simply stays pending until the next sync.
+        val token = _auth.value.token
+        if (justFinished && token != null) {
+            viewModelScope.launch {
+                try {
+                    pushPending(token)
+                    _syncError.value = null
+                    _syncedAt.value = System.currentTimeMillis()
+                } catch (e: Exception) {
+                    _syncError.value = e.message ?: "Could not save the session."
+                }
+            }
+        }
     }
 }
