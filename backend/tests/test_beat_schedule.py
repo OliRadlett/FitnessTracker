@@ -15,6 +15,7 @@ ORPHAN_TASK = "app.tasks.scheduler.quarantine_orphaned_routes_weekly"
 ON_DEMAND = {
     "app.tasks.scheduler.process_lift_video",  # dispatched per upload
     "app.tasks.scheduler.push_wahoo_zones_for_user",  # triggered by FTP writes
+    "app.tasks.scheduler.recompute_user_route_similarity",  # POST /routes/duplicates/refresh
 }
 
 

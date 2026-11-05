@@ -37,7 +37,7 @@ import {
   deriveStaleProviders,
 } from '@/lib/athlete';
 import { ProfileEditor } from '@/components/cycling/ProfileEditor';
-import { WahooZonesCard } from '@/components/cycling/WahooZonesCard';
+import { WahooZonesCard } from '@/components/settings/WahooZonesCard';
 import { TrainingLoadSection } from '@/components/cycling/TrainingLoadSection';
 import { NextSessionCardAuto } from '@/components/training/NextSessionCard';
 import { ChartBody } from '@/components/charts/Chart';
@@ -47,7 +47,7 @@ import { WeatherAnalysisSection } from '@/components/cycling/WeatherAnalysisSect
 import { Vo2maxSection } from '@/components/cycling/Vo2maxSection';
 import { DecouplingSection } from '@/components/cycling/DecouplingSection';
 import { FtpSection } from '@/components/cycling/FtpSection';
-import { WeightPanel } from '@/components/cycling/WeightPanel';
+import { WeightPanel } from '@/components/athlete/WeightPanel';
 import { usePageTitle } from '@/lib/usePageTitle';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { PageHeader } from '@/components/ui/PageHeader';
