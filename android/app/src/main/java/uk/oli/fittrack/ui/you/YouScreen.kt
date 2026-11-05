@@ -25,6 +25,14 @@ import uk.oli.fittrack.ui.NavKind
 import uk.oli.fittrack.ui.PrimaryButton
 import uk.oli.fittrack.ui.SecondaryButton
 import uk.oli.fittrack.ui.theme.Tokens
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private fun clock(at: Long): String =
+    Instant.ofEpochMilli(at)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("HH:mm"))
 
 /**
  * Account and settings. Sign-in lives here rather than in front of the app:
@@ -33,6 +41,8 @@ import uk.oli.fittrack.ui.theme.Tokens
 @Composable
 fun YouScreen(
     auth: AuthUiState,
+    syncedAt: Long? = null,
+    syncError: String? = null,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -89,6 +99,18 @@ fun YouScreen(
                 auth.error?.let {
                     Spacer(Modifier.height(10.dp))
                     Text(it, fontSize = 13.sp, color = Tokens.Muted)
+                }
+                if (auth.signedIn) {
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        when {
+                            syncError != null -> "History sync failed: $syncError"
+                            syncedAt != null -> "History synced at ${clock(syncedAt)}"
+                            else -> "Syncing history…"
+                        },
+                        fontSize = 12.sp,
+                        color = Tokens.Muted
+                    )
                 }
             }
 

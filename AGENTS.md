@@ -82,8 +82,14 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   ([`services/google_id.py`](backend/app/services/google_id.py)). Setup and the
   failure table live in [`docs/ANDROID-AUTH.md`](docs/ANDROID-AUTH.md). Sign-in is
   **not** a gate: the gym flow works before you authenticate.
-- **Not built yet**: sync, and the Train/Ride/Body tabs — those render an explicit
-  "not built yet" screen rather than an empty shell.
+- **History sync (pull only)**: `GET /lifting/sessions` once a token exists,
+  mapped in [`net/LiftingApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/LiftingApi.kt)
+  from a captured live payload and merged into the local log. Warm-up sets are
+  dropped so prefill never comes from an empty bar. Fail-open: no signal means no
+  sync, never a blocked workout.
+- **Not built yet**: push (phone → server; ids differ until it exists), the real
+  training plan (still `SeedPlan`), and the Train/Ride/Body tabs — those render an
+  explicit "not built yet" screen rather than an empty shell.
 
 ## Architecture
 
