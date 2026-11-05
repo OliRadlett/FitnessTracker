@@ -136,6 +136,11 @@ class StravaClient:
                 "altitude",
                 "velocity_smooth",
                 "distance",
+                # Full sample-level GPS. The summary polyline is too coarse to
+                # match a 1 km climb on a 100 km ride (the experiment recovered
+                # only 9/38 known efforts from it), so future rides must carry
+                # the trace itself. Existing rides need a backfill.
+                "latlng",
             ]
 
         keys = ",".join(stream_types)

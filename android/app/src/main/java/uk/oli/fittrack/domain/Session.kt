@@ -57,13 +57,19 @@ object SessionEngine {
         doneFor(state, exercise.name) + 1
 
     /**
-     * What the fields should say before the next set: the set you just did for
-     * this exercise, else the plan. RPE falls back to the plan's target effort.
+     * What the fields should say before the next set, in order of truth:
+     * the set you just did for this exercise, then the same exercise last
+     * session, then the plan.
      */
-    fun prefill(state: SessionState, exercise: PlanExercise): Prefill {
-        val last = state.sets.lastOrNull { it.exercise == exercise.name }
-        return if (last != null) {
-            Prefill(last.weightKg, last.reps, last.rpe)
+    fun prefill(
+        state: SessionState,
+        exercise: PlanExercise,
+        history: List<FinishedSession> = emptyList()
+    ): Prefill {
+        val thisSession = state.sets.lastOrNull { it.exercise == exercise.name }
+        val previous = thisSession ?: HistoryEngine.lastSetFor(history, exercise.name)
+        return if (previous != null) {
+            Prefill(previous.weightKg, previous.reps, previous.rpe)
         } else {
             Prefill(exercise.weightKg, exercise.reps, DEFAULT_RPE)
         }

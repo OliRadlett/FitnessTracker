@@ -58,6 +58,21 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-4-second-set")
         compose.onNodeWithText("92.5 × 4").assertExists()
+
+        // Finishing early is allowed: the plan is a target, not a cage.
+        compose.onNodeWithText("Finish").performClick()
+        compose.waitForIdle()
+        save("app-5-done")
+        // Behaviour, not machine state: the summary is what must render here.
+        compose.onNodeWithText("Session done.").assertExists()
+
+        // Committing the summary turns it into history and returns to Today.
+        compose.onNodeWithText("Done").performClick()
+        compose.waitForIdle()
+        save("app-6-today-after")
+
+        compose.onNodeWithText("LAST 7 DAYS").assertExists()
+        compose.onNodeWithText("Last time").assertExists()
     }
 
     private fun save(name: String) {
