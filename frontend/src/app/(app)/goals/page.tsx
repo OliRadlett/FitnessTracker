@@ -31,6 +31,7 @@ export default function GoalsPage() {
   const [tab, setTab] = useState<StatusTab>('active');
   const [showCreate, setShowCreate] = useState(false);
   const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [focusGoalId, setFocusGoalId] = useState<string | null>(null);
 
   const statusFilter = tab === 'all' ? undefined : tab;
 
@@ -52,6 +53,26 @@ export default function GoalsPage() {
     const fresh = goals.find((g) => g.id === selectedGoal.id);
     if (fresh && fresh !== selectedGoal) setSelectedGoal(fresh);
   }, [goals, selectedGoal]);
+
+  // `?goal=<id>` opens that goal's detail. Read once on mount (the deep-link
+  // hook's getParam changes identity when setParam writes the URL), and switch
+  // to All so a non-active goal is in the fetched list.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('goal');
+    if (id) {
+      setFocusGoalId(id);
+      setTab('all');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!focusGoalId || !goals) return;
+    const goal = goals.find((g) => g.id === focusGoalId);
+    if (goal) {
+      setSelectedGoal(goal);
+      setFocusGoalId(null);
+    }
+  }, [focusGoalId, goals]);
 
   const sortedGoals = useMemo(() => {
     if (!goals) return [];

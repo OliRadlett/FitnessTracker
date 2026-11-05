@@ -38,7 +38,7 @@ function PlanBadge({ plan }: { plan: ActivityPlanDayLink }) {
 function AiAnalysisBadge({ analysis, activityId }: { analysis: ActivityAiAnalysisLink; activityId?: string }) {
   return (
     <Link
-      href={activityId ? `/activities?activity=${activityId}` : '#'}
+      href={activityId ? `/activity/${activityId}` : '#'}
       className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-500/20 text-purple-400 border border-purple-500/30 hover:bg-purple-500/30 transition-colors"
       title={analysis.summary ?? 'AI analysis available'}
       onClick={(e) => e.stopPropagation()}

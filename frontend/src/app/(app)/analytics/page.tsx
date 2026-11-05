@@ -327,7 +327,7 @@ function AnalyticsPageInner() {
   // the LoadStrip slots elsewhere (display only, no recompute).
   const { data: connections } = useQuery<Connection[]>({
     queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections'),
     staleTime: 300_000,
     enabled: !!token,
   });

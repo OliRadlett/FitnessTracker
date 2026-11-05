@@ -102,7 +102,7 @@ export function OnboardingWizard() {
   // Load connections for the connections step.
   useEffect(() => {
     if (!token || !open || step !== 'connections') return;
-    authFetch<Connection[]>('/api/v1/connections/')
+    authFetch<Connection[]>('/api/v1/connections')
       .then(setConnections)
       .catch(() => setConnections([]))
       .finally(() => setConnLoaded(true));

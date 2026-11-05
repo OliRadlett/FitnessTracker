@@ -5,15 +5,21 @@ import { CircleCheck, Info, TriangleAlert, X } from 'lucide-react';
 
 export type ToastTone = 'success' | 'error' | 'info';
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastItem {
   id: number;
   tone: ToastTone;
   message: string;
+  action?: ToastAction;
 }
 
 interface ToastContextValue {
-  toast: (message: string, tone?: ToastTone) => void;
-  success: (message: string) => void;
+  toast: (message: string, tone?: ToastTone, action?: ToastAction) => void;
+  success: (message: string, action?: ToastAction) => void;
   error: (message: string) => void;
 }
 
@@ -50,6 +56,18 @@ function ToastCard({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
     >
       {style.icon}
       <p className="flex-1 text-sm text-foreground min-w-0">{item.message}</p>
+      {item.action && (
+        <button
+          type="button"
+          onClick={() => {
+            item.action?.onClick();
+            onDismiss();
+          }}
+          className="shrink-0 inline-flex min-h-[44px] items-center px-2 text-sm font-medium text-accent hover:text-accent-hover transition-colors"
+        >
+          {item.action.label}
+        </button>
+      )}
       <button
         type="button"
         onClick={onDismiss}
@@ -70,10 +88,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const idRef = useRef(0);
 
-  const push = useCallback((message: string, tone: ToastTone = 'info') => {
+  const push = useCallback((message: string, tone: ToastTone = 'info', action?: ToastAction) => {
     const id = ++idRef.current;
-    setToasts((prev) => [...prev.slice(-3), { id, tone, message }]);
-    if (tone !== 'error') {
+    setToasts((prev) => [...prev.slice(-3), { id, tone, message, action }]);
+    // An actionable toast waits for the user; a plain success/info auto-dismisses.
+    if (tone !== 'error' && !action) {
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, 4000);
@@ -86,8 +105,8 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<ToastContextValue>(
     () => ({
-      toast: (message: string, tone: ToastTone = 'info') => push(message, tone),
-      success: (message: string) => push(message, 'success'),
+      toast: (message: string, tone: ToastTone = 'info', action?: ToastAction) => push(message, tone, action),
+      success: (message: string, action?: ToastAction) => push(message, 'success', action),
       error: (message: string) => push(message, 'error'),
     }),
     [push],

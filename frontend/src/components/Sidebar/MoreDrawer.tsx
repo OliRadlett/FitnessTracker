@@ -14,6 +14,7 @@ import {
   Bell,
   BookOpen,
   Settings,
+  Sunrise,
 } from 'lucide-react';
 
 interface MoreDrawerItem {
@@ -22,7 +23,8 @@ interface MoreDrawerItem {
   icon: LucideIcon;
 }
 
-const MORE_ITEMS: MoreDrawerItem[] = [
+export const MORE_ITEMS: MoreDrawerItem[] = [
+  { label: 'Today', href: '/today', icon: Sunrise },
   { label: 'Routes', href: '/routes', icon: Route },
   { label: 'Segments', href: '/segments', icon: TrendingUp },
   { label: 'Videos', href: '/lifting/videos', icon: Video },
