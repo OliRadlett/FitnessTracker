@@ -38,7 +38,12 @@ def compute_training_load(
     Uses exponentially weighted moving averages:
     CTL_t = CTL_{t-1} + (TSS_t - CTL_{t-1}) × (1 - e^(-1/ctl_days))
     ATL_t = ATL_{t-1} + (TSS_t - ATL_{t-1}) × (1 - e^(-1/atl_days))
-    TSB_t = CTL_t - ATL_t
+    TSB_t = CTL_{t-1} - ATL_{t-1}
+
+    TSB is deliberately **lagged one day** (TrainingPeaks): today's form is
+    based on yesterday's fitness/fatigue, so a hard ride today cannot lower
+    today's TSB before it has been recovered from. CTL/ATL still include
+    today's TSS; only TSB reads the previous values.
 
     ``ctl_days``/``atl_days`` default to the canonical 42/7 constants so
     existing callers are unaffected; pass fitted taus (see
@@ -67,9 +72,9 @@ def compute_training_load(
             if (isinstance(raw_tss, (int, float)) and math.isfinite(raw_tss))
             else 0.0
         )
+        tsb = ctl - atl  # previous day's values, before applying today's TSS
         ctl = ctl + (tss - ctl) * ctl_decay
         atl = atl + (tss - atl) * atl_decay
-        tsb = ctl - atl
 
         if current >= start_date:
             result.append(
