@@ -32,6 +32,25 @@ class TestListRoutes:
         assert "x-total-count" in resp.headers
         assert int(resp.headers["x-total-count"]) >= 1
 
+    async def test_list_routes_includes_preview_polyline(self, client, test_route):
+        """List carries a display polyline so cards can draw the route shape."""
+        resp = await client.get("/api/v1/routes/")
+        assert resp.status_code == 200
+        route = next(r for r in resp.json() if r["id"] == str(test_route.id))
+
+        assert route["preview_polyline"]
+        from app.services.polyline_utils import decode_polyline
+
+        assert len(decode_polyline(route["preview_polyline"])) == len(
+            decode_polyline(test_route.encoded_polyline)
+        )
+
+    async def test_detail_keeps_full_polyline(self, client, test_route):
+        """The preview is additive; detail still returns the full polyline."""
+        resp = await client.get(f"/api/v1/routes/{test_route.id}")
+        assert resp.status_code == 200
+        assert resp.json()["encoded_polyline"] == test_route.encoded_polyline
+
     async def test_list_routes_empty(self, client):
         """List returns empty when no routes exist."""
         resp = await client.get("/api/v1/routes/")

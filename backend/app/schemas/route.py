@@ -143,6 +143,10 @@ class RouteSummary(BaseModel):
     ride_count: int = 0
     is_ridden: bool = False
     last_ridden_date: datetime | None = None
+    # Decimated geometry for list/card silhouettes (~90 points). Display only:
+    # never use it for GPX, navigation, or matching — the full polyline lives on
+    # RouteRead. Added for the routes atlas; additive and optional.
+    preview_polyline: str | None = None
     created_at: datetime
     updated_at: datetime
 

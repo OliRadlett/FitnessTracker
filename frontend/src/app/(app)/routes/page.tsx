@@ -1,602 +1,638 @@
 'use client';
 
-import React, { useRef, useEffect, useCallback, useState } from 'react';
-import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Copy,
+  GitCompareArrows,
+  MapPin,
+  MoreHorizontal,
+  RefreshCw,
+  Upload,
+  FolderOpen,
+  Flame,
+  X,
+} from 'lucide-react';
 import { useAuthFetch } from '@/lib/api';
-import { useDeepLink } from '@/lib/useDeepLink';
-import { useRoutesStore } from '@/lib/stores/routesStore';
-import type { RouteSummary, RouteData, RouteFilters } from '@/lib/api/types';
-import { getRoutes, syncRoutes, getRoute } from '@/lib/api/routes';
+import { getHomeAreaHeatmap, getRoute, getRoutes, syncRoutes } from '@/lib/api/routes';
 import { apiUpload } from '@/lib/api/fetch';
-import { Card } from '@/components/ui/Card';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
-import { SkeletonRouteCard } from '@/components/ui/Skeleton';
+import { useDeepLink } from '@/lib/useDeepLink';
+import { usePageTitle } from '@/lib/usePageTitle';
+import { useRoutesStore } from '@/lib/stores/routesStore';
+import type { HomeAreaHeatmapResponse, RouteFilters } from '@/lib/api/types';
+import {
+  EMPTY_FACETS,
+  activeFacetCount,
+  facetsToQuery,
+  findHub,
+  sortRoutes,
+  type Facets,
+  type SortKey,
+} from '@/lib/routeAtlas';
+import { AtlasMap } from '@/components/routes/atlas/AtlasMap';
+import { RouteList } from '@/components/routes/atlas/RouteList';
+import { RouteDetail } from '@/components/routes/atlas/RouteDetail';
+import { FacetBar } from '@/components/routes/atlas/FacetBar';
+import { CompareRoutesModal } from '@/components/routes/CompareRoutesModal';
+import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
+import { Modal } from '@/components/ui/Modal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Modal } from '@/components/ui/Modal';
-import { RoutesMapView } from '@/components/routes/RoutesMapView';
-import { RoutesListView } from '@/components/routes/RoutesListView';
-import { RoutesGridView } from '@/components/routes/RoutesGridView';
-import { RouteDetailPanel } from '@/components/routes/RouteDetailPanel';
-import { MobileRouteDetailSheet } from '@/components/routes/MobileRouteDetailSheet';
-import { RoutesSidebar } from '@/components/routes/RoutesSidebar';
-import { DuplicatesTab } from './_components/DuplicatesTab';
-import { RouteFilterBar } from '@/components/routes/RouteFilterBar';
-import { CompareRoutesModal } from '@/components/routes/CompareRoutesModal';
-import { usePageTitle } from '@/lib/usePageTitle';
-import { MapPin, List, Grid3x3, RefreshCw, Upload, Copy, X, Folder } from 'lucide-react';
-import Link from 'next/link';
+import { SkeletonRouteCard } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
+import { MaintainTab } from './_components/MaintainTab';
+
+const PAGE_LIMIT = 200;
 
 export default function RoutesPage() {
   usePageTitle('Routes');
   const { token } = useAuthFetch();
   const queryClient = useQueryClient();
   const { getParam, setParam } = useDeepLink();
+  const toast = useToast();
 
-   const {
-    viewMode,
-    setViewMode,
-    selectedRouteId,
-    setSelectedRouteId,
-    clearSelection,
+  const {
     selectedTagIds,
     activeCollectionId,
-    filters,
-    setFilters,
-    showImportModal,
-    setShowImportModal,
-    showHeatmap,
-    setShowHeatmap,
+    setSelectedTagIds,
+    setActiveCollectionId,
     compareRouteA,
     compareRouteB,
+    toggleCompare,
     clearCompareRoutes,
   } = useRoutesStore();
 
-  const compareMode = compareRouteA !== null || compareRouteB !== null;
+  const [mode, setMode] = useState<'browse' | 'maintain'>('browse');
+  const [facets, setFacets] = useState<Facets>(EMPTY_FACETS);
+  const [sort, setSort] = useState<SortKey>('nearest');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState(false);
+  const [showCollections, setShowCollections] = useState(false);
+  const [showActions, setShowActions] = useState(false);
+  const [showImport, setShowImport] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [showOrganize, setShowOrganize] = useState(false);
-  // B-23: first-run discovery tips (dismiss persisted).
-  const [showTips, setShowTips] = useState(() => {
-    try {
-      return localStorage.getItem('fittrack-routes-tips') !== 'done';
-    } catch {
-      return true;
-    }
-  });
-  const dismissTips = () => {
-    try {
-      localStorage.setItem('fittrack-routes-tips', 'done');
-    } catch {
-      /* ignore */
-    }
-    setShowTips(false);
-  };
 
-  // Phase 2 (ui-redesign-v2 §1.2 + §5-Phase 2): Library / Duplicates tabs via
-  // ?tab= URL state (lifting's ?tab= pattern). The Duplicates tab hosts the
-  // full duplicate-review queue + orphan review (see _components/DuplicatesTab).
-  const [activeTab, setActiveTab] = useState<'library' | 'duplicates'>('library');
-
-  // Deep-link: read ?tab= on load (?route= handling below is untouched).
+  // Deep links: ?route=, ?mode=, and the legacy ?tab=duplicates (bookmarks).
   useEffect(() => {
     const tab = getParam('tab');
-    if (tab === 'duplicates' || tab === 'library') {
-      setActiveTab(tab);
+    if (tab === 'duplicates') {
+      setMode('maintain');
+      setParam('tab', null);
+      setParam('mode', 'maintain');
     }
-  }, [getParam]);
+    if (getParam('mode') === 'maintain') setMode('maintain');
+    const routeParam = getParam('route');
+    if (routeParam) setSelectedId(routeParam);
+  }, [getParam, setParam]);
 
-  const handleTabChange = useCallback((tab: 'library' | 'duplicates') => {
-    setActiveTab(tab);
-    setParam('tab', tab === 'duplicates' ? 'duplicates' : null);
-  }, [setParam]);
+  const queryFilters: RouteFilters = useMemo(
+    () => ({
+      ...(mode === 'browse' ? facetsToQuery(facets, sort) : { sort_by: 'created_at' }),
+      tag_ids: mode === 'browse' && selectedTagIds.length > 0 ? selectedTagIds : undefined,
+      collection_id: mode === 'browse' ? activeCollectionId || undefined : undefined,
+      limit: PAGE_LIMIT,
+      offset: 0,
+    }),
+    [facets, sort, selectedTagIds, activeCollectionId, mode],
+  );
 
-  // Deep-link: select the route referenced by ?route=<id> on load
-  useEffect(() => {
-    const id = getParam('route');
-    if (id) setSelectedRouteId(id);
-  }, [getParam, setSelectedRouteId]);
-
-  const handleSelectRoute = useCallback((id: string | null) => {
-    setSelectedRouteId(id);
-    setParam('route', id);
-  }, [setParam, setSelectedRouteId]);
-
-  const handleSelectRouteFromList = useCallback((route: RouteSummary) => {
-    handleSelectRoute(route.id);
-  }, [handleSelectRoute]);
-
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return;
-
-      const tag = e.target as HTMLElement;
-      if (tag.tagName === 'INPUT' || tag.tagName === 'TEXTAREA') return;
-
-      switch (e.key) {
-        case '1': setViewMode('map'); break;
-        case '2': setViewMode('list'); break;
-        case '3': setViewMode('grid'); break;
-        case 'f':
-          setFilters({ ...filters, q: '' });
-          setTimeout(() => (document.querySelector('input[placeholder="Search routes..."]') as HTMLInputElement)?.focus(), 100);
-          break;
-        case 'Escape':
-          setSelectedRouteId(null);
-          clearSelection();
-          setParam('route', null);
-          break;
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [setViewMode, setFilters, setSelectedRouteId, clearSelection, setParam]);
-
-  // Build query filters from store
-  const queryFilters: RouteFilters = {
-    ...filters,
-    tag_ids: selectedTagIds.length > 0 ? selectedTagIds : undefined,
-    collection_id: activeCollectionId || undefined,
-  };
-
-  // Fetch routes (B-24: paged infinite scroll, 60/page).
-  const PAGE_SIZE = 60;
-  const {
-    data: routesPages,
-    isLoading,
-    isError,
-    refetch,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-  } = useInfiniteQuery<{
-    routes: RouteSummary[];
-    totalCount: number;
-  }>({
-    queryKey: ['routes', queryFilters],
-    queryFn: ({ pageParam = 0 }) =>
-      getRoutes({ ...queryFilters, limit: PAGE_SIZE, offset: pageParam as number }, token),
-    getNextPageParam: (lastPage, pages) => {
-      const loaded = pages.reduce((n, p) => n + p.routes.length, 0);
-      return loaded < lastPage.totalCount ? loaded : undefined;
-    },
-    initialPageParam: 0,
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
+    queryKey: ['routes', 'atlas', queryFilters],
+    queryFn: () => getRoutes(queryFilters, token),
     enabled: !!token,
     staleTime: 60_000,
   });
 
-  const routes = routesPages?.pages.flatMap((p) => p.routes) ?? [];
-  const totalCount = routesPages?.pages[0]?.totalCount ?? 0;
+  const routes = data?.routes ?? [];
+  const total = data?.totalCount ?? 0;
+  const hub = useMemo(() => findHub(routes), [routes]);
+  const visible = useMemo(() => sortRoutes(routes, sort, hub), [routes, sort, hub]);
+  const filtersActive =
+    activeFacetCount(facets) > 0 ||
+    facets.q.trim().length > 0 ||
+    selectedTagIds.length > 0 ||
+    !!activeCollectionId;
 
-  // B-24: auto-load next page when the sentinel scrolls into view.
-  const loadMoreRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const el = loadMoreRef.current;
-    if (!el || !hasNextPage) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) fetchNextPage();
-      },
-      { rootMargin: '400px' },
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [fetchNextPage, hasNextPage, routes.length]);
-
-  // Fetch selected route detail
-  const { data: selectedRoute } = useQuery<RouteData>({
-    queryKey: ['route', selectedRouteId],
-    queryFn: () => getRoute(selectedRouteId!, token),
-    enabled: !!selectedRouteId,
+  const { data: selectedRoute, isLoading: detailLoading } = useQuery({
+    queryKey: ['route', selectedId],
+    queryFn: () => getRoute(selectedId!, token),
+    enabled: !!selectedId && !!token,
     staleTime: 300_000,
   });
 
-  // Fetch compare route data
-  const { data: compareRouteAData } = useQuery<RouteData>({
+  const { data: compareA } = useQuery({
     queryKey: ['route', compareRouteA],
     queryFn: () => getRoute(compareRouteA!, token),
     enabled: !!compareRouteA,
     staleTime: 300_000,
   });
-
-  const { data: compareRouteBData } = useQuery<RouteData>({
+  const { data: compareB } = useQuery({
     queryKey: ['route', compareRouteB],
     queryFn: () => getRoute(compareRouteB!, token),
     enabled: !!compareRouteB,
     staleTime: 300_000,
   });
 
-  // Sync mutation
-  const syncMutation = useMutation({
-    mutationFn: () => syncRoutes(token),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['routes'] });
-    },
+  const { data: heatmap } = useQuery<HomeAreaHeatmapResponse>({
+    queryKey: ['home-area-heatmap'],
+    queryFn: () => getHomeAreaHeatmap(token),
+    enabled: !!token && showHeatmap,
+    staleTime: 300_000,
+    retry: false,
   });
 
-  // Upload handlers
-  async function handleUploadGpx(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const syncMutation = useMutation({
+    mutationFn: () => syncRoutes(token),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+      const synced = result.reduce((sum, r) => sum + r.synced_count, 0);
+      const merged = result.reduce((sum, r) => sum + r.merged_count, 0);
+      toast.success(`Synced ${synced} routes (${merged} merged)`);
+    },
+    onError: () => toast.error('Route sync failed — check your connection and try again.'),
+  });
 
+  const select = useCallback(
+    (id: string | null) => {
+      setSelectedId(id);
+      setParam('route', id);
+    },
+    [setParam],
+  );
+
+  const changeMode = useCallback(
+    (next: 'browse' | 'maintain') => {
+      setMode(next);
+      setParam('mode', next === 'maintain' ? 'maintain' : null);
+      if (next === 'maintain') {
+        setCompareMode(false);
+      }
+    },
+    [setParam],
+  );
+
+  // Keyboard: F focuses search (does not clear it), Escape closes.
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        if (event.key === 'Escape') (target as HTMLInputElement).blur();
+        return;
+      }
+      if (event.key === 'f' || event.key === '/') {
+        event.preventDefault();
+        (document.querySelector('input[aria-label="Search routes"]') as HTMLInputElement)?.focus();
+      }
+      if (event.key === 'Escape') {
+        if (selectedId) select(null);
+        else if (compareMode) {
+          setCompareMode(false);
+          clearCompareRoutes();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedId, select, compareMode, clearCompareRoutes]);
+
+  async function handleUploadGpx(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
     const formData = new FormData();
     formData.append('file', file);
-
     try {
-      await apiUpload<RouteData>('/api/v1/routes/upload-gpx', formData, token);
+      await apiUpload('/api/v1/routes/upload-gpx', formData, token);
       queryClient.invalidateQueries({ queryKey: ['routes'] });
-      setShowImportModal(false);
+      setShowImport(false);
+      toast.success('Route imported');
     } catch (err) {
-      console.error('GPX upload failed:', err);
+      toast.error(`GPX upload failed: ${(err as Error)?.message || 'try again.'}`);
     }
-
     if (fileInputRef.current) fileInputRef.current.value = '';
   }
 
-  // View mode buttons
-  const viewModes = [
-    { value: 'map', label: 'Map', icon: MapPin },
-    { value: 'list', label: 'List', icon: List },
-    { value: 'grid', label: 'Grid', icon: Grid3x3 },
-  ] as const;
-
-  // Active filters count
-  const activeFilterCount = Object.entries(queryFilters).filter(
-    ([k, v]) => k !== 'q' && v !== undefined && v !== '' && v !== null,
-  ).length;
+  const compareIds = [compareRouteA, compareRouteB].filter((id): id is string => !!id);
+  const showCompareModal = compareMode && compareA && compareB;
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] md:h-[calc(100vh-4rem)] h-[calc(100dvh-10rem)] overflow-hidden min-w-0">
-      {/* Sidebar — desktop only; on mobile use the Organize drawer */}
-      <div className="hidden lg:block flex-shrink-0 h-full">
-        <RoutesSidebar
-          onTagClick={() => refetch()}
-          onCollectionClick={() => refetch()}
-        />
-      </div>
-
-      {/* Mobile Organize drawer */}
-      {showOrganize && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-            onClick={() => setShowOrganize(false)}
-            aria-hidden="true"
-          />
-          <div
-            role="dialog"
-            aria-label="Organize routes"
-            className="fixed inset-y-0 left-0 z-50 w-[85vw] max-w-[320px] bg-background border-r border-surface-light/50 lg:hidden flex flex-col"
-          >
-            <div className="flex items-center justify-between p-4 border-b border-surface-light/50">
-              <h2 className="text-base font-semibold text-foreground">Organize</h2>
-              <button
-                onClick={() => setShowOrganize(false)}
-                aria-label="Close organize panel"
-                className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-muted hover:text-foreground hover:bg-surface-light/50"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              <RoutesSidebar
-                onTagClick={() => { refetch(); setShowOrganize(false); }}
-                onCollectionClick={() => { refetch(); setShowOrganize(false); }}
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="flex-shrink-0 p-4 border-b border-surface-light/30">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-3">
-                <h1 className="text-2xl font-bold text-foreground">Saved Routes</h1>
-                {routes && totalCount > 0 && (
-                  <span className="inline-flex items-center px-3 py-1 text-sm font-semibold bg-accent/20 text-accent rounded-full">
-                    {totalCount} {totalCount === 1 ? 'route' : 'routes'}
-                  </span>
-                )}
-              </div>
-              <p className="text-muted mt-1">
-                Browse, organize, and plan rides from your synced routes.
-                <span className="mx-2 hidden sm:inline">•</span>
-                <span className="text-xs text-muted hidden sm:inline">
-                  Press 1/2/3 for Map/List/Grid · F to search · Esc to deselect
-                </span>
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Mobile Organize button */}
-              <button
-                onClick={() => setShowOrganize(true)}
-                aria-label="Open organize panel"
-                className="lg:hidden min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
-              >
-                <Folder className="w-4 h-4" />
-                Organize
-              </button>
-              {/* View mode toggle */}
-              <SegmentedControl
-                ariaLabel="Route view mode"
-                value={viewMode}
-                onChange={setViewMode}
-                options={[...viewModes]}
-              />
-
-              <button
-                onClick={() => setShowImportModal(true)}
-                aria-label="Upload GPX file"
-                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
-              >
-                <Upload className="w-4 h-4" />
-                Upload GPX
-              </button>
-
-              <Link
-                href="/routes?tab=duplicates"
-                onClick={() => handleTabChange('duplicates')}
-                aria-current={activeTab === 'duplicates' ? 'page' : undefined}
-                className="min-h-[44px] px-3 py-2 text-sm font-medium bg-surface-light hover:bg-surface-light/80 text-foreground rounded-lg transition-colors flex items-center gap-1"
-              >
-                <Copy className="w-4 h-4" />
-                Duplicates
-              </Link>
-
-               <button
-                 onClick={() => syncMutation.mutate()}
-                 disabled={syncMutation.isPending}
-                 aria-label="Sync routes from providers"
-                 className="min-h-[44px] px-3 py-2 text-sm font-medium bg-accent hover:bg-accent/80 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1"
-               >
-                 <RefreshCw className={`w-4 h-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                 {syncMutation.isPending ? 'Syncing...' : 'Sync'}
-               </button>
-
-                {viewMode === 'map' && (
-                  <button
-                    onClick={() => setShowHeatmap(!showHeatmap)}
-                    aria-label="Toggle heatmap"
-                    className={`min-h-[44px] px-3 py-2 text-sm font-medium rounded-lg transition-colors flex items-center gap-1 ${
-                      showHeatmap
-                        ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                        : 'bg-surface-light hover:bg-surface-light/80 text-foreground'
-                    }`}
-                  >
-                    <MapPin className="w-4 h-4" />
-                    {showHeatmap ? 'Hide Heatmap' : 'Heatmap'}
-                  </button>
-                )}
-
-                {compareMode && (
-                  <button
-                    onClick={() => clearCompareRoutes()}
-                    aria-label="Exit compare mode"
-                    className="min-h-[44px] px-3 py-2 text-sm font-medium bg-accent/20 hover:bg-accent/30 text-accent rounded-lg transition-colors flex items-center gap-1"
-                  >
-                    <X className="w-4 h-4" />
-                    Exit Compare
-                  </button>
-                )}
-              </div>
-          </div>
+    <div className="flex h-[calc(100dvh-17.5rem)] flex-col gap-2 md:h-[calc(100dvh-8rem)] md:gap-3">
+      <header className="flex shrink-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <h1 className="text-xl font-bold text-foreground md:text-2xl">Routes</h1>
+          <span className="rounded-full bg-surface-light/70 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-muted">
+            {total}
+          </span>
         </div>
 
-        {/* Phase 2: Library / Duplicates tabs (?tab= URL state, lifting pattern) */}
-        <div className="flex-shrink-0 px-4 pt-3">
-          <SegmentedControl
-            ariaLabel="Routes section"
-            value={activeTab}
-            onChange={handleTabChange}
-            options={[
-              { value: 'library', label: 'Library' },
-              { value: 'duplicates', label: 'Duplicates' },
-            ]}
-          />
-        </div>
-
-        {activeTab === 'library' && (
-        <>
-        {/* Filter bar */}
-        <div className="flex-shrink-0 px-4 py-3 border-b border-surface-light/30">
-          <RouteFilterBar />
-        </div>
-
-        {/* B-23 discovery tips (first run) */}
-        {showTips && (
-          <div className="flex-shrink-0 px-4 py-2 border-b border-surface-light/30">
-            <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-accent/10 border border-accent/20 text-xs text-muted">
-              <span>
-                💡 Tag routes to group them, build <strong className="text-foreground">collections</strong> (smart ones auto-fill), and tick two routes to <strong className="text-foreground">compare</strong> them.
-              </span>
-              <button
-                onClick={dismissTips}
-                className="shrink-0 text-muted hover:text-foreground"
-                aria-label="Dismiss routes tips"
-              >
-                ✕
-              </button>
-            </div>
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1 rounded-lg border border-surface-light/70 bg-surface p-0.5">
+            <button
+              type="button"
+              onClick={() => changeMode('browse')}
+              aria-pressed={mode === 'browse'}
+              className={`h-8 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                mode === 'browse' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
+              }`}
+            >
+              Browse
+            </button>
+            <button
+              type="button"
+              onClick={() => changeMode('maintain')}
+              aria-pressed={mode === 'maintain'}
+              className={`h-8 rounded-md px-2.5 text-xs font-medium transition-colors ${
+                mode === 'maintain' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
+              }`}
+            >
+              Maintain
+            </button>
           </div>
-        )}
 
-        {/* Sync status banner */}
-        {syncMutation.isSuccess && syncMutation.data && (
-          <div className="flex-shrink-0 px-4 py-2.5 border-b border-surface-light/30">
-            <div className="flex items-center justify-between px-4 py-2.5 rounded-lg border bg-positive/10 border-positive/20 text-positive">
-              <span className="text-sm">
-                ✅ Synced {syncMutation.data.reduce((sum, r) => sum + r.synced_count, 0)} routes
-                ({syncMutation.data.reduce((sum, r) => sum + r.merged_count, 0)} merged duplicates)
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Error banner */}
-        {syncMutation.isError && (
-          <div className="flex-shrink-0 px-4 py-2.5 border-b border-surface-light/30">
-            <ErrorState
-              variant="inline"
-              show
-              message="Route sync failed — check your connection and try again."
-              onRetry={() => syncMutation.mutate()}
+          {/* Desktop actions */}
+          <div className="hidden items-center gap-1 md:flex">
+            <HeaderButton
+              icon={<GitCompareArrows className="h-4 w-4" />}
+              label={compareMode ? 'Exit compare' : 'Compare'}
+              active={compareMode}
+              onClick={() => {
+                setCompareMode((value) => !value);
+                clearCompareRoutes();
+              }}
             />
+            <HeaderButton
+              icon={<FolderOpen className="h-4 w-4" />}
+              label="Collections"
+              onClick={() => setShowCollections(true)}
+            />
+            <HeaderButton
+              icon={<Flame className="h-4 w-4" />}
+              label={showHeatmap ? 'Hide heatmap' : 'Heatmap'}
+              active={showHeatmap}
+              onClick={() => setShowHeatmap((value) => !value)}
+            />
+            <HeaderButton
+              icon={<Upload className="h-4 w-4" />}
+              label="GPX"
+              onClick={() => setShowImport(true)}
+            />
+            <button
+              type="button"
+              onClick={() => syncMutation.mutate()}
+              disabled={syncMutation.isPending}
+              className="flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent/80 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
+              {syncMutation.isPending ? 'Syncing' : 'Sync'}
+            </button>
           </div>
-        )}
 
-        {/* Main content area */}
-        <div className="flex-1 overflow-hidden flex">
-          {/* Routes view (map, list, or grid) */}
-          <div className="flex-1 overflow-auto">
-            {isLoading ? (
-              <div className="p-4 space-y-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <SkeletonRouteCard key={i} />
+          {/* Mobile: one menu */}
+          <button
+            type="button"
+            onClick={() => setShowActions(true)}
+            aria-label="Route actions"
+            className="flex h-10 w-10 items-center justify-center rounded-lg border border-surface-light/70 bg-surface text-muted md:hidden"
+          >
+            <MoreHorizontal className="h-5 w-5" />
+          </button>
+        </div>
+      </header>
+
+      {mode === 'maintain' ? (
+        <MaintainTab
+          routes={routes}
+          total={total}
+          onOpenRoute={(id) => {
+            changeMode('browse');
+            select(id);
+          }}
+          onOpenCollections={() => setShowCollections(true)}
+        />
+      ) : (
+        <>
+          <FacetBar
+            facets={facets}
+            setFacets={setFacets}
+            sort={sort}
+            setSort={setSort}
+            sports={Array.from(new Set(routes.map((r) => r.sport_type))).sort()}
+            resultCount={visible.length}
+          />
+
+          {isLoading ? (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 md:grid md:grid-cols-[minmax(0,1fr)_400px]">
+              <div className="min-h-[200px] flex-[3] animate-pulse rounded-xl bg-surface/60 md:min-h-0 md:flex-none" />
+              <div className="min-h-0 flex-[2] space-y-2 overflow-hidden rounded-xl bg-surface/60 p-3 md:flex-none">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <SkeletonRouteCard key={index} />
                 ))}
               </div>
-            ) : routes.length > 0 ? (
-              <>
-                 {viewMode === 'map' && (
-                   <div className="p-4">
-                     <Card>
-                        <RoutesMapView
-                          routes={routes}
-                          onSelectRoute={handleSelectRoute}
-                          showHeatmap={showHeatmap}
-                          compareMode={compareMode}
-                        />
-                     </Card>
-                   </div>
-                )}
-
-                {viewMode === 'list' && (
-                  <div className="p-4">
-                      <RoutesListView
-                        routes={routes}
-                        onSelect={handleSelectRouteFromList}
-                      />
-                  </div>
-                )}
-
-                {viewMode === 'grid' && (
-                  <div className="p-4">
-                      <RoutesGridView
-                        routes={routes}
-                        onSelect={handleSelectRouteFromList}
-                      />
-                  </div>
-                )}
-                {/* B-24 infinite-scroll sentinel (list + grid views) */}
-                {(viewMode === 'list' || viewMode === 'grid') && hasNextPage && (
-                  <div className="p-4 pt-0" ref={loadMoreRef}>
-                    <button
-                      onClick={() => fetchNextPage()}
-                      disabled={isFetchingNextPage}
-                      className="w-full py-2 text-sm text-muted hover:text-foreground border border-surface-light/50 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {isFetchingNextPage
-                        ? 'Loading…'
-                        : `Show more (${routes.length} of ${totalCount})`}
-                    </button>
-                  </div>
-                )}
-              </>
-            ) : isError ? (
-              <div className="p-8">
-                <ErrorState
-                  title="Couldn't load routes"
-                  message="Check your connection and try again."
-                  onRetry={() => refetch()}
+            </div>
+          ) : isError ? (
+            <div className="flex flex-1 items-center justify-center rounded-xl border border-surface-light/60 bg-surface/60">
+              <ErrorState
+                title="Couldn't load routes"
+                message="Your library is unchanged. Check your connection and try again."
+                onRetry={() => refetch()}
+              />
+            </div>
+          ) : total === 0 && !filtersActive ? (
+            <div className="flex flex-1 items-center justify-center">
+              <EmptyState
+                icon={<MapPin className="w-8 h-8 text-muted" />}
+                title="No routes yet"
+                description="Connect Strava, Komoot or Wahoo and sync, or upload a GPX file."
+                action={{ label: 'Go to Settings', href: '/settings' }}
+              />
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col gap-3 md:grid md:grid-cols-[minmax(0,1fr)_400px]">
+              <div className="relative min-h-[200px] flex-[3] md:min-h-0 md:flex-none">
+                <AtlasMap
+                  routes={visible}
+                  hub={hub}
+                  selectedId={selectedId}
+                  hoveredId={hoveredId}
+                  compareIds={compareIds}
+                  compareMode={compareMode}
+                  heatmapPoints={showHeatmap ? heatmap?.points : undefined}
+                  onSelect={compareMode ? () => undefined : select}
+                  onHover={setHoveredId}
+                  onCompare={toggleCompare}
                 />
               </div>
-            ) : (
-              <div className="p-8">
-                <EmptyState
-                  icon={<MapPin className="w-8 h-8 text-muted" />}
-                  title="No routes found"
-                  description={
-                    activeFilterCount > 0
-                      ? 'Try clearing your filters to see all routes.'
-                      : 'Connect a provider (Strava, Komoot, or Wahoo) and sync to import routes. You can also upload a GPX file.'
-                  }
-                  action={{ label: 'Go to Settings', href: '/settings' }}
-                />
+
+              <div className="relative min-h-0 flex-[2] overflow-hidden rounded-xl border border-surface-light/60 bg-surface/70 md:flex-none">
+                {selectedId ? (
+                  detailLoading || !selectedRoute ? (
+                    <div className="space-y-2 p-3">
+                      {Array.from({ length: 4 }).map((_, index) => (
+                        <SkeletonRouteCard key={index} />
+                      ))}
+                    </div>
+                  ) : (
+                    <RouteDetail
+                      route={selectedRoute}
+                      summary={visible.find((r) => r.id === selectedId) ?? null}
+                      onClose={() => select(null)}
+                    />
+                  )
+                ) : (
+                  <RouteList
+                    routes={visible}
+                    total={total}
+                    selectedId={selectedId}
+                    compareIds={compareIds}
+                    compareMode={compareMode}
+                    filtersActive={filtersActive}
+                    onSelect={select}
+                    onHover={setHoveredId}
+                    onCompare={toggleCompare}
+                  />
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Route detail panel — desktop slide-over */}
-          <div className="flex-shrink-0 hidden lg:block">
-            <RouteDetailPanel
-              route={selectedRoute ?? null}
-              onClose={() => handleSelectRoute(null)}
-            />
-          </div>
-        </div>
-        </>
-        )}
-
-        {activeTab === 'duplicates' && (
-          <div className="flex-1 overflow-auto">
-            <DuplicatesTab />
-          </div>
-        )}
-      </div>
-
-      {/* Route detail panel — mobile bottom sheet (library tab only) */}
-      {activeTab === 'library' && (
-      <MobileRouteDetailSheet
-        route={selectedRoute ?? null}
-        onClose={() => handleSelectRoute(null)}
-      />
-      )}
-
-      {/* GPX Upload Modal */}
-      {showImportModal && (
-        <Modal open onClose={() => setShowImportModal(false)} aria-label="Upload GPX File">
-          <div className="p-2">
-            <p className="text-sm text-muted mb-4">
-              Upload a GPX file to create a new route.
+          {total > PAGE_LIMIT && (
+            <p className="shrink-0 text-[11px] text-muted">
+              Showing the newest {PAGE_LIMIT} of {total} routes — narrow a filter to reach the rest.
             </p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".gpx"
-              onChange={handleUploadGpx}
-              className="w-full text-sm text-muted file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-accent file:text-white hover:file:bg-accent/80"
-            />
-          </div>
-        </Modal>
+          )}
+
+          {isFetching && !isLoading && (
+            <p className="sr-only" role="status">
+              Updating routes
+            </p>
+          )}
+        </>
       )}
 
-      {/* Compare Routes Modal — only once both routes have loaded (library tab only) */}
-      {activeTab === 'library' && compareMode && compareRouteAData && compareRouteBData && (
-        <CompareRoutesModal
-          routeA={compareRouteAData}
-          routeB={compareRouteBData}
-          onClose={() => clearCompareRoutes()}
-        />
-      )}
-
-      {/* One-route hint: guide the user to pick a second route (library tab only) */}
-      {activeTab === 'library' && compareMode && !(compareRouteAData && compareRouteBData) && (
+      {/* Compare: pick two rows, then the existing overlaid-elevation modal. */}
+      {compareMode && compareIds.length === 1 && (
         <div
-          className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 bg-surface border border-accent/30 rounded-xl px-4 py-3 shadow-2xl"
+          className="fixed bottom-20 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-accent/30 bg-surface px-4 py-3 shadow-2xl md:bottom-6"
           role="status"
         >
-          <p className="text-sm text-foreground whitespace-nowrap">Select a second route to compare</p>
+          <p className="whitespace-nowrap text-sm text-foreground">Select a second route to compare</p>
           <button
-            onClick={() => clearCompareRoutes()}
-            className="min-h-[44px] px-3 text-sm font-medium text-accent hover:text-foreground rounded-lg transition-colors"
+            type="button"
+            onClick={() => {
+              setCompareMode(false);
+              clearCompareRoutes();
+            }}
+            className="min-h-[44px] px-3 text-sm font-medium text-accent hover:text-foreground"
           >
-            Exit Compare
+            Exit compare
           </button>
         </div>
       )}
+
+      {showCompareModal && compareA && compareB && (
+        <CompareRoutesModal
+          routeA={compareA}
+          routeB={compareB}
+          onClose={() => {
+            clearCompareRoutes();
+            setCompareMode(false);
+          }}
+        />
+      )}
+
+      {/* Collections drawer (tags + smart collections live in the sidebar). */}
+      {showCollections && (
+        <div className="fixed inset-0 z-[700] flex">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowCollections(false)}
+            aria-hidden
+          />
+          <div
+            role="dialog"
+            aria-label="Collections and tags"
+            className="relative z-10 flex h-full w-[85vw] max-w-[340px] flex-col border-r border-surface-light/50 bg-background"
+          >
+            <div className="flex items-center justify-between border-b border-surface-light/50 p-4">
+              <h2 className="text-base font-semibold text-foreground">Collections</h2>
+              <button
+                type="button"
+                onClick={() => setShowCollections(false)}
+                aria-label="Close collections"
+                className="flex h-9 w-9 items-center justify-center rounded-md text-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <RoutesSidebar
+                onTagClick={() => {
+                  // Keep the drawer open: tags are multi-select.
+                  refetch();
+                }}
+                onCollectionClick={() => {
+                  setShowCollections(false);
+                  refetch();
+                }}
+              />
+            </div>
+            {(selectedTagIds.length > 0 || activeCollectionId) && (
+              <div className="border-t border-surface-light/50 p-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedTagIds([]);
+                    setActiveCollectionId(null);
+                    setShowCollections(false);
+                  }}
+                  className="h-10 w-full rounded-lg border border-surface-light/70 text-xs font-medium text-muted hover:text-foreground"
+                >
+                  Clear tag / collection filter
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Mobile action sheet */}
+      <Modal
+        open={showActions}
+        onClose={() => setShowActions(false)}
+        size="sm"
+        aria-label="Route actions"
+      >
+        <div className="p-2">
+          <div className="mb-1 flex items-center justify-between px-2 py-1">
+            <h2 className="text-sm font-semibold text-foreground">Route actions</h2>
+            <button
+              type="button"
+              onClick={() => setShowActions(false)}
+              aria-label="Close actions"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:text-foreground"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <ActionRow
+            icon={<GitCompareArrows className="h-4 w-4" />}
+            label={compareMode ? 'Exit compare mode' : 'Compare two routes'}
+            onClick={() => {
+              setCompareMode((value) => !value);
+              clearCompareRoutes();
+              setShowActions(false);
+            }}
+          />
+          <ActionRow
+            icon={<FolderOpen className="h-4 w-4" />}
+            label="Collections & tags"
+            onClick={() => {
+              setShowActions(false);
+              setShowCollections(true);
+            }}
+          />
+          <ActionRow
+            icon={<Flame className="h-4 w-4" />}
+            label={showHeatmap ? 'Hide ride heatmap' : 'Show ride heatmap'}
+            onClick={() => {
+              setShowHeatmap((value) => !value);
+              setShowActions(false);
+            }}
+          />
+          <ActionRow
+            icon={<Upload className="h-4 w-4" />}
+            label="Upload GPX"
+            onClick={() => {
+              setShowActions(false);
+              setShowImport(true);
+            }}
+          />
+          <ActionRow
+            icon={<RefreshCw className="h-4 w-4" />}
+            label={syncMutation.isPending ? 'Syncing…' : 'Sync providers'}
+            onClick={() => {
+              syncMutation.mutate();
+              setShowActions(false);
+            }}
+          />
+          <Link
+            href="/routes?mode=maintain"
+            onClick={() => {
+              setShowActions(false);
+              changeMode('maintain');
+            }}
+            className="flex h-11 items-center gap-3 rounded-lg px-3 text-sm text-foreground hover:bg-surface-light/40"
+          >
+            <Copy className="h-4 w-4 text-muted" />
+            Library health & duplicates
+          </Link>
+        </div>
+      </Modal>
+
+      {/* GPX upload */}
+      <Modal open={showImport} onClose={() => setShowImport(false)} aria-label="Upload GPX file">
+        <div className="p-2">
+          <p className="mb-4 text-sm text-muted">Upload a GPX file to create a new route.</p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".gpx"
+            onChange={handleUploadGpx}
+            className="w-full text-sm text-muted file:mr-4 file:rounded-lg file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-accent/80"
+          />
+        </div>
+      </Modal>
     </div>
+  );
+}
+
+function HeaderButton({
+  icon,
+  label,
+  onClick,
+  active = false,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+        active
+          ? 'border-accent/40 bg-accent/10 text-accent'
+          : 'border-surface-light/70 bg-surface text-muted hover:text-foreground'
+      }`}
+    >
+      {icon}
+      <span className="hidden lg:inline">{label}</span>
+    </button>
+  );
+}
+
+function ActionRow({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm text-foreground hover:bg-surface-light/40"
+    >
+      <span className="text-muted">{icon}</span>
+      {label}
+    </button>
   );
 }

@@ -1,163 +1,160 @@
 /**
- * Routes page E2E tests.
- * Tests the route list, filters, detail panel, map, and GPX operations.
+ * Routes page E2E tests — the atlas (browse + maintain).
+ *
+ * The page draws every route as a line and every row as a shape; the old
+ * Map/List/Grid toggle and the 7-tab detail are gone. These tests assert what
+ * a user observes on the new surface.
  */
 
 import { test, expect } from './fixtures/authenticated-test';
-import * as mockData from './fixtures/mock-data';
+import { mockRoutes } from './fixtures/mock-data';
 
 test.describe('Routes Page', () => {
   test.beforeEach(async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/routes');
-    // Content-aware wait (networkidle is flaky by design — Playwright
-    // discourages it; background polls/SW/timers can hold it forever).
-    await expect(page.locator('main h1')).toContainText(/saved routes|routes/i);
-    // List view holds the cards/filters these specs assert (default is map).
-    await page.getByRole('tab', { name: 'List' }).click();
-    // Fail fast here if the list never loads (rather than 19 timeouts).
+    await expect(page.locator('main h1')).toContainText(/routes/i);
     await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible({ timeout: 15000 });
   });
 
-  // ── Page Rendering ──────────────────────────────────────────────────────
+  // ── Browse ────────────────────────────────────────────────────────────
 
-  test('page heading renders', async ({ authenticatedPage: page }) => {
-    await expect(page.locator('main h1')).toContainText(/saved routes|routes/i);
+  test('page heading renders with the library count', async ({ authenticatedPage: page }) => {
+    await expect(page.locator('main h1')).toContainText(/^routes$/i);
+    await expect(page.locator('main header').getByText('4', { exact: true }).first()).toBeVisible();
   });
 
-  test('route count badge displays', async ({ authenticatedPage: page }) => {
-    await expect(page.getByText(/\d+ routes?/i).first()).toBeVisible();
+  test('every route row carries a shape and a distance', async ({ authenticatedPage: page }) => {
+    const row = page.getByRole('button', { name: /surrey hills loop/i }).first();
+    await expect(row).toContainText(/65 km/i);
+    await expect(row.locator('svg[aria-label="Route shape"]')).toBeVisible();
   });
 
-  // ── Route List ──────────────────────────────────────────────────────────
-
-  test('route list renders with route cards', async ({ authenticatedPage: page }) => {
-    await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible();
+  test('the map draws a line per route', async ({ authenticatedPage: page }) => {
+    await expect(page.locator('.leaflet-overlay-pane path').first()).toBeVisible({
+      timeout: 10000,
+    });
   });
 
-  test('route cards show distance', async ({ authenticatedPage: page }) => {
-    await expect(page.getByText(/km/i).first()).toBeVisible();
+  test('search narrows to matching routes', async ({ authenticatedPage: page }) => {
+    await page.getByLabel('Search routes').fill('Richmond');
+    await expect(page.getByText(/richmond park circuit/i).first()).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/surrey hills loop/i)).toHaveCount(0);
   });
 
-  test('route cards show sport type', async ({ authenticatedPage: page }) => {
-    // Scoped to main: the mobile drawer (md:hidden) holds same-named links.
-    await expect(page.locator('main').getByText(/cycling/i).first()).toBeVisible();
+  test('distance facet filters server-side', async ({ authenticatedPage: page }) => {
+    await page.locator('label:has(span:text-is("Distance")) select').selectOption('short');
+    await expect(page.getByText(/richmond park circuit/i).first()).toBeVisible({ timeout: 8000 });
+    await expect(page.getByText(/surrey hills loop/i)).toHaveCount(0);
   });
 
-  // ── Filter Bar ──────────────────────────────────────────────────────────
-
-  test('filter bar renders with status filter', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /more filters/i }).click();
-    const statusSelect = page.locator('select').filter({ hasText: /ridden|not yet ridden/i }).first();
-    await expect(statusSelect).toBeVisible();
+  test('clear resets the filters', async ({ authenticatedPage: page }) => {
+    await page.getByLabel('Search routes').fill('Richmond');
+    await expect(page.getByText(/surrey hills loop/i)).toHaveCount(0, { timeout: 8000 });
+    await page.getByRole('button', { name: /^clear$/i }).click();
+    await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible({ timeout: 8000 });
   });
 
-  test('filter bar renders with route type filter', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /more filters/i }).click();
-    const typeSelect = page.locator('select').filter({ hasText: /loop|point to point/i }).first();
-    await expect(typeSelect).toBeVisible();
+  // ── Detail ────────────────────────────────────────────────────────────
+
+  test('selecting a route opens a one-scroll detail with no tab museum', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
+    const dialog = page.getByRole('dialog', { name: /surrey hills loop details/i });
+    await expect(dialog).toBeVisible({ timeout: 10000 });
+    await expect(dialog).toContainText(/65 km/i);
+    await expect(dialog).toContainText(/ride history/i);
+    await expect(dialog.locator('[role="tablist"]')).toHaveCount(0);
   });
 
-  test('filter bar renders with surface filter', async ({ authenticatedPage: page }) => {
-    await page.getByRole('button', { name: /more filters/i }).click();
-    const surfaceSelect = page.locator('select').filter({ hasText: /road|gravel/i }).first();
-    await expect(surfaceSelect).toBeVisible();
+  test('the detail exposes the deep tools on demand', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
+    const dialog = page.getByRole('dialog', { name: /surrey hills loop details/i });
+    const more = dialog.getByRole('button', { name: /map, weather, effort/i });
+    await expect(more).toHaveAttribute('aria-expanded', 'false');
+    await more.click();
+    await expect(more).toHaveAttribute('aria-expanded', 'true');
+    await expect(dialog.getByText(/segments/i).first()).toBeVisible();
   });
 
-  test('clear filters button appears after filtering', async ({ authenticatedPage: page }) => {
-    // Tag filters count toward the active-filter badge (text search does not).
-    await page.getByRole('button', { name: /Hilly/ }).first().click();
-    await expect(page.getByRole('button', { name: /clear all/i })).toBeVisible({ timeout: 8000 });
+  test('closing the detail returns to the list', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
+    await page.getByRole('button', { name: 'Close details' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    await expect(page.getByText(/richmond park circuit/i).first()).toBeVisible();
   });
 
-  // ── Route Detail ────────────────────────────────────────────────────────
+  // ── Compare ───────────────────────────────────────────────────────────
 
-  test('clicking route shows detail panel with map', async ({ authenticatedPage: page }) => {
-    const routeCard = page.getByText(/surrey hills loop/i).first();
-    await routeCard.click();
-    await page.waitForTimeout(1000);
-
-    // Should show route detail
-    await expect(page.locator('main h1')).toContainText(/routes/i);
+  test('compare selects two routes and opens the overlay', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /compare/i }).first().click();
+    await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
+    await expect(page.getByText(/select a second route/i)).toBeVisible();
+    await page.getByRole('button', { name: /richmond park circuit/i }).first().click();
+    await expect(page.getByRole('dialog').filter({ hasText: /surrey hills/i })).toBeVisible({
+      timeout: 10000,
+    });
   });
 
-  // ── GPX Operations ──────────────────────────────────────────────────────
+  // ── Maintain ──────────────────────────────────────────────────────────
 
-  test('upload GPX button is present', async ({ authenticatedPage: page }) => {
-    const uploadBtn = page.getByRole('button', { name: /upload gpx/i });
-    await expect(uploadBtn).toBeVisible();
+  test('maintain mode shows library health without auto-scanning', async ({
+    authenticatedPage: page,
+  }) => {
+    let duplicateRequests = 0;
+    await page.route('**/api/v1/routes/duplicates', (route) => {
+      duplicateRequests += 1;
+      route.fulfill({ status: 200, body: '[]' });
+    });
+
+    await page.getByRole('button', { name: /^maintain$/i }).click();
+    await expect(page.getByText(/duplicate review/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /run duplicate scan/i })).toBeVisible();
+    await expect(page.getByText(/merged routes/i)).toBeVisible();
+    expect(duplicateRequests).toBe(0);
   });
 
-  test('clicking upload GPX opens modal', async ({ authenticatedPage: page }) => {
-    const uploadBtn = page.getByRole('button', { name: /upload gpx/i });
-    await uploadBtn.click();
-    await page.waitForTimeout(500);
+  // ── Header actions ────────────────────────────────────────────────────
 
-    // Should show file input
+  test('GPX upload opens the file picker', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /upload gpx|^gpx$/i }).first().click();
     await expect(page.locator('input[type="file"]').first()).toBeVisible();
   });
 
-  test('GPX download button is present for selected route', async ({ authenticatedPage: page }) => {
-    const routeCard = page.getByText(/surrey hills loop/i).first();
-    await routeCard.click();
-    await page.waitForTimeout(1000);
-
-    // May or may not be visible depending on route detail
-    await expect(page.locator('main h1')).toContainText(/routes/i);
+  test('sync reports its result', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /^sync$/i }).click();
+    await expect(page.getByText(/synced/i).first()).toBeVisible({ timeout: 8000 });
   });
 
-  // ── Sync Button ─────────────────────────────────────────────────────────
+  // ── States ────────────────────────────────────────────────────────────
 
-  test('sync routes button is present', async ({ authenticatedPage: page }) => {
-    const syncBtn = page.getByRole('button', { name: /sync routes/i });
-    await expect(syncBtn).toBeVisible();
-  });
-
-  test('sync button triggers sync', async ({ authenticatedPage: page }) => {
-    const syncBtn = page.getByRole('button', { name: /sync routes/i });
-    await syncBtn.click();
-    await page.waitForTimeout(1000);
-
-    // Should show sync result
-    await expect(page.getByText(/synced/i).first()).toBeVisible();
-  });
-
-  // ── Loading States ──────────────────────────────────────────────────────
-
-  test('shows loading state while routes load', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/routes/', async (route) => {
-      await new Promise((r) => setTimeout(r, 2000));
-      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRoutes) });
+  test('shows a skeleton while routes load', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/v1/routes/**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      route.fulfill({
+        status: 200,
+        headers: { 'X-Total-Count': '1' },
+        body: JSON.stringify([mockRoutes[0]]),
+      });
     });
-
     await page.goto('/fittrack/routes');
-
-    const skeleton = page.locator('.animate-pulse').first();
-    await expect(skeleton).toBeVisible();
-
-    // List view holds the cards (default is map, where names don't render).
-    await page.getByRole('tab', { name: 'List' }).click();
-    await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('.animate-pulse').first()).toBeVisible();
   });
 
-  // ── Error States ────────────────────────────────────────────────────────
-
-  test('handles API errors gracefully', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/routes/', (route) => {
+  test('renders a real error state, not an empty page', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/v1/routes/**', (route) => {
       route.fulfill({ status: 500, body: JSON.stringify({ detail: 'Server error' }) });
     });
-
     await page.goto('/fittrack/routes');
-    await expect(page.locator('main h1')).toContainText(/routes/i);
+    await expect(page.getByText(/couldn't load routes/i)).toBeVisible({ timeout: 10000 });
+    await expect(page.getByRole('button', { name: /retry/i })).toBeVisible();
   });
 
-  // ── Empty States ────────────────────────────────────────────────────────
-
-  test('handles empty routes list', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/routes/', (route) => {
-      route.fulfill({ status: 200, body: JSON.stringify([]) });
+  test('renders the first-run empty state', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/v1/routes/**', (route) => {
+      route.fulfill({ status: 200, headers: { 'X-Total-Count': '0' }, body: '[]' });
     });
-
     await page.goto('/fittrack/routes');
-    await expect(page.locator('main h1')).toContainText(/routes/i);
+    await expect(page.getByText(/no routes yet/i)).toBeVisible({ timeout: 10000 });
   });
 });

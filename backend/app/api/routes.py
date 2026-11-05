@@ -78,7 +78,11 @@ from app.services import segments as segment_service
 from app.services.auth import get_current_user
 from app.services.effort_estimator import INTENSITY_ZONES, estimate_effort
 from app.services.gpx import parse_gpx, route_to_gpx
-from app.services.polyline_utils import encode_polyline, polyline_total_distance
+from app.services.polyline_utils import (
+    encode_polyline,
+    polyline_total_distance,
+    preview_polyline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +299,7 @@ async def list_routes(
         summary.ride_count = ride_count
         summary.is_ridden = ride_count > 0
         summary.last_ridden_date = last_ridden
+        summary.preview_polyline = preview_polyline(route.encoded_polyline)
         summaries.append(summary)
 
     return JSONResponse(

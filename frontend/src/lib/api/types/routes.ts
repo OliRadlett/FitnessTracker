@@ -36,7 +36,13 @@ export interface RouteData {
   elevation_gain_meters?: number;
   estimated_time_seconds?: number;
   encoded_polyline: string;
-  elevation_profile?: { elevations: (number | null)[] };
+  elevation_profile?: {
+    elevations?: (number | null)[];
+    // The DB also stores {distance, elevation} on some routes; both shapes
+    // reach the client until the producer is normalised.
+    elevation?: (number | null)[];
+    distance?: number[];
+  };
   surface_profile?: Record<string, number>;
   start_lat: number;
   start_lng: number;
@@ -75,6 +81,8 @@ export interface RouteSummary {
   ride_count: number;
   is_ridden: boolean;
   last_ridden_date?: string;
+  /** Decimated geometry for list/card silhouettes (~90 points). Display only. */
+  preview_polyline?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -325,7 +333,13 @@ export interface MergedRouteView {
   elevation_gain_meters?: number;
   estimated_time_seconds?: number;
   encoded_polyline: string;
-  elevation_profile?: { elevations: (number | null)[] };
+  elevation_profile?: {
+    elevations?: (number | null)[];
+    // The DB also stores {distance, elevation} on some routes; both shapes
+    // reach the client until the producer is normalised.
+    elevation?: (number | null)[];
+    distance?: number[];
+  };
   surface_profile?: Record<string, number>;
   start_lat: number;
   start_lng: number;

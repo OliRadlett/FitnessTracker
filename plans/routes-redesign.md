@@ -1,5 +1,10 @@
 # Routes Page Redesign Plan
 
+> **Superseded 2026-11-05** by [`routes-atlas-2026-11-05.md`](routes-atlas-2026-11-05.md):
+> the Map/List/Grid toggle, the unified filter bar and the 7-tab detail were
+> replaced by a two-mode atlas (Browse / Maintain) and a one-scroll detail.
+> Kept for the history of the module checklist and the duplicate manager.
+
 > **Decision 2026-09-20:** Phase 4 triaged — empty states (B-23), infinite scroll + thumbnails (B-24), and tests (B-36) approved into `plans/backlog-2026-09-20.md`. Drag-drop tagging and keyboard shortcuts dropped.
 
 > **Status**: In Progress
