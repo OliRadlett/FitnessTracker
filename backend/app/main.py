@@ -11,6 +11,7 @@ from sqlalchemy import text
 
 from app.config import get_settings
 from app.database import Base, async_session_factory, engine
+from app.http_redirects import RelativeRedirectMiddleware
 from app.logging_config import correlation_id, setup_logging
 
 settings = get_settings()
@@ -78,6 +79,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Total-Count"],
 )
+
+# Same-host redirects must stay relative behind a reverse proxy; an absolute
+# upstream Location drops the Authorization header when the browser follows it.
+app.add_middleware(RelativeRedirectMiddleware)
 
 
 # ── Correlation ID middleware ──────────────────────────────────────────

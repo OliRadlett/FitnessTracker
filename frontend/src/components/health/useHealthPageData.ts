@@ -100,7 +100,7 @@ export function useHealthPageData(tab: 'now' | 'trends' | 'history', rangeDays: 
 
   const connections = useQuery<Connection[]>({
     queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections'),
     staleTime: 300_000,
     retry: 1,
     enabled,

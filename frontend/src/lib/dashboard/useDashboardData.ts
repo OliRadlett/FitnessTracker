@@ -246,7 +246,7 @@ export function useDashboardData(selectedYear?: number): DashboardData {
   // ── Sync ────────────────────────────────────────────────────────────────
   const connectionsQuery = useQuery<Connection[]>({
     queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections'),
     staleTime: 5 * 60_000,
     enabled: !!token,
   });

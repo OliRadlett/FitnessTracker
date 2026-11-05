@@ -129,7 +129,7 @@ export function useDashboardPage(view: DashboardView, range: DashboardRange) {
 
   const connectionsQuery = useQuery<Connection[]>({
     queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections'),
     staleTime: 5 * 60_000,
     enabled,
   });
