@@ -15,6 +15,7 @@ import type {
   RouteCollection,
   RouteCollectionCreate,
   RouteScanStatus,
+  RouteTag,
 } from './types';
 
 export async function getRoutes(
@@ -67,6 +68,90 @@ export async function refreshRouteScan(token?: string): Promise<{ status: string
   return apiFetch<{ status: string }>(
     '/api/v1/routes/duplicates/refresh',
     { method: 'POST' },
+    token,
+  );
+}
+
+// ─── Tags & collections ───────────────────────────────────────────────────────
+
+export async function listRouteTags(token?: string): Promise<RouteTag[]> {
+  return apiFetch<RouteTag[]>('/api/v1/routes/tags', {}, token);
+}
+
+export async function createRouteTag(name: string, token?: string): Promise<RouteTag> {
+  return apiFetch<RouteTag>(
+    '/api/v1/routes/tags',
+    { method: 'POST', body: JSON.stringify({ name }) },
+    token,
+  );
+}
+
+export async function addRouteTag(
+  tagId: string,
+  routeId: string,
+  token?: string,
+): Promise<void> {
+  await apiFetch<{ detail: string }>(
+    `/api/v1/routes/tags/${tagId}/routes/${routeId}`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+export async function removeRouteTag(
+  tagId: string,
+  routeId: string,
+  token?: string,
+): Promise<void> {
+  await apiFetch<{ detail: string }>(
+    `/api/v1/routes/tags/${tagId}/routes/${routeId}`,
+    { method: 'DELETE' },
+    token,
+  );
+}
+
+export async function listRouteCollections(token?: string): Promise<RouteCollection[]> {
+  return apiFetch<RouteCollection[]>('/api/v1/routes/collections', {}, token);
+}
+
+export async function createRouteCollection(
+  name: string,
+  token?: string,
+): Promise<RouteCollection> {
+  return apiFetch<RouteCollection>(
+    '/api/v1/routes/collections',
+    { method: 'POST', body: JSON.stringify({ name }) },
+    token,
+  );
+}
+
+export async function getRouteCollectionIds(
+  routeId: string,
+  token?: string,
+): Promise<string[]> {
+  return apiFetch<string[]>(`/api/v1/routes/${routeId}/collections`, {}, token);
+}
+
+export async function addRouteToCollection(
+  collectionId: string,
+  routeId: string,
+  token?: string,
+): Promise<void> {
+  await apiFetch<{ detail: string }>(
+    `/api/v1/routes/collections/${collectionId}/routes/${routeId}`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+export async function removeRouteFromCollection(
+  collectionId: string,
+  routeId: string,
+  token?: string,
+): Promise<void> {
+  await apiFetch<{ detail: string }>(
+    `/api/v1/routes/collections/${collectionId}/routes/${routeId}`,
+    { method: 'DELETE' },
     token,
   );
 }
