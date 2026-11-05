@@ -7,8 +7,9 @@ rows with ``user_id = NULL``) is excluded, and the Strava webhook queue (no
 user FK) is not part of anyone's personal data.
 """
 
+import json
 import uuid
-from collections.abc import Iterable
+from collections.abc import AsyncIterator, Iterable
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -257,3 +258,148 @@ async def build_full_export(db: AsyncSession, user_id, user: User) -> dict[str, 
         },
         "collections": collections,
     }
+
+
+async def iter_full_export(
+    db: AsyncSession, user_id, user: User
+) -> AsyncIterator[str]:
+    """Stream the export without materialising every activity stream.
+
+    ``build_full_export`` loads all 1,373 stream rows at once. That is hundreds
+    of megabytes of Python floats on a 250 MB backend and OOM-kills the request
+    (the endpoint returned 500). This generator writes one activity at a time,
+    so peak memory is one activity's streams.
+    """
+    now = datetime.now(UTC).isoformat()
+    user_doc = {
+        "email": user.email,
+        "name": user.name,
+        "avatar_url": user.avatar_url,
+        "notification_preferences": user.notification_preferences,
+        "preferences": user.preferences,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+    }
+    yield (
+        '{"exported_at":' + json.dumps(now) + ',"user":' + json.dumps(user_doc)
+        + ',"collections":{'
+    )
+    first = True
+
+    def key(name: str) -> str:
+        nonlocal first
+        prefix = "" if first else ","
+        first = False
+        return prefix + json.dumps(name) + ":"
+
+    simple: list[tuple[str, Any, tuple]] = [
+        ("oauth_connections", OAuthConnection, ()),
+        ("ftp_history", FtpHistory, ()),
+        ("daily_metrics", DailyMetric, ()),
+        ("sleep_logs", SleepLog, ()),
+        ("health_alerts", HealthAlert, ()),
+        ("weight_logs", WeightLog, ()),
+        ("personal_records", PersonalRecord, ()),
+        ("cycling_power_records", CyclingPowerRecord, ()),
+        ("events", Event, ()),
+        ("llm_analyses", LlmAnalysis, ()),
+        ("cached_weather", CachedWeather, ()),
+        ("ride_fuel_plans", RideFuelPlan, ()),
+        ("notifications", Notification, ()),
+        ("push_subscriptions", PushSubscription, ()),
+        ("exercises", Exercise, ()),
+        ("route_tags", RouteTag, ()),
+        ("route_collections", RouteCollection, ()),
+        ("lift_videos", LiftVideo, ()),
+        ("lift_video_analyses", LiftVideoAnalysis, ()),
+        ("rpe_calibrations", RpeCalibration, ()),
+        ("cross_domain_insights", CrossDomainInsight, ()),
+        ("athlete_insights", AthleteInsight, ()),
+    ]
+    for name, model, load in simple:
+        rows = await _query_user_rows(db, model, user_id, load=load)
+        yield key(name) + json.dumps([_serialize_row(row) for row in rows], default=str)
+
+    profile = await _query_one(db, CyclingProfile, user_id)
+    yield key("cycling_profile") + json.dumps(
+        _serialize_row(profile) if profile else None, default=str
+    )
+
+    activities = await _query_user_rows(db, Activity, user_id, load=(Activity.sources,))
+    yield key("activities") + "["
+    for index, activity in enumerate(activities):
+        streams = await db.execute(
+            select(ActivityStream).where(ActivityStream.activity_id == activity.id)
+        )
+        stream_rows = list(streams.scalars().all())
+        row = {
+            **_serialize_row(activity),
+            "streams": [_serialize_row(stream) for stream in stream_rows],
+            "sources": [_serialize_row(source) for source in activity.sources],
+        }
+        yield ("," if index else "") + json.dumps(row, default=str)
+        # Drop the largest objects from the session identity map; otherwise all
+        # 1,373 stream rows accumulate again and defeat the point of streaming.
+        for stream in stream_rows:
+            db.expunge(stream)
+        del stream_rows
+    yield "]"
+
+    sessions = await _query_user_rows(
+        db, LiftingSession, user_id, load=(LiftingSession.sets,)
+    )
+    yield key("lifting_sessions") + json.dumps(
+        [{**_serialize_row(s), "sets": [_serialize_row(x) for x in s.sets]} for s in sessions],
+        default=str,
+    )
+
+    templates = await _query_user_rows(
+        db, WarmupTemplate, user_id, load=(WarmupTemplate.steps,)
+    )
+    yield key("warmup_templates") + json.dumps(
+        [{**_serialize_row(t), "steps": [_serialize_row(x) for x in t.steps]} for t in templates],
+        default=str,
+    )
+
+    goals = await _query_user_rows(db, Goal, user_id, load=(Goal.check_ins,))
+    yield key("goals") + json.dumps(
+        [{**_serialize_row(g), "check_ins": [_serialize_row(x) for x in g.check_ins]} for g in goals],
+        default=str,
+    )
+
+    plans = await _query_user_rows(db, TrainingPlan, user_id, load=(TrainingPlan.days,))
+    yield key("training_plans") + json.dumps(
+        [{**_serialize_row(p), "days": [_serialize_row(x) for x in p.days]} for p in plans],
+        default=str,
+    )
+
+    routes = await _query_user_rows(
+        db,
+        Route,
+        user_id,
+        load=(Route.sources, Route.quality, Route.tags, Route.collection_items),
+    )
+    yield key("routes") + json.dumps(
+        [
+            {
+                **_serialize_row(route),
+                "sources": [_serialize_row(source) for source in route.sources],
+                "quality": _serialize_row(route.quality) if route.quality else None,
+                "tag_ids": [str(tag.id) for tag in route.tags],
+                "collection_ids": [
+                    str(item.collection_id) for item in route.collection_items
+                ],
+            }
+            for route in routes
+        ],
+        default=str,
+    )
+
+    segments = await _query_user_rows(db, Segment, user_id, load=(Segment.efforts,))
+    yield key("segments") + json.dumps(
+        [
+            {**_serialize_row(segment), "efforts": [_serialize_row(x) for x in segment.efforts]}
+            for segment in segments
+        ],
+        default=str,
+    )
+    yield "}}"
