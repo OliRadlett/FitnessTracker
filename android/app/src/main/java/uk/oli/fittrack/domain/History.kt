@@ -9,7 +9,14 @@ data class FinishedSession(
     val planTitle: String,
     val startedAt: Long,
     val endedAt: Long,
-    val sets: List<LoggedSet>
+    val sets: List<LoggedSet>,
+    /**
+     * True once the session exists on the server. Pulled sessions arrive true;
+     * a session logged on this phone starts false and is pushed on the next sync.
+     * After a successful push the id becomes the server id, so the following pull
+     * cannot bring the same workout back under a different one.
+     */
+    val synced: Boolean = false
 ) {
     val volumeKg: Double get() = SessionEngine.volumeKg(sets)
 }
