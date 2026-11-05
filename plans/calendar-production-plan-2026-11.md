@@ -1,6 +1,7 @@
 # Calendar overhaul — production plan
 
-> **Status:** Phase 1 landed 2026-11-05; Phase 2 (frontend port) next.
+> **Status:** Phase 1 (endpoint) and Phase 2 (frontend port) landed 2026-11-05;
+> the production gate + PR are next.
 > **Source artifact:** `prototype/calendar/qa/out/contact-sheet.png` — the lab lives in a
 > separate prototype worktree and is deliberately **not** merged into this branch.
 > **Decisions / references:** `prototype/calendar/DECISIONS.md`, `prototype/calendar/REFERENCE.md`
@@ -41,8 +42,49 @@ fixture is **not** one API request. The production page requests the visible
 month grid plus a week (≤42 days), which is inside the cap. The fixture remains
 a lab artifact; it is not the endpoint contract.
 
-**Not yet done (Phase 2):** the frontend port, light-theme gate, URL state,
-`Modal`-based day sheet, and the production-surface screenshots.
+**Phase 2 complete:** see 0b. The lab remains the visual artifact and is not
+merged.
+
+---
+
+## 0b. Phase 2 status — 2026-11-05
+
+**Frontend port landed on `feature/calendar-overhaul-2026-11`.**
+
+| File | Change |
+|---|---|
+| `frontend/src/app/(app)/calendar/page.tsx` | Replaced; React Query + URL state (`?month=&view=&day=`) + `Modal` day sheet |
+| `frontend/src/components/calendar/` | `MonthGrid`, `DayCell`, `DayInspector`, `Agenda`, `SummaryStrip`, `calendarUi` |
+| `frontend/src/lib/calendar.ts`, `calendarFormat.ts` | Pure status/load/grid helpers + formatting |
+| `frontend/src/lib/api/calendar.ts`, `types/calendar.ts` | Typed `getCalendar()` client and response types |
+| `frontend/src/components/calendar/CalendarAgendaView.tsx`, `DayDetailPanel.tsx` | **Deleted** (old all-time lifting fetch / notes editor) |
+| `frontend/src/__tests__/calendar.test.ts` | 7 unit tests (grid, status, off-date, dedupe, coverage, insight) |
+| `frontend/e2e/calendar.spec.ts` | 14 production-surface tests: URL state, month nav, inspector, empty/error/loading, mobile sheet, no overflow, visual capture |
+| `frontend/e2e/fixtures/calendar-mock.ts` + `authenticated-test.ts` | New endpoint mock |
+| `frontend/playwright.calendar.config.ts` | Calendar-only harness on port 3100 (avoids another checkout's 3000) |
+
+**Verified**
+
+- `tsc --noEmit` clean.
+- 7/7 helper unit tests pass.
+- 14/14 calendar e2e tests pass against the app shell with mocked API.
+- Production build succeeds; `/calendar` is 27.3 kB / 146 kB first load.
+- Dark, light, mobile agenda, and mobile sheet captured in
+  `frontend/e2e/screenshots/` (gitignored).
+- Light tokens verified by `data-theme="light"`; the Settings toggle uses the
+  same attribute via `ThemeProvider`.
+
+**Production constraint discovered:** at 1440 with the sidebar, the content width
+is ~1136 px. A 300 px inspector + 44 px week gutter leaves ~103 px day cells
+(short chips `Push 60m` / `96 TSS` fit; the old `Push · 60m` did not). The side
+inspector is therefore only shown at `min-[1440px]`; below 1440 the grid gets the
+full width and the inspector sits below at max 760 px. This is a deliberate
+adaptation of the “persistent inspector at ≥1280” draft to the real shell; the
+calendar stays legible at 1280–1439.
+
+**Next:** run the production gate against the real API/prod-shaped data (auth,
+a 200+ activity month, slow network, PWA, axe), then open the PR. The prototype
+lab remains the visual artifact and is not merged.
 
 ---
 

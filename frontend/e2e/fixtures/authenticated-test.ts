@@ -71,7 +71,12 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockWhoopWeekly) });
   }],
 
-  // Calendar (MUST come before activities to avoid substring collision)
+  // Calendar view (new aggregate endpoint)
+  ['api/v1/calendar', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCalendarResponse) });
+  }],
+
+  // Legacy calendar endpoint — still used by the activities TimelineView.
   ['api/v1/activities/calendar', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCalendarData) });
   }],

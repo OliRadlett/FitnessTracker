@@ -1,429 +1,333 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
-import { formatStat } from '@/lib/utils';
-import { usePageTitle } from '@/lib/usePageTitle';
-import type {
-  ActivityCalendarEntry,
-  CalendarDayData,
-  DailyMetricSummary,
-  SleepLogSummary,
-} from '@/lib/api';
-import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
-import { PageHeader } from '@/components/ui/PageHeader';
-import { ErrorState } from '@/components/ui/ErrorState';
-import { SkeletonLine } from '@/components/ui/Skeleton';
+import Link from 'next/link';
 import {
+  addMonths,
+  endOfMonth,
+  endOfWeek,
   format,
   startOfMonth,
-  endOfMonth,
   startOfWeek,
-  endOfWeek,
-  eachDayOfInterval,
-  isSameDay,
-  isSameMonth,
-  addMonths,
   subMonths,
-  isToday,
-  isAfter,
-  startOfToday,
 } from 'date-fns';
+import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+
 import {
-  getSportColor,
-  getSportTextColor,
-  getSportBorderColor,
-  isStrengthType,
-  getRecoveryColor,
-} from '@/lib/sportUtils';
-import { DayDetailPanel } from '@/components/calendar/DayDetailPanel';
-import { CalendarAgendaView } from '@/components/calendar/CalendarAgendaView';
-import { Bike, Dumbbell, Footprints } from 'lucide-react';
+  getCalendar,
+  useAuthFetch,
+  type CalendarResponse,
+} from '@/lib/api';
+import { isoDate, monthLabel, monthSummary, parseDate } from '@/lib/calendar';
+import { useIsMobile } from '@/lib/useIsMobile';
+import { usePageTitle } from '@/lib/usePageTitle';
+import { Button, IconButton } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { Modal } from '@/components/ui/Modal';
+import { PageHeader } from '@/components/ui/PageHeader';
+import { SkeletonLine, SkeletonMetric } from '@/components/ui/Skeleton';
+import { Agenda } from '@/components/calendar/Agenda';
+import { DayInspector } from '@/components/calendar/DayInspector';
+import { MonthGrid } from '@/components/calendar/MonthGrid';
+import { SummaryStrip } from '@/components/calendar/SummaryStrip';
+import { Segmented } from '@/components/calendar/calendarUi';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+type View = 'month' | 'agenda';
 
-function getRecoveryBg(score: number): string {
-  if (score >= 70) return 'bg-green-500/15';
-  if (score >= 40) return 'bg-yellow-500/15';
-  return 'bg-red-500/15';
+interface InitialState {
+  month: Date;
+  day: string;
+  view: View;
+  dayExplicit: boolean;
 }
 
-function DayMetricsBadges({ dm }: { dm: DailyMetricSummary }) {
-  const hasRecovery = dm.recovery_score != null;
-  const hasSleep = dm.sleep_duration_minutes != null;
-  if (!hasRecovery && !hasSleep) return null;
+function readParams(): InitialState {
+  const params = new URLSearchParams(window.location.search);
+  const now = new Date();
+  const rawDay = params.get('day');
+  const rawMonth = params.get('month');
+  let month = startOfMonth(now);
+
+  if (rawMonth && /^\d{4}-\d{2}$/.test(rawMonth)) {
+    month = new Date(Number(rawMonth.slice(0, 4)), Number(rawMonth.slice(5, 7)) - 1, 1);
+  } else if (rawDay && /^\d{4}-\d{2}-\d{2}$/.test(rawDay)) {
+    month = startOfMonth(parseDate(rawDay));
+  }
+
+  return {
+    month,
+    day: rawDay && /^\d{4}-\d{2}-\d{2}$/.test(rawDay) ? rawDay : isoDate(now),
+    view: params.get('view') === 'agenda' ? 'agenda' : 'month',
+    dayExplicit: Boolean(rawDay),
+  };
+}
+
+function writeParams(next: { month?: Date; day?: string; view?: View }) {
+  const params = new URLSearchParams(window.location.search);
+  if (next.month) params.set('month', isoDate(next.month).slice(0, 7));
+  if (next.day) params.set('day', next.day);
+  if (next.view) params.set('view', next.view);
+  window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`);
+}
+
+function CalendarSkeleton({ compact }: { compact: boolean }) {
   return (
-    <div className="flex gap-1 mb-0.5">
-      {hasRecovery && (
-        <span
-          className={`text-[9px] font-medium px-1 py-0.5 rounded ${getRecoveryBg(dm.recovery_score!)} ${getRecoveryColor(dm.recovery_score!)}`}
-        >
-          {Math.round(dm.recovery_score!)}%
-        </span>
-      )}
-      {hasSleep && (
-        <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-indigo-500/15 text-indigo-300">
-          {Math.round(dm.sleep_duration_minutes! / 60)}h
-        </span>
-      )}
+    <div className="space-y-3" aria-label="Loading calendar">
+      <div className={compact ? 'grid grid-cols-2 gap-2.5' : 'grid grid-cols-2 gap-2.5 lg:grid-cols-4'}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <SkeletonMetric key={i} />
+        ))}
+      </div>
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <SkeletonLine className="h-[560px] rounded-xl" />
+        {!compact && <SkeletonLine className="h-[420px] rounded-xl" />}
+      </div>
     </div>
   );
 }
 
-// ─── Calendar grid builder ─────────────────────────────────────────────────
-
-function buildCalendarDays(currentMonth: Date): Date[] {
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
-  const calStart = startOfWeek(monthStart, { weekStartsOn: 1 });
-  const calEnd = endOfWeek(monthEnd, { weekStartsOn: 1 });
-  return eachDayOfInterval({ start: calStart, end: calEnd });
+function CalendarEmpty({ month }: { month: Date }) {
+  return (
+    <Card className="!p-8">
+      <div className="mx-auto flex max-w-[460px] flex-col items-center text-center">
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-surface-light/70 bg-surface-light/30">
+          <CalendarDays className="h-5 w-5 text-muted/60" />
+        </span>
+        <h2 className="mt-4 text-lg font-semibold text-foreground">
+          No training in {format(month, 'MMMM yyyy')}
+        </h2>
+        <p className="mt-1.5 text-xs leading-5 text-muted/70">
+          Build a plan to see planned sessions here, or log a session and it will appear as
+          completed work. Empty days stay quiet, so the month reads at a glance.
+        </p>
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+          <Link
+            href="/training"
+            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-accent/30 bg-accent/10 px-4 text-xs font-semibold text-accent hover:bg-accent/15"
+          >
+            Open Training
+          </Link>
+          <Link
+            href="/lifting/live"
+            className="inline-flex h-10 items-center gap-1.5 rounded-xl border border-surface-light/70 bg-surface-light/30 px-4 text-xs font-semibold text-foreground/80 hover:border-accent/30"
+          >
+            Log a session
+          </Link>
+        </div>
+      </div>
+    </Card>
+  );
 }
-
-// ─── Calendar Page ─────────────────────────────────────────────────────────
 
 export default function CalendarPage() {
   usePageTitle('Calendar');
   const { authFetch, token } = useAuthFetch();
-  const [currentMonth, setCurrentMonth] = useState<Date>(new Date());
-  const [selectedDay, setSelectedDay] = useState<Date>(new Date());
-  // Sport filter (2.3) — dims non-matching pills so one sport stands out.
-  const [sportFilter, setSportFilter] = useState<string>('all');
+  const isMobile = useIsMobile('(max-width: 1023px)');
 
-  // Calculate the fetch range covering all visible calendar cells
+  const [month, setMonth] = useState<Date>(() => startOfMonth(new Date()));
+  const [selectedDay, setSelectedDay] = useState<string>(() => isoDate(new Date()));
+  const [view, setView] = useState<View>('month');
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  // Read URL state after mount to avoid a server/client hydration mismatch.
+  useEffect(() => {
+    const initial = readParams();
+    setMonth(initial.month);
+    setSelectedDay(initial.day);
+    setView(initial.view);
+    if (initial.dayExplicit && window.matchMedia('(max-width: 1023px)').matches) {
+      setSheetOpen(true);
+    }
+
+    const onPop = () => {
+      const next = readParams();
+      setMonth(next.month);
+      setSelectedDay(next.day);
+      setView(next.view);
+      setSheetOpen(false);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
   const { fetchStart, fetchEnd } = useMemo(() => {
-    const monthStart = startOfMonth(currentMonth);
-    const monthEnd = endOfMonth(currentMonth);
+    const monthStart = startOfMonth(month);
+    const monthEnd = endOfMonth(month);
     return {
       fetchStart: format(startOfWeek(monthStart, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
       fetchEnd: format(endOfWeek(monthEnd, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
     };
-  }, [currentMonth]);
+  }, [month]);
 
-  const { data: calendarData, isLoading, isError, refetch } = useQuery<CalendarDayData>({
-    queryKey: ['activities-calendar', fetchStart, fetchEnd],
-    queryFn: () =>
-      authFetch<CalendarDayData>(
-        `/api/v1/activities/calendar?start_date=${fetchStart}&end_date=${fetchEnd}`,
-      ),
+  const { data, isLoading, isError, refetch } = useQuery<CalendarResponse>({
+    queryKey: ['calendar', fetchStart, fetchEnd],
+    queryFn: () => getCalendar(authFetch, { start: fetchStart, end: fetchEnd }),
     enabled: !!token,
+    staleTime: 60_000,
   });
 
-  const activities = calendarData?.activities;
-  const dailyMetrics = calendarData?.daily_metrics;
-  const sleepLogs = calendarData?.sleep_logs;
+  const today = data?.today ?? isoDate(new Date());
+  const summary = data ? monthSummary(data, month) : null;
+  const selected = data?.days.find((day) => day.date === selectedDay);
+  const hasAnyData =
+    !!data &&
+    (data.plan !== null ||
+      data.days.some((day) => day.plan.length || day.activities.length || day.lifts.length) ||
+      data.events.length > 0 ||
+      data.goals.length > 0);
 
-  // Build calendar grid days
-  const calendarDays = useMemo(
-    () => buildCalendarDays(currentMonth),
-    [currentMonth],
-  );
-
-  // Group activities by date
-  const activitiesByDate = useMemo(() => {
-    const map = new Map<string, ActivityCalendarEntry[]>();
-    if (!activities) return map;
-    for (const activity of activities) {
-      const key = activity.date;
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(activity);
+  function changeMonth(next: Date) {
+    const normalized = startOfMonth(next);
+    setMonth(normalized);
+    const current = parseDate(selectedDay);
+    if (
+      current.getMonth() !== normalized.getMonth() ||
+      current.getFullYear() !== normalized.getFullYear()
+    ) {
+      const first = isoDate(normalized);
+      setSelectedDay(first);
+      writeParams({ month: normalized, day: first });
+    } else {
+      writeParams({ month: normalized });
     }
-    return map;
-  }, [activities]);
-
-  const SPORT_FILTERS = ['all', 'cycling', 'running', 'strength', 'swimming', 'walking'] as const;
-
-  function matchesSportFilter(sportType: string): boolean {
-    if (sportFilter === 'all') return true;
-    if (sportFilter === 'strength') return isStrengthType(sportType);
-    return sportType.toLowerCase().includes(sportFilter);
   }
 
-  // Group daily metrics by date
-  const metricsByDate = useMemo(() => {
-    const map = new Map<string, DailyMetricSummary>();
-    if (!dailyMetrics) return map;
-    for (const m of dailyMetrics) {
-      map.set(m.date, m);
-    }
-    return map;
-  }, [dailyMetrics]);
+  function goToday() {
+    const now = new Date();
+    const normalized = startOfMonth(now);
+    setMonth(normalized);
+    setSelectedDay(isoDate(now));
+    setSheetOpen(false);
+    writeParams({ month: normalized, day: isoDate(now) });
+  }
 
-  // Group sleep logs by date
-  const sleepLogsByDate = useMemo(() => {
-    const map = new Map<string, SleepLogSummary>();
-    if (!sleepLogs) return map;
-    for (const sl of sleepLogs) {
-      // Prefer whoop source (most complete data)
-      if (!map.has(sl.sleep_date) || sl.source === 'whoop') {
-        map.set(sl.sleep_date, sl);
-      }
-    }
-    return map;
-  }, [sleepLogs]);
+  function selectDay(date: string) {
+    setSelectedDay(date);
+    writeParams({ day: date });
+    if (isMobile) setSheetOpen(true);
+  }
 
-  // Selected day activities
-  const selectedDayActivities = useMemo(() => {
-    const key = format(selectedDay, 'yyyy-MM-dd');
-    return activitiesByDate.get(key) || [];
-  }, [selectedDay, activitiesByDate]);
+  function changeView(next: View) {
+    setView(next);
+    writeParams({ view: next });
+  }
 
-  // Selected day metric and sleep log
-  const selectedDayKey = format(selectedDay, 'yyyy-MM-dd');
-  const selectedDayMetric = metricsByDate.get(selectedDayKey);
-  const selectedDaySleepLog = sleepLogsByDate.get(selectedDayKey);
+  function closeSheet() {
+    setSheetOpen(false);
+  }
 
-  const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const unavailable = data ? Object.keys(data.unavailable) : [];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <PageHeader title="Calendar" subtitle="View your activities at a glance" />
-
-      {/* Calendar Card */}
-      <Card>
-        {/* Month navigation */}
-        <div className="flex items-center justify-between px-4 sm:px-6 pt-5 pb-3 gap-2">
-          <button
-            onClick={() => setCurrentMonth((m) => subMonths(m, 1))}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface-light hover:bg-accent/20 text-foreground transition-colors border border-surface-light"
-            aria-label="Previous month"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M15 19l-7-7 7-7"
+    <div className="space-y-4">
+      <PageHeader
+        title="Calendar"
+        subtitle="Planned vs actual, load, and the day ahead — cycling and lifting in one time surface."
+        actions={
+          <div className="flex flex-wrap items-center gap-2 pr-12">
+            {!isMobile && (
+              <Segmented
+                value={view}
+                options={[
+                  { value: 'month', label: 'Month' },
+                  { value: 'agenda', label: 'Agenda' },
+                ]}
+                onChange={changeView}
+                label="Calendar view"
               />
-            </svg>
-          </button>
-
-          <h2 className="text-xl font-bold text-foreground">
-            {format(currentMonth, 'MMMM yyyy')}
-          </h2>
-
-          <div className="flex items-center gap-2">
-            <select
-              value={sportFilter}
-              onChange={(e) => setSportFilter(e.target.value)}
-              aria-label="Filter calendar by sport"
-              className="min-h-[44px] bg-surface-light border border-surface-light text-foreground text-sm rounded-lg px-2 focus:outline-none focus:ring-1 focus:ring-accent"
-            >
-              {SPORT_FILTERS.map((s) => (
-                <option key={s} value={s}>
-                  {s === 'all' ? 'All sports' : s[0].toUpperCase() + s.slice(1)}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => setCurrentMonth(new Date())}
-              className="min-h-[44px] px-4 py-1.5 text-sm text-muted hover:text-foreground bg-surface-light hover:bg-accent/20 rounded-lg border border-surface-light transition-colors"
-            >
-              Today
-            </button>
-            <button
-              onClick={() => setCurrentMonth((m) => addMonths(m, 1))}
-            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg bg-surface-light hover:bg-accent/20 text-foreground transition-colors border border-surface-light"
-              aria-label="Next month"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 5l7 7-7 7"
-                />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Weekday headers + Month grid — desktop only */}
-        <div className="hidden md:block">
-        {/* Weekday headers */}
-        <div className="grid grid-cols-7 px-4">
-          {WEEKDAYS.map((day) => (
-            <div
-              key={day}
-              className="text-center text-sm font-medium text-muted py-3"
-            >
-              {day}
-            </div>
-          ))}
-        </div>
-
-        {/* Calendar grid */}
-        {isLoading ? (
-          <div className="px-4 pb-4">
-            <div className="grid grid-cols-7 gap-1" aria-label="Loading calendar">
-              {Array.from({ length: 35 }).map((_, i) => (
-                <SkeletonLine key={i} className="h-[120px] rounded-lg" />
-              ))}
-            </div>
-          </div>
-        ) : isError ? (
-          <div className="px-4 pb-4">
-            <ErrorState
-              title="Couldn't load calendar data"
-              message="Check your connection and try again."
-              onRetry={() => refetch()}
-            />
-          </div>
-        ) : (
-          <div className="px-4 pb-4">
-            <div className="grid grid-cols-7 gap-1">
-              {calendarDays.map((day) => {
-                const dateKey = format(day, 'yyyy-MM-dd');
-                const dayActivities = activitiesByDate.get(dateKey) || [];
-                const inCurrentMonth = isSameMonth(day, currentMonth);
-                const isSelected = isSameDay(day, selectedDay);
-                const isTodayDate = isToday(day);
-                // Future days dim (2.3) — nothing logged yet, de-emphasize.
-                const isFutureDay = isAfter(day, startOfToday());
-
-                return (
-                  <button
-                    key={dateKey}
-                    onClick={() => setSelectedDay(day)}
-                    aria-label={format(day, 'MMMM d, yyyy') + (dayActivities.length > 0 ? `, ${dayActivities.length} activities` : '')}
-                    className={`
-                      relative h-[120px] rounded-lg p-2 text-left transition-all
-                      flex flex-col overflow-hidden
-                      ${!inCurrentMonth ? 'opacity-30' : ''}
-                      ${isFutureDay && !isSelected ? 'opacity-50' : ''}
-                      ${isSelected
-                        ? 'bg-accent/15 border-2 border-accent ring-1 ring-accent/30'
-                        : isTodayDate
-                          ? 'border-2 border-accent/50 bg-surface-light/30 hover:bg-surface-light/50'
-                          : 'border border-surface-light/60 bg-surface-light/20 hover:bg-surface-light/40'
-                      }
-                    `}
-                  >
-                    {/* Day number */}
-                    <div className="flex items-center justify-between mb-1">
-                      <span
-                        className={`text-sm font-semibold ${
-                          isTodayDate
-                            ? 'text-accent'
-                            : isSelected
-                              ? 'text-foreground'
-                              : inCurrentMonth
-                                ? 'text-foreground/80'
-                                : 'text-muted/50'
-                        }`}
-                      >
-                        {format(day, 'd')}
-                      </span>
-                      {isTodayDate && !isSelected && (
-                        <span className="w-2 h-2 rounded-full bg-accent" />
-                      )}
-                    </div>
-
-                    {/* Health metric badges (recovery, sleep) */}
-                    {metricsByDate.has(dateKey) && (
-                      <DayMetricsBadges dm={metricsByDate.get(dateKey)!} />
-                    )}
-
-                    {/* Activity badges */}
-                    {dayActivities.length > 0 && (
-                      <div className="flex-1 flex flex-col gap-1 overflow-hidden">
-                        {dayActivities.slice(0, 2).map((activity) => (
-                          <div
-                            key={activity.id}
-                            title={`${format(day, 'MMM d')}: ${formatStat(activity)}`}
-                            className={`rounded px-1.5 py-0.5 text-[11px] leading-tight truncate border ${getSportBorderColor(activity.sport_type)} ${getSportColor(activity.sport_type)}/10 ${matchesSportFilter(activity.sport_type) ? '' : 'opacity-30'}`}
-                          >
-                             <span className={`w-2 h-2 rounded-full ${getSportColor(activity.sport_type)} inline-block`} aria-hidden="true" />
-                             <span className={getSportTextColor(activity.sport_type)}>
-                               {formatStat(activity)}
-                             </span>
-                          </div>
-                        ))}
-                        {dayActivities.length > 2 && (
-                          <div className="text-[10px] text-muted px-1.5">
-                            +{dayActivities.length - 2} more
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-        </div>
-
-        {/* Mobile agenda view — phones only */}
-        <div className="md:hidden px-4 pb-4">
-          <CalendarAgendaView
-            calendarDays={calendarDays}
-            currentMonth={currentMonth}
-            selectedDay={selectedDay}
-            activitiesByDate={activitiesByDate}
-            metricsByDate={metricsByDate}
-            setSelectedDay={setSelectedDay}
-            isLoading={isLoading}
-          />
-        </div>
-
-        {/* Legend */}
-        <div className="px-6 pb-5 pt-2 border-t border-surface-light/50" aria-live="polite">
-          {!isLoading && activities && activities.length === 0 && (
-            <p className="text-xs text-muted/60 mb-2">Nothing logged this month — sync a provider to fill the calendar.</p>
-          )}
-          <div className="flex flex-wrap gap-4">
-            {[
-              { label: 'Cycling', icon: Bike, color: 'text-blue-400' },
-              { label: 'Running', icon: Bike, color: 'text-green-400' },
-              { label: 'Strength', icon: Dumbbell, color: 'text-purple-400' },
-              { label: 'Swimming', icon: Bike, color: 'text-cyan-400' },
-              { label: 'Walking / Hiking', icon: Footprints, color: 'text-amber-400' },
-            ].map(({ label, icon: Icon, color }) => (
-              <div key={label} className="flex items-center gap-1.5 text-xs">
-                <Icon className="w-3 h-3" />
-                <span className={`${color}`}>{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </Card>
-
-      {/* Day Detail Panel - below calendar */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            {format(selectedDay, 'EEEE, MMMM d, yyyy')}
-            {selectedDayActivities.length > 0 && (
-              <span className="ml-2 text-sm font-normal text-muted">
-                ({selectedDayActivities.length}{' '}
-                {selectedDayActivities.length === 1 ? 'activity' : 'activities'})
-              </span>
             )}
-          </CardTitle>
-        </CardHeader>
-        <div className="px-6 pb-6">
-          <DayDetailPanel
-            selectedDay={selectedDay}
-            calendarActivities={selectedDayActivities}
-            dayMetric={selectedDayMetric}
-            daySleepLog={selectedDaySleepLog}
-            authFetch={authFetch}
+            <div className="inline-flex items-center rounded-xl border border-surface-light bg-surface-light/25 p-0.5">
+              <IconButton label="Previous month" onClick={() => changeMonth(subMonths(month, 1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </IconButton>
+              <span className="min-w-[118px] px-2 text-center text-xs font-semibold text-foreground/85">
+                {monthLabel(month)}
+              </span>
+              <IconButton label="Next month" onClick={() => changeMonth(addMonths(month, 1))}>
+                <ChevronRight className="h-4 w-4" />
+              </IconButton>
+            </div>
+            <Button variant="secondary" size="sm" onClick={goToday}>
+              Today
+            </Button>
+          </div>
+        }
+      />
+
+      {unavailable.length > 0 && (
+        <p className="text-[10px] text-muted/60" role="status">
+          Some context is temporarily unavailable: {unavailable.join(', ')}.
+        </p>
+      )}
+
+      {isLoading ? (
+        <CalendarSkeleton compact={isMobile} />
+      ) : isError ? (
+        <ErrorState
+          title="Couldn't load the calendar"
+          message="The calendar data did not arrive. Check your connection and try again."
+          onRetry={() => refetch()}
+        />
+      ) : !data ? null : !hasAnyData ? (
+        <CalendarEmpty month={month} />
+      ) : (
+        <>
+          <SummaryStrip fixture={data} month={month} summary={summary!} compact={isMobile} />
+          <div className="grid items-start gap-4 min-[1440px]:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="min-w-0">
+              {isMobile || view === 'agenda' ? (
+                <Agenda
+                  fixture={data}
+                  month={month}
+                  today={today}
+                  selectedDate={selectedDay}
+                  onSelect={selectDay}
+                  onOpenDay={selectDay}
+                />
+              ) : (
+                <MonthGrid
+                  fixture={data}
+                  month={month}
+                  today={today}
+                  selectedDate={selectedDay}
+                  onSelect={selectDay}
+                />
+              )}
+            </div>
+
+            {!isMobile && (
+              <div className="mx-auto w-full max-w-[760px] min-[1440px]:sticky min-[1440px]:top-4 min-[1440px]:mx-0 min-[1440px]:max-w-none">
+                <DayInspector
+                  fixture={data}
+                  day={selected}
+                  today={today}
+                  variant="panel"
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {isMobile && data && (
+        <Modal
+          open={sheetOpen}
+          onClose={closeSheet}
+          aria-label="Day detail"
+          size="lg"
+        >
+          <DayInspector
+            fixture={data}
+            day={selected}
+            today={today}
+            variant="sheet"
+            surface="bare"
+            onClose={closeSheet}
           />
-        </div>
-      </Card>
+        </Modal>
+      )}
     </div>
   );
 }
