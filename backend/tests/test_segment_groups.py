@@ -12,6 +12,7 @@ import uuid
 import pytest
 
 from app.models.route import Route
+from app.services.climb_geocoding import area_from_address
 from app.services.polyline_utils import encode_polyline
 from app.services.segment_groups import (
     build_profile,
@@ -136,6 +137,20 @@ def test_canonical_name_never_leaks_a_generic_import_title():
     assert canonical_name("The Stag (Long Route)", 2, 4) == (
         "The Stag (Long Route) · climb 2"
     )
+
+
+def test_area_from_address_prefers_the_human_place():
+    assert area_from_address(
+        {
+            "suburb": "Balgreen",
+            "city": "City of Edinburgh",
+            "country": "United Kingdom",
+        }
+    ) == ("Balgreen", "Edinburgh", "United Kingdom")
+    assert area_from_address(
+        {"village": "Leschaux", "county": "Haute-Savoie", "country": "France"}
+    ) == ("Leschaux", "Haute-Savoie", "France")
+    assert area_from_address({}) == (None, None, None)
 
 
 def route_distance(route: Route) -> float:

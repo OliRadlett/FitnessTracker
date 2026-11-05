@@ -172,6 +172,7 @@ def _group_read(group) -> SegmentGroupRead:
         area=group.area,
         region=group.region,
         country=group.country,
+        route_name=canonical.route.name if canonical and canonical.route else None,
         distance_m=group.distance_m,
         gain_m=group.gain_m,
         avg_gradient_pct=group.avg_gradient_pct,

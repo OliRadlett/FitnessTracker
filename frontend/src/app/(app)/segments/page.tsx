@@ -100,9 +100,13 @@ function ClimbCard({ climb }: { climb: SegmentGroup }) {
             </h3>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted">
-            {climb.area ?? climb.region ?? 'Unknown area'}
-            <span className="text-muted/60"> · </span>
-            {climb.route_count > 1 ? `${climb.route_count} routes` : 'route'}
+            {climb.area ?? climb.region ?? climb.route_name ?? 'Climb'}
+            {climb.route_count > 1 ? (
+              <>
+                <span className="text-muted/60"> · </span>
+                {climb.route_count} routes
+              </>
+            ) : null}
           </p>
         </div>
         <div className="shrink-0 text-right">
@@ -265,8 +269,11 @@ export default function SegmentsPage() {
                   </h2>
                 </div>
                 <p className="mt-1 text-xs text-muted">
-                  {featured.area ?? featured.region ?? 'Unknown area'} ·{' '}
-                  {fmtKm(featured.distance_m)} at{' '}
+                  {featured.area ??
+                    featured.region ??
+                    featured.route_name ??
+                    'Climb'}{' '}
+                  · {fmtKm(featured.distance_m)} at{' '}
                   {featured.avg_gradient_pct.toFixed(1)}%
                   {featured.attempts
                     ? ` · ${featured.attempts} attempts`
@@ -453,6 +460,11 @@ export default function SegmentsPage() {
               <ClimbCard key={c.id} climb={c} />
             ))}
           </div>
+
+          <p className="pt-2 text-xs text-muted/80">
+            Areas © OpenStreetMap contributors (ODbL). Profiles are derived from
+            each route&apos;s polyline and elevation profile.
+          </p>
         </>
       )}
     </div>

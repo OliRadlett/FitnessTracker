@@ -140,6 +140,8 @@ class SegmentGroupRead(BaseModel):
     area: str | None = None
     region: str | None = None
     country: str | None = None
+    # Fallback identity when the group has no OSM area yet.
+    route_name: str | None = None
     distance_m: float
     gain_m: float
     avg_gradient_pct: float

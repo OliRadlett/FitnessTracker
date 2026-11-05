@@ -293,7 +293,9 @@ export default function SegmentGroupPage() {
           )}
 
           <p className="mt-1 text-sm text-muted">
-            {[group.area, group.region, group.country].filter(Boolean).join(' · ')}
+            {[group.area, group.region, group.country].filter(Boolean).join(' · ') ||
+              group.route_name ||
+              'Climb'}
           </p>
           <p className="mt-0.5 text-xs text-muted">
             {fmtKm(group.distance_m)} at {group.avg_gradient_pct.toFixed(1)}% ·{' '}
@@ -537,6 +539,11 @@ export default function SegmentGroupPage() {
           ) : null}
         </div>
       </div>
+
+      <p className="pt-3 text-xs text-muted/80">
+        Areas © OpenStreetMap contributors (ODbL). Profile and stats are derived
+        from the route geometry; attempts are measured efforts.
+      </p>
     </div>
   );
 }

@@ -118,6 +118,7 @@ export interface SegmentGroup {
   area: string | null;
   region: string | null;
   country: string | null;
+  route_name: string | null;
   distance_m: number;
   gain_m: number;
   avg_gradient_pct: number;
