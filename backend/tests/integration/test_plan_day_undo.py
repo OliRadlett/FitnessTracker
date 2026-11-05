@@ -19,15 +19,17 @@ class TestPlanDayUndo:
         day = resp.json()["days"][0]
         day_id, day_date = day["id"], day["day_date"]
 
-        # Delete → a claim is written in the same transaction.
+        # Delete → a claim is written in the same transaction and its id is returned.
         resp = await client.delete(
             f"/api/v1/training-plans/{test_training_plan.id}/days/{day_id}"
         )
-        assert resp.status_code == 204
+        assert resp.status_code == 200
+        undo_log_id = resp.json()["undo_log_id"]
 
         claims = (await client.get("/api/v1/undo")).json()
         claim = next((c for c in claims if c["kind"] == "plan_day_delete"), None)
         assert claim is not None, claims
+        assert claim["id"] == undo_log_id
 
         # Undo → the day is recreated.
         resp = await client.post(f"/api/v1/undo/{claim['id']}")

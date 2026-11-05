@@ -96,7 +96,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">Strava</span>
           <Link
-            href={`/activities?activity=${activity.id}`}
+            href={`/activity/${activity.id}`}
             className="text-sm font-medium text-foreground truncate max-w-[200px] hover:text-accent transition-colors"
             title="View in Activities"
           >
@@ -295,6 +295,16 @@ export default function LiftingPage() {
   }, [sessions]);
   const [selectedE1rmExercise, setSelectedE1rmExercise] = useState('');
   const effectiveE1rmExercise = selectedE1rmExercise || e1rmExerciseList[0] || '';
+
+  // `?exercise=<name>` opens Analytics with that exercise selected. Read once
+  // on mount; the main deep-link effect owns tab/session/pr.
+  useEffect(() => {
+    const exercise = new URLSearchParams(window.location.search).get('exercise');
+    if (exercise) {
+      setSelectedE1rmExercise(exercise);
+      setActiveTab('analytics');
+    }
+  }, []);
 
   const { data: e1rmHistoryChart, isLoading: e1rmHistoryLoading } = useQuery<ChartData>({
     queryKey: ['chart-estimated-1rm-history', effectiveE1rmExercise],

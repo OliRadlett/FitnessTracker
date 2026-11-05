@@ -145,7 +145,7 @@ export default function SettingsPage() {
 
   async function loadConnections() {
     try {
-      const data = await authFetch<Connection[]>('/api/v1/connections/');
+      const data = await authFetch<Connection[]>('/api/v1/connections');
       setConnections(data);
       setConnectionsError(false);
     } catch {

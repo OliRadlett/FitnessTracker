@@ -595,19 +595,23 @@ async def extend_plan(
     return TrainingPlanExtendResponse.model_validate(result)
 
 
-@router.delete("/{plan_id}/days/{day_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{plan_id}/days/{day_id}")
 async def delete_plan_day(    plan_id: uuid.UUID,
     day_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Delete one plan day. Completed days are refused (400)."""
+    """Delete one plan day. Completed days are refused (400).
+
+    Returns the undo claim id; POST /api/v1/undo/{id} restores the day.
+    """
     try:
-        await plan_service.delete_plan_day(db, current_user.id, plan_id, day_id)
+        undo_log_id = await plan_service.delete_plan_day(db, current_user.id, plan_id, day_id)
     except ValueError as e:
         detail = str(e)
         code = 404 if "not found" in detail else 400
         raise HTTPException(status_code=code, detail=detail) from e
+    return {"undo_log_id": str(undo_log_id)}
 
 
 @router.post(

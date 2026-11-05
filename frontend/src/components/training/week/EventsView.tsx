@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Bike, Calendar, Dumbbell, Flag, MapPin, TrendingDown, X } from 'lucide-react';
 
@@ -28,7 +28,7 @@ const EVENT_TYPE_ICON: Record<string, React.ComponentType<{ className?: string }
  * working one to honour a drawing would be the wrong trade — recorded in
  * `PRODUCTION.md`.
  */
-export function EventsView({ onBack }: { onBack: () => void }) {
+export function EventsView({ onBack, focusEventId }: { onBack: () => void; focusEventId?: string | null }) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -42,6 +42,14 @@ export function EventsView({ onBack }: { onBack: () => void }) {
     queryFn: () => authFetch<Event[]>('/api/v1/events?upcoming_only=true'),
     enabled: !!token,
   });
+
+  // A palette hit lands here with `?event=`; centre that card once it renders.
+  useEffect(() => {
+    if (!focusEventId) return;
+    document
+      .getElementById(`event-${focusEventId}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [focusEventId, events]);
 
   const { data: plans } = useQuery<TrainingPlanSummary[]>({
     queryKey: ['training-plans'],
@@ -160,7 +168,8 @@ export function EventsView({ onBack }: { onBack: () => void }) {
             return (
               <div
                 key={evt.id}
-                className="rounded-lg border border-surface-light/50 bg-surface-light/20 p-3"
+                id={`event-${evt.id}`}
+                className={`rounded-lg border border-surface-light/50 bg-surface-light/20 p-3 ${focusEventId === evt.id ? 'ring-1 ring-accent/50' : ''}`}
               >
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2 text-sm font-medium text-foreground">

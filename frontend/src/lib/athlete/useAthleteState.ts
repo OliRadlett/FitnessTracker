@@ -147,7 +147,7 @@ export function useAthleteState(): AthleteState {
   // ── Sync (stale/needs_reauth shown, never averaged away) ───────────────
   const connectionsQuery = useQuery<Connection[]>({
     queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections'),
     staleTime: 5 * 60_000,
     enabled: !!token,
   });

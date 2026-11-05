@@ -86,7 +86,7 @@ export function RouteHistorySection({ routeId }: { routeId: string }) {
                 <tr key={ride.activity_id} className="border-b border-surface-light/30 hover:bg-surface-light/20">
                   <td className="py-2 pr-3 text-foreground">
                     <Link
-                      href={`/activities?activity=${ride.activity_id}`}
+                      href={`/activity/${ride.activity_id}`}
                       className="hover:text-accent transition-colors"
                       title="View this ride in Activities"
                     >

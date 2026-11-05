@@ -154,7 +154,7 @@ function PlanRow({
               href={
                 state.lift
                   ? `/lifting?session=${state.lift.id}`
-                  : `/activities?activity=${state.activity!.id}`
+                  : `/activity/${state.activity!.id}`
               }
               className="inline-flex items-center gap-1 text-[10px] font-semibold text-accent/80 hover:text-accent"
             >
@@ -272,7 +272,7 @@ function ActivityRow({ activity, unplanned }: { activity: Activity; unplanned: b
       )}
 
       <Link
-        href={`/activities?activity=${activity.id}`}
+        href={`/activity/${activity.id}`}
         className="mt-2 inline-flex items-center gap-1 text-[10px] font-semibold text-accent/85 hover:text-accent"
       >
         View activity <ArrowUpRight className="h-3 w-3" />

@@ -421,7 +421,7 @@ function CyclingPageInner() {
   // from the server-computed training-load series. No computation changes.
   const { data: connections } = useQuery<Connection[]>({
     queryKey: ['connections'],
-    queryFn: () => authFetch<Connection[]>('/api/v1/connections/'),
+    queryFn: () => authFetch<Connection[]>('/api/v1/connections'),
     staleTime: 300_000,
     enabled: !!token,
   });

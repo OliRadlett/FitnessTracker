@@ -50,7 +50,7 @@ function flattenHits(data: SearchResponse | undefined): Hit[] {
         title = item.name;
         subtitle = item.date ?? '';
         id = item.id;
-        href = `/activities?activity=${item.id}`;
+        href = `/activity/${item.id}`;
         hits.push({ kind, id, title, subtitle, href, emoji: KIND_EMOJI[kind] });
       }
     } else if (kind === 'route') {
@@ -74,7 +74,7 @@ function flattenHits(data: SearchResponse | undefined): Hit[] {
         title = item.name;
         subtitle = item.category ?? '';
         id = item.id;
-        href = '/lifting';
+        href = `/lifting?tab=analytics&exercise=${encodeURIComponent(item.name)}`;
         hits.push({ kind, id, title, subtitle, href, emoji: KIND_EMOJI[kind] });
       }
     } else if (kind === 'goal') {
@@ -82,7 +82,7 @@ function flattenHits(data: SearchResponse | undefined): Hit[] {
         title = item.label;
         subtitle = `${item.target_value} (${item.status})`;
         id = item.id;
-        href = '/goals';
+        href = `/goals?goal=${item.id}`;
         hits.push({ kind, id, title, subtitle, href, emoji: KIND_EMOJI[kind] });
       }
     } else {
@@ -90,7 +90,7 @@ function flattenHits(data: SearchResponse | undefined): Hit[] {
         title = item.name;
         subtitle = item.event_date;
         id = item.id;
-        href = '/training';
+        href = `/training?view=events&event=${item.id}`;
         hits.push({ kind, id, title, subtitle, href, emoji: KIND_EMOJI[kind] });
       }
     }

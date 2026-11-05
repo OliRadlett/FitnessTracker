@@ -26,6 +26,7 @@ import { seriesArea } from '@/lib/route-shape';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { RouteShape } from '@/components/activity/RouteShape';
 import { StreamChart } from '@/components/activity/StreamChart';
+import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
 import { ErrorState } from '@/components/ui/ErrorState';
 
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -416,6 +417,13 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
                 Time in zone
               </SectionTitle>
               <ZoneBars zones={analysis.power_zones} />
+            </section>
+          )}
+
+          {isRide && (
+            <section className="mt-9">
+              <SectionTitle>Fuel plan</SectionTitle>
+              <FuelPlanCard activity={activity} />
             </section>
           )}
         </>
