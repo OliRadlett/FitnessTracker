@@ -16,7 +16,10 @@ import pytest
 
 from app.models.activity import Activity, ActivityStream
 from app.models.daily_metric import DailyMetric
-from app.services.cycling.power_curve import compute_power_curve_from_streams
+from app.services.cycling.power_curve import (
+    compute_power_curve_from_streams,
+    compute_power_curve_with_source,
+)
 from app.services.cycling.prs import check_and_record_cycling_prs
 from app.services.cycling.vo2max import estimate_vo2max
 
@@ -62,6 +65,26 @@ class TestEightMinuteBucket:
         prs = await check_and_record_cycling_prs(db_session, test_user.id, activity)
         by_label = {p.duration_label: p for p in prs}
         assert by_label["8min"].power_watts == pytest.approx(250.0)
+
+
+class TestPowerCurveSource:
+    """The record table needs the date of each best, so the curve reports which
+    activity set it. The number and the date must come from one pass."""
+
+    async def test_source_is_the_ride_that_set_the_best(self, db_session, test_user):
+        await _steady_ride(db_session, test_user.id, 1200, 200.0)
+        strong = await _steady_ride(db_session, test_user.id, 1200, 300.0)
+
+        curve, source = await compute_power_curve_with_source(db_session, test_user.id)
+
+        assert curve[480] == pytest.approx(300.0)
+        assert source[480] == strong.id
+
+    async def test_plain_curve_keeps_its_shape(self, db_session, test_user):
+        await _steady_ride(db_session, test_user.id, 1200, 250.0)
+        curve = await compute_power_curve_from_streams(db_session, test_user.id)
+        assert curve[480] == pytest.approx(250.0)
+        assert isinstance(curve[480], float)
 
 
 class TestUthStalenessBound:

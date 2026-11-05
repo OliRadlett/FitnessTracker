@@ -185,14 +185,25 @@ describe('typeMix', () => {
 });
 
 describe('durationRows', () => {
-  const curve = (rows: [number, string, number | undefined][]): PowerCurveResponse =>
+  const curve = (rows: [number, string, number | undefined, string?][]): PowerCurveResponse =>
     ({
-      data: rows.map(([seconds, label, best]) => ({
+      data: rows.map(([seconds, label, best, date]) => ({
         duration_seconds: seconds,
         duration_label: label,
         best_power_watts: best,
+        date_achieved: date ?? null,
       })),
     }) as PowerCurveResponse;
+
+  it('carries the date the window best was set', () => {
+    const rows = durationRows(curve([[300, '5min', 300, '2026-02-09']]), undefined, 200, 80);
+    expect(rows[0].achievedOn).toBe('2026-02-09');
+  });
+
+  it('leaves the date empty when the backend has none', () => {
+    const rows = durationRows(curve([[300, '5min', 300]]), undefined, 200, 80);
+    expect(rows[0].achievedOn).toBeNull();
+  });
 
   it('reads both windows from the same computation', () => {
     const rows = durationRows(

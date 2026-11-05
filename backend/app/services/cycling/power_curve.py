@@ -260,7 +260,7 @@ def estimate_ftp_from_power_curve_detailed(
 
 
 # Simple in-memory cache for power curves to avoid recomputing on every request
-_power_curve_cache: dict[str, tuple[float, dict[int, float]]] = {}
+_power_curve_cache: dict[str, tuple[float, dict[int, float], dict[int, uuid.UUID]]] = {}
 _POWER_CURVE_CACHE_TTL_SEC = 3600  # 1 hour
 
 # Max activities whose streams coexist in RAM: 10 rides x ~1.8 MB worst-case
@@ -319,13 +319,29 @@ async def compute_power_curve_from_streams(
 
     Returns a dict mapping duration_seconds -> best_power_watts.
     """
+    best_power, _source = await compute_power_curve_with_source(db, user_id, days)
+    return best_power
+
+
+async def compute_power_curve_with_source(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    days: int = 90,
+) -> tuple[dict[int, float], dict[int, uuid.UUID]]:
+    """As `compute_power_curve_from_streams`, but also reports the activity that
+    set each best.
+
+    The record table on `/cycling` needs to say *when* a best was set, and the
+    winning ride is only known where the max is taken. Returning it here keeps the
+    date and the number from ever being computed by different passes.
+    """
     import time
 
     cache_key = f"{user_id}:{days}"
     now = time.monotonic()
     cached = _power_curve_cache.get(cache_key)
     if cached and (now - cached[0]) < _POWER_CURVE_CACHE_TTL_SEC:
-        return cached[1]
+        return cached[1], cached[2]
 
     cutoff = date.today() - timedelta(days=days)
 
@@ -341,12 +357,15 @@ async def compute_power_curve_from_streams(
     activity_ids = [row[0] for row in result.all()]
 
     if not activity_ids:
-        return {}
+        return {}, {}
 
     # Fetch power streams in small per-activity chunks: loading 90d of 1 Hz
     # streams at once peaks at ~60-120 MB (OOM risk on the 1 GB prod worker).
     # Output is identical — per-bucket bests are order-independent (max).
     best_power: dict[int, float] = {}
+    # Which activity set each best — the record table needs the date, and the
+    # winner is only known where the max is taken.
+    best_source: dict[int, uuid.UUID] = {}
 
     # Sort buckets by duration so shorter durations are processed first;
     # once a duration exceeds the data length we can break early.
@@ -372,7 +391,7 @@ async def compute_power_curve_from_streams(
             # expunged, so callers holding their own rows are unaffected.
             db.expunge(stream)
 
-        for entry in by_activity.values():
+        for activity_id, entry in by_activity.items():
             data = entry.get("watts")
             if not isinstance(data, list) or len(data) < 2:
                 continue
@@ -398,6 +417,7 @@ async def compute_power_curve_from_streams(
                         or best_avg > best_power[duration_sec]
                     ):
                         best_power[duration_sec] = best_avg
+                        best_source[duration_sec] = activity_id
                 continue
 
             # No time axis: fall back to the sample/resolution approximation.
@@ -414,9 +434,10 @@ async def compute_power_curve_from_streams(
                     or best_avg > best_power[duration_sec]
                 ):
                     best_power[duration_sec] = best_avg
+                    best_source[duration_sec] = activity_id
 
-    _power_curve_cache[cache_key] = (now, best_power)
-    return best_power
+    _power_curve_cache[cache_key] = (now, best_power, best_source)
+    return best_power, best_source
 
 
 # ── FTP Estimation Backfill ──────────────────────────────────────────────────

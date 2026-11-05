@@ -13,6 +13,7 @@ from app.services.cycling.power_curve import (
     best_power_rolling_average,
     blend_ci_95,
     compute_power_curve_from_streams,
+    compute_power_curve_with_source,
     estimate_ftp_from_power_curve,
     estimate_ftp_from_power_curve_detailed,
     personalized_power_curve,
