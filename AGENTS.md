@@ -60,7 +60,25 @@ Delegate to specialized agents when the task clearly fits their domain:
 
 FitTrack: personal fitness tracker for **powerlifting + cycling**. Aggregates Strava, Komoot, Wahoo, Whoop into a dashboard with trends, correlations, routes, health alerts, training plans, goals, and events.
 
-**Stack**: Python 3.12/FastAPI/SQLAlchemy 2.0 (async) · Next.js 14/React 18/TypeScript/Tailwind/Recharts · PostgreSQL 16 · Redis 7 · Celery + Beat · NextAuth.js · Docker Compose + Caddy · Prometheus · ReportLab (PDF)
+**Stack**: Python 3.12/FastAPI/SQLAlchemy 2.0 (async) · Next.js 14/React 18/TypeScript/Tailwind/Recharts · PostgreSQL 16 · Redis 7 · Celery + Beat · NextAuth.js · Docker Compose + Caddy · Prometheus · ReportLab (PDF) · Kotlin/Compose Android client
+
+## Android app (`android/`)
+
+Native Kotlin + Compose client, v0.1 — the gym flow. It is **not** a port of the
+web UI: its decisions come from [`prototype/android/`](prototype/android/README.md)
+(frames, gate, parity matrix), and the code was written fresh against them.
+
+- **Build**: `cd android && gradle :app:assembleDebug`. Tests and screenshots:
+  `gradle :app:testDebugUnitTest` — JVM only, no emulator (Robolectric draws the
+  real `MainActivity`).
+- **Rules belong in [`SessionEngine`](android/app/src/main/java/uk/oli/fittrack/domain/Session.kt)**:
+  prefill, current exercise, volume, completion. Pure and unit-tested; screens
+  must not re-derive them.
+- **State**: one session at a time in [`AppViewModel`](android/app/src/main/java/uk/oli/fittrack/AppViewModel.kt),
+  persisted as JSON by [`SessionStore`](android/app/src/main/java/uk/oli/fittrack/data/SessionStore.kt)
+  after every set, so process death mid-workout costs nothing.
+- **Not built yet**: auth, API client, sync, and the Train/Ride/Body/You tabs —
+  those render an explicit "not built yet" screen rather than an empty shell.
 
 ## Architecture
 

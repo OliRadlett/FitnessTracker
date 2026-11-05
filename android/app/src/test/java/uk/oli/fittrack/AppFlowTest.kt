@@ -1,0 +1,78 @@
+package uk.oli.fittrack
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import java.io.File
+
+/**
+ * Drives the real app: launches MainActivity, taps Start, taps Log set, and
+ * photographs each state. This is the honest proof that navigation, the
+ * ViewModel, the store and the rest timer all work together — a compile is not.
+ */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w412dp-h915dp-xxhdpi")
+class AppFlowTest {
+
+    @get:Rule
+    val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun startAndLogASet() {
+        compose.waitForIdle()
+        save("app-1-today")
+
+        // Start the session: Today -> Live.
+        compose.onNodeWithTag("primary").performClick()
+        compose.waitForIdle()
+        save("app-2-live")
+
+        // Log the first set: Live -> resting.
+        compose.onNodeWithTag("primary").performClick()
+        compose.waitForIdle()
+        save("app-3-rest")
+
+        compose.onNodeWithText("RESTING").assertExists()
+        compose.onNodeWithText("set 2 of 4", substring = true).assertExists()
+        compose.onNodeWithText("Log set 2").assertExists()
+
+        // Bump the weight on the stepper, then log again. The row must show what
+        // was logged (92.5), not what the plan asked for (90).
+        compose.onAllNodesWithText("+").onFirst().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("primary").performClick()
+        compose.waitForIdle()
+        save("app-4-second-set")
+        compose.onNodeWithText("92.5 × 4").assertExists()
+    }
+
+    private fun save(name: String) {
+        val view: View = compose.activity.window.decorView
+        val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
+        view.draw(Canvas(bitmap))
+
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        val distinct = pixels.toHashSet().size
+        assertTrue("$name rendered only $distinct colours — blank capture", distinct > 20)
+
+        val out = File("build/shots/$name.png")
+        out.parentFile?.mkdirs()
+        out.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        println("SHOT ${out.absolutePath} ${bitmap.width}x${bitmap.height} colours=$distinct")
+    }
+}
