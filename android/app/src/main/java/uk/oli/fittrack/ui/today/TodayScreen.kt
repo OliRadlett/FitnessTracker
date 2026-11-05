@@ -1,6 +1,7 @@
 package uk.oli.fittrack.ui.today
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,8 @@ import java.util.Locale
 @Composable
 fun TodayScreen(
     session: SessionState?,
+    signedIn: Boolean,
+    onSignIn: () -> Unit,
     onStart: () -> Unit,
     onResume: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -84,6 +87,21 @@ fun TodayScreen(
                     fontSize = 13.sp,
                     color = Tokens.Muted
                 )
+            }
+            if (!signedIn) {
+                Spacer(Modifier.height(18.dp))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onSignIn() }
+                        .padding(vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Not signed in", fontSize = 13.sp, color = Tokens.Muted)
+                    Spacer(Modifier.weight(1f))
+                    Text("Sign in →", fontSize = 13.sp, color = Tokens.Accent)
+                }
             }
             Spacer(Modifier.weight(1f))
         }

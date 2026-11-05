@@ -77,8 +77,13 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
 - **State**: one session at a time in [`AppViewModel`](android/app/src/main/java/uk/oli/fittrack/AppViewModel.kt),
   persisted as JSON by [`SessionStore`](android/app/src/main/java/uk/oli/fittrack/data/SessionStore.kt)
   after every set, so process death mid-workout costs nothing.
-- **Not built yet**: auth, API client, sync, and the Train/Ride/Body/You tabs —
-  those render an explicit "not built yet" screen rather than an empty shell.
+- **Sign-in**: Google via Credential Manager → `POST /api/v1/auth/mobile/google`,
+  which verifies the ID token against Google's JWKS before minting a JWT
+  ([`services/google_id.py`](backend/app/services/google_id.py)). Setup and the
+  failure table live in [`docs/ANDROID-AUTH.md`](docs/ANDROID-AUTH.md). Sign-in is
+  **not** a gate: the gym flow works before you authenticate.
+- **Not built yet**: sync, and the Train/Ride/Body tabs — those render an explicit
+  "not built yet" screen rather than an empty shell.
 
 ## Architecture
 

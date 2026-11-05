@@ -5,6 +5,26 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
 }
 
+// Secrets and endpoints come from local.properties (gitignored) or -P flags,
+// never from the committed build file. Parsed by hand: `java.util` resolves to
+// the Gradle `java` extension inside a .kts script.
+val localProps: Map<String, String> = rootProject.file("local.properties").let { file ->
+    if (!file.exists()) {
+        emptyMap()
+    } else {
+        file.readLines()
+            .filter { it.contains("=") && !it.trimStart().startsWith("#") }
+            .associate { it.substringBefore("=").trim() to it.substringAfter("=").trim() }
+    }
+}
+val googleWebClientId: String =
+    (findProperty("googleWebClientId") as String?)?.takeIf { it.isNotBlank() }
+        ?: localProps["googleWebClientId"].orEmpty()
+val apiBaseUrl: String =
+    (findProperty("apiBaseUrl") as String?)?.takeIf { it.isNotBlank() }
+        ?: localProps["apiBaseUrl"]?.takeIf { it.isNotBlank() }
+        ?: "https://oliradlett.co.uk/api/v1"
+
 android {
     namespace = "uk.oli.fittrack"
     compileSdk = 35
@@ -14,7 +34,10 @@ android {
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "0.2.0"
+
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
+        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
     }
 
     buildTypes {
@@ -34,6 +57,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {
@@ -62,6 +86,13 @@ dependencies {
     implementation("androidx.navigation:navigation-compose:2.8.5")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+
+    // Google Sign-In via Credential Manager, and the HTTP client behind it.
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     testImplementation(composeBom)
     testImplementation("junit:junit:4.13.2")

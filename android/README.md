@@ -17,13 +17,17 @@ against those decisions.
   logged.
 - Done: volume, sets, duration and top set, computed from the log.
 - Process death costs nothing: the session is written to disk after every set.
+- Account: Google Sign-In through Credential Manager, verified server-side
+  ([docs/ANDROID-AUTH.md](../docs/ANDROID-AUTH.md)). You → **Continue with Google**.
 
 ## What does not work yet
 
-- No auth. No API client. No sync. The plan is a seeded constant
-  (`data/SessionStore.kt › SeedPlan`).
+- No sync: signing in stores a verified token and nothing uses it yet. The plan
+  is still a seeded constant (`data/SessionStore.kt › SeedPlan`).
 - No history: the week strip and load numbers are absent rather than fake.
 - No widgets, Health Connect, background sync or notifications.
+- Sign-in is not a gate — the gym flow works before you authenticate. Logging a
+  set must never wait on a network round trip.
 
 ## Build
 

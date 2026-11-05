@@ -41,6 +41,10 @@ class SyncUserRequest(BaseModel):
     provider_user_id: str
 
 
+class MobileGoogleLoginRequest(BaseModel):
+    id_token: str
+
+
 class SyncUserResponse(BaseModel):
     user: UserRead
     access_token: str
@@ -113,6 +117,107 @@ async def sync_user(
             provider_user_id=body.provider_user_id,
         )
         db.add(connection)
+        await db.flush()
+
+    token = create_access_token(user.id)
+    return SyncUserResponse(
+        user=UserRead.model_validate(user),
+        access_token=token,
+    )
+
+
+@router.post("/mobile/google", response_model=SyncUserResponse)
+async def mobile_google_login(
+    body: MobileGoogleLoginRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Exchange a Google ID token from the Android client for a backend JWT.
+
+    Unlike ``/sync-user`` (which trusts a shared internal secret), this endpoint
+    accepts an untrusted public client, so it verifies the token itself:
+    signature against Google's JWKS, audience, issuer, expiry, and a verified
+    email. A forged token cannot mint a session.
+    """
+    import logging as _logging
+
+    from app.config import get_settings as _get_settings
+    from app.services.cache import check_rate_limit
+    from app.services.client_ip import get_client_ip
+    from app.services.google_id import GoogleTokenError, verify_google_id_token
+
+    _logger = _logging.getLogger(__name__)
+    settings = _get_settings()
+
+    # Public endpoint that costs an RSA verification per call; cap the attempt
+    # rate per client IP. Fails open on a Redis outage, like the other limiters.
+    if not await check_rate_limit(
+        f"mobile-auth:{get_client_ip(request)}", limit=10, window_seconds=60
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many sign-in attempts. Try again shortly.",
+        )
+
+    audience = settings.google_mobile_client_id or settings.google_client_id
+    if not audience:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Mobile sign-in is not configured on this server.",
+        )
+
+    try:
+        claims = await verify_google_id_token(body.id_token, audience)
+    except GoogleTokenError as exc:
+        # Log the reason, never the token.
+        _logger.warning("Rejected mobile Google sign-in: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Google sign-in token.",
+        )
+
+    email = str(claims["email"]).strip().lower()
+    if not settings.is_email_allowed(email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is not allowed to access FitTrack.",
+        )
+
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    provider_user_id = str(claims.get("sub") or email)
+    if user is None:
+        user = User(
+            id=uuid.uuid4(),
+            email=email,
+            name=str(claims.get("name") or email),
+            avatar_url=claims.get("picture"),
+        )
+        db.add(user)
+        await db.flush()
+
+    # Record that this account signs in from Google, so the integration view is
+    # honest about where the identity came from.
+    from app.models.user import OAuthConnection
+
+    conn_result = await db.execute(
+        select(OAuthConnection).where(
+            OAuthConnection.user_id == user.id,
+            OAuthConnection.provider == "google",
+        )
+    )
+    connection = conn_result.scalar_one_or_none()
+    if connection is None:
+        db.add(
+            OAuthConnection(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                provider="google",
+                access_token="google_id_token",  # no refresh token is held
+                provider_user_id=provider_user_id,
+            )
+        )
         await db.flush()
 
     token = create_access_token(user.id)
