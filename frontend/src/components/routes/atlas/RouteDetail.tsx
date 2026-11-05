@@ -8,6 +8,7 @@ import {
   Download,
   Pencil,
   Star,
+  Tags,
   Trash2,
   X,
 } from 'lucide-react';
@@ -28,6 +29,7 @@ import { RouteHistorySection } from '@/components/routes/RouteHistorySection';
 import { MergedRouteMapView } from '@/components/routes/MergedRouteMapView';
 import { RouteShape } from './RouteShape';
 import { ElevationStrip } from './ElevationStrip';
+import { OrganiseRouteModal } from './OrganiseRouteModal';
 import {
   formatClimb,
   formatDate,
@@ -65,6 +67,7 @@ export function RouteDetail({
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(route.name);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [organiseOpen, setOrganiseOpen] = useState(false);
   const [terrainMode, setTerrainMode] = useState<'2d' | '3d'>('2d');
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -292,6 +295,14 @@ export function RouteDetail({
           </button>
           <button
             type="button"
+            onClick={() => setOrganiseOpen(true)}
+            className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-surface-light/70 text-xs font-medium text-muted transition-colors hover:text-foreground"
+          >
+            <Tags className="h-4 w-4" />
+            Organise
+          </button>
+          <button
+            type="button"
             onClick={download}
             className="flex h-11 flex-1 items-center justify-center gap-2 rounded-lg border border-surface-light/70 text-xs font-medium text-muted transition-colors hover:text-foreground"
           >
@@ -415,6 +426,12 @@ export function RouteDetail({
         pending={deleteMutation.isPending}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => setConfirmDelete(false)}
+      />
+
+      <OrganiseRouteModal
+        route={route}
+        open={organiseOpen}
+        onClose={() => setOrganiseOpen(false)}
       />
     </aside>
   );

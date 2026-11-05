@@ -466,6 +466,28 @@ async def list_collections(
     return [RouteCollectionRead.model_validate(c) for c in collections]
 
 
+@router.get("/{route_id}/collections", response_model=list[uuid.UUID])
+async def list_route_collections(
+    route_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Collection ids that currently contain this route.
+
+    The organising UI needs membership, which the collection list (with
+    ``route_count``) cannot answer for a single route.
+    """
+    route = await route_service.get_route_by_id(db, route_id, current_user.id)
+    if not route:
+        raise HTTPException(status_code=404, detail="Route not found")
+    result = await db.execute(
+        select(RouteCollectionItem.collection_id).where(
+            RouteCollectionItem.route_id == route_id
+        )
+    )
+    return [collection_id for (collection_id,) in result.all()]
+
+
 @router.post("/collections", response_model=RouteCollectionRead)
 async def create_collection(
     body: RouteCollectionCreate,
