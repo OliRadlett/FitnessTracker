@@ -9,6 +9,23 @@ import pytest
 
 
 @pytest.mark.asyncio
+async def test_update_demographics(client, test_user):
+    """PATCH /auth/me stores optional age/sex for VO2max calibration."""
+    response = await client.patch(
+        "/api/v1/auth/me",
+        json={"birth_date": "1990-01-01", "sex": "male"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["birth_date"] == "1990-01-01"
+    assert body["sex"] == "male"
+
+    fetched = await client.get("/api/v1/auth/me")
+    assert fetched.status_code == 200
+    assert fetched.json()["sex"] == "male"
+
+
+@pytest.mark.asyncio
 async def test_json_export_includes_collections(
     client,
     test_user,
