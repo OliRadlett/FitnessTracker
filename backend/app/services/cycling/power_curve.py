@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity import Activity, ActivityStream
 from app.models.cycling import FtpHistory
+from app.services.cycling import timeaxis
 
 # Power duration buckets (seconds) for the power curve
 POWER_DURATION_BUCKETS = [
@@ -356,19 +357,24 @@ async def compute_power_curve_from_streams(
         result = await db.execute(
             select(ActivityStream).where(
                 ActivityStream.activity_id.in_(chunk),
-                ActivityStream.stream_type == "watts",
+                ActivityStream.stream_type.in_(("watts", "time")),
             )
         )
+        by_activity: dict[uuid.UUID, dict[str, object]] = {}
         for stream in result.scalars().all():
             data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
-            # Read resolution before expunging: bucket durations are seconds,
-            # so a duration is duration/resolution samples (no-op at 1 Hz).
-            res = stream.resolution or 1
+            entry = by_activity.setdefault(stream.activity_id, {})
+            entry[stream.stream_type] = data
+            if stream.stream_type == "watts":
+                entry["resolution"] = stream.resolution
             # Release the ORM row (and its JSONB payload) now that the plain
-            # floats are extracted; only objects loaded by this function are
+            # lists are extracted; only objects loaded by this function are
             # expunged, so callers holding their own rows are unaffected.
             db.expunge(stream)
-            if not data or len(data) < 2:
+
+        for entry in by_activity.values():
+            data = entry.get("watts")
+            if not isinstance(data, list) or len(data) < 2:
                 continue
 
             # Drop only None/non-finite samples. Zero watts (coasting) is
@@ -381,8 +387,21 @@ async def compute_power_curve_from_streams(
             if n < 2:
                 continue
 
-            # §5.4 single-pass prefix-sum rolling average per bucket; sorted_buckets
-            # is ascending so we can stop early once a window exceeds the data.
+            time_data = entry.get("time")
+            if isinstance(time_data, list) and len(time_data) >= 2:
+                curve = timeaxis.best_power_curve(
+                    time_data, power_data, [duration for duration, _ in sorted_buckets]
+                )
+                for duration_sec, best_avg in curve.items():
+                    if (
+                        duration_sec not in best_power
+                        or best_avg > best_power[duration_sec]
+                    ):
+                        best_power[duration_sec] = best_avg
+                continue
+
+            # No time axis: fall back to the sample/resolution approximation.
+            res = entry.get("resolution") or 1
             for duration_sec, _ in sorted_buckets:
                 window = max(1, round(duration_sec / res))
                 if window > n:
@@ -444,28 +463,49 @@ async def backfill_ftp_estimates(
         result = await db.execute(
             select(ActivityStream).where(
                 ActivityStream.activity_id.in_(activity_ids),
-                ActivityStream.stream_type == "watts",
+                ActivityStream.stream_type.in_(("watts", "time")),
             )
         )
-        streams = list(result.scalars().all())
+        by_activity: dict[uuid.UUID, dict[str, object]] = {}
+        for stream in result.scalars().all():
+            data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
+            entry = by_activity.setdefault(stream.activity_id, {})
+            entry[stream.stream_type] = data
+            if stream.stream_type == "watts":
+                entry["resolution"] = stream.resolution
+            db.expunge(stream)
 
         best_power: dict[int, float] = {}
-        for stream in streams:
-            data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
-            if not data or len(data) < 2:
+        for entry in by_activity.values():
+            data = entry.get("watts")
+            if not isinstance(data, list) or len(data) < 2:
                 continue
-            res = stream.resolution or 1
             power_data = [
                 float(p) for p in data if p is not None and math.isfinite(float(p))
             ]
             if len(power_data) < 2:
                 continue
 
+            time_data = entry.get("time")
+            if isinstance(time_data, list) and len(time_data) >= 2:
+                curve = timeaxis.best_power_curve(
+                    time_data,
+                    power_data,
+                    [duration for duration, _ in POWER_DURATION_BUCKETS],
+                )
+                for duration_sec, best_avg in curve.items():
+                    if (
+                        duration_sec not in best_power
+                        or best_avg > best_power[duration_sec]
+                    ):
+                        best_power[duration_sec] = best_avg
+                continue
+
+            res = entry.get("resolution") or 1
             for duration_sec, _ in POWER_DURATION_BUCKETS:
                 window = max(1, round(duration_sec / res))
                 if window > len(power_data):
                     continue
-                # §5.4 single-pass prefix-sum window max (shared with read path).
                 best_avg = best_power_rolling_average(power_data, window)
                 if best_avg is None:
                     continue
