@@ -122,13 +122,15 @@ popularity 0.15, effort_match 0.25.
 ### Surface — 50/86 (all Komoot routes)
 
 ```
-paved 0.86 + cobbles 0.02 + unpaved 0.05 + compacted_gravel 0.08
-paved 0.996 + cobbles 0.004
+paved 0.86 + cobblestone 0.02 + unpaved 0.05 + compacted_gravel 0.08
+paved 0.996 + cobblestone 0.004
 … 50 routes, every Komoot source
 ```
 
-`unpaved` and `cobbles` are Komoot keys outside the current filter vocabulary;
-`cobbles` is now mapped, `unpaved` is kept as-is (it is distinct from dirt).
+`unpaved` and `alpin` are Komoot keys outside the current filter vocabulary;
+they are kept as-is rather than mislabelled. `cobbles` is mapped to
+`cobblestone`. The backfill re-extracts **every** Komoot route (not only null
+ones), so a vocabulary change normalises existing rows too.
 
 ### Terrain — 50/50 eligible
 
