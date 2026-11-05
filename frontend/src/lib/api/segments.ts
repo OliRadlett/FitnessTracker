@@ -2,6 +2,9 @@ import type {
   ClimbDetail,
   Segment,
   SegmentDetail,
+  SegmentGroup,
+  SegmentGroupDetail,
+  SegmentGroupList,
   SegmentRecomputeResponse,
 } from './types';
 
@@ -48,4 +51,53 @@ export async function recomputeRouteSegments(
     `/api/v1/routes/${routeId}/segments/recompute`,
     { method: 'POST' }
   );
+}
+
+/** Stable segment groups — the /segments page. */
+export interface SegmentGroupQuery {
+  kind?: string;
+  tab?: 'ridden' | 'to_ride' | 'all';
+  q?: string;
+  area?: string;
+  region?: string;
+  sort?: 'attempts' | 'recent' | 'hardest' | 'longest' | 'steepest' | 'name';
+  limit?: number;
+  offset?: number;
+}
+
+export async function getSegmentGroups(
+  authFetch: AuthFetch,
+  params: SegmentGroupQuery = {}
+): Promise<SegmentGroupList> {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      query.set(key, String(value));
+    }
+  });
+  const qs = query.toString();
+  return authFetch<SegmentGroupList>(
+    `/api/v1/segments/groups${qs ? `?${qs}` : ''}`
+  );
+}
+
+export async function getSegmentGroup(
+  authFetch: AuthFetch,
+  groupId: string
+): Promise<SegmentGroupDetail> {
+  return authFetch<SegmentGroupDetail>(
+    `/api/v1/segments/groups/${groupId}`
+  );
+}
+
+/** null / empty resets the hill to its generated name. */
+export async function renameSegmentGroup(
+  authFetch: AuthFetch,
+  groupId: string,
+  displayName: string | null
+): Promise<SegmentGroup> {
+  return authFetch<SegmentGroup>(`/api/v1/segments/groups/${groupId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ display_name: displayName }),
+  });
 }
