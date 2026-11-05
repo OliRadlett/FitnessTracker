@@ -15,6 +15,7 @@ import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.done.DoneScreen
 import uk.oli.fittrack.ui.live.LiveScreen
 import uk.oli.fittrack.ui.log.SessionDetailScreen
+import uk.oli.fittrack.ui.plan.PlanEditorScreen
 import uk.oli.fittrack.ui.signin.SignInScreen
 import uk.oli.fittrack.ui.today.TodayScreen
 import uk.oli.fittrack.ui.you.YouScreen
@@ -27,6 +28,7 @@ object Routes {
     const val SIGNIN = "signin"
     const val TAB = "tab/{name}"
     const val SESSION = "session/{id}"
+    const val PLAN_EDIT = "plan-edit"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -42,6 +44,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val now by vm.now.collectAsStateWithLifecycle()
     val auth by vm.auth.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
+    val plan by vm.plan.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -58,8 +61,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
         composable(Routes.TODAY) {
             TodayScreen(
                 session = session,
+                plan = plan,
                 signedIn = auth.signedIn,
                 history = history,
+                onEditPlan = { nav.navigate(Routes.PLAN_EDIT) },
                 onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                 onSignIn = { nav.navigate(Routes.SIGNIN) },
                 onStart = {
@@ -113,6 +118,17 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     }
                 )
             }
+        }
+
+        composable(Routes.PLAN_EDIT) {
+            PlanEditorScreen(
+                plan = plan,
+                onSave = {
+                    vm.updatePlan(it)
+                    nav.popBackStack()
+                },
+                onCancel = { nav.popBackStack() }
+            )
         }
 
         composable(Routes.SESSION) { entry ->
