@@ -186,6 +186,53 @@ def recompute_ride_segments() -> dict:
     return asyncio.run(_run_task_guarded("recompute_ride_segments", _run))
 
 
+@celery_app.task(name="app.tasks.scheduler.match_segment_efforts")
+def match_segment_efforts() -> dict:
+    """Nightly: rebuild groups, then match new rides to climbs via `latlng`.
+
+    The group rebuild is cheap for one account (100 segments) and keeps newly
+    imported routes in the set. The matcher is idempotent, so a nightly full
+    pass only adds attempts for rides that do not have one yet.
+    """
+    import asyncio
+
+    from sqlalchemy import select
+
+    from app.database import task_session
+    from app.models.activity import Activity
+
+    async def _run():
+        from app.services.segment_groups import rebuild_user_groups
+        from app.services.segment_match import apply_user_matches
+
+        async with task_session() as db:
+            result = await db.execute(
+                select(Activity.user_id)
+                .where(Activity.sport_type == "cycling")
+                .distinct()
+            )
+            user_ids = [r for (r,) in result.all()]
+
+            totals = {"created": 0, "skipped": 0, "users": 0}
+            for user_id in user_ids:
+                try:
+                    await rebuild_user_groups(db, user_id)
+                    stats = await apply_user_matches(db, user_id)
+                    await db.commit()
+                    totals["created"] += stats["created"]
+                    totals["skipped"] += stats["skipped"]
+                    totals["users"] += 1
+                except Exception as e:
+                    logger.error(
+                        f"Segment effort matching failed for user {user_id}: {e}",
+                        exc_info=True,
+                    )
+                    await db.rollback()
+            return totals
+
+    return asyncio.run(_run_task_guarded("match_segment_efforts", _run))
+
+
 @celery_app.task(name="app.tasks.scheduler.backfill_activity_context")
 def backfill_activity_context() -> dict:
     """Precompute cached ride context (§1.3) for cycling activities that have
