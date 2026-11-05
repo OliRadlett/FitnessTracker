@@ -167,21 +167,6 @@ export default function SegmentsPage() {
   const all = data?.items ?? [];
   const counts = data?.counts ?? { ridden: 0, to_ride: 0, all: 0 };
 
-  const featured = useMemo(() => {
-    if (tab === 'to_ride') {
-      return [...all]
-        .filter((c) => c.attempts === 0)
-        .sort((a, b) => (b.difficulty ?? 0) - (a.difficulty ?? 0))[0];
-    }
-    return [...all]
-      .filter((c) => c.attempts > 0)
-      .sort(
-        (a, b) =>
-          b.attempts - a.attempts ||
-          (b.difficulty ?? 0) - (a.difficulty ?? 0)
-      )[0];
-  }, [all, tab]);
-
   useEffect(() => {
     if (tab === 'to_ride' && (sort === 'attempts' || sort === 'recent')) {
       setSort('hardest');
@@ -213,6 +198,22 @@ export default function SegmentsPage() {
       })
       .sort(SORTERS[sort]);
   }, [all, q, region, sort, tab]);
+
+  // The hero is a shortcut into the visible set, not a global highlight: when a
+  // search or area filter excludes a climb, the hero must not keep advertising
+  // it above an empty grid.
+  const featured = useMemo(() => {
+    if (!visible.length) return undefined;
+    if (tab === 'to_ride') {
+      return [...visible].sort(
+        (a, b) => (b.difficulty ?? 0) - (a.difficulty ?? 0)
+      )[0];
+    }
+    return [...visible].sort(
+      (a, b) =>
+        b.attempts - a.attempts || (b.difficulty ?? 0) - (a.difficulty ?? 0)
+    )[0];
+  }, [tab, visible]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-4">
