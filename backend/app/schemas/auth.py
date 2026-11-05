@@ -1,5 +1,6 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -15,8 +16,17 @@ class UserBase(BaseModel):
 class UserRead(UserBase):
     id: uuid.UUID
     created_at: datetime
+    birth_date: date | None = None
+    sex: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class UserUpdate(BaseModel):
+    """Optional demographics; omitted fields are left unchanged."""
+
+    birth_date: date | None = None
+    sex: Literal["male", "female", "other", "prefer_not_to_say"] | None = None
 
 
 class UserCreate(BaseModel):

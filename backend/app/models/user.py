@@ -1,7 +1,15 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint, func
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +28,11 @@ class User(Base):
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     avatar_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    # Optional demographics for age/sex-adjusted reference bands (VO2max).
+    # NULL means "not provided"; consumers must fall back to the unadjusted
+    # cycling-fitness bands rather than guessing.
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    sex: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # Per-user in-app notification toggles, e.g.
     # {"health_alert": true, "pr": true, "goal_milestone": true, "plan_reminder": true}.
     # NULL means all-on (service falls back to defaults).

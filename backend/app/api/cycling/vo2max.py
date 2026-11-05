@@ -25,7 +25,7 @@ from app.services.cycling import (
     compute_vo2max_history,
     estimate_vo2max,
 )
-from app.services.cycling.vo2max import VO2_CLASS_SCOPE
+from app.services.cycling.vo2max import VO2_CLASS_SCOPE, vo2_age, vo2_scope
 
 router = APIRouter()
 
@@ -51,12 +51,13 @@ async def get_vo2max_estimate(
             detail="Insufficient data to estimate VO2max. Need cycling activities with power streams or heart rate data.",
         )
 
+    age = vo2_age(current_user.birth_date)
     return Vo2maxResponse(
         vo2max=result.vo2max,
         confidence=result.confidence,
         method=result.method,
-        classification=_classify_vo2max(result.vo2max),
-        classification_scope=VO2_CLASS_SCOPE,
+        classification=_classify_vo2max(result.vo2max, age, current_user.sex),
+        classification_scope=vo2_scope(age, current_user.sex),
         all_estimates=[Vo2maxDetail(**e) for e in result.all_estimates],
         vo2max_ci_low=result.ci_low,
         vo2max_ci_high=result.ci_high,
@@ -78,15 +79,20 @@ async def get_vo2max_history(
     ]
 
     current_vo2max = data[-1].vo2max if data else None
+    age = vo2_age(current_user.birth_date)
     current_classification = (
-        _classify_vo2max(current_vo2max) if current_vo2max else None
+        _classify_vo2max(current_vo2max, age, current_user.sex)
+        if current_vo2max
+        else None
     )
 
     return Vo2maxHistoryResponse(
         data=data,
         current_vo2max=current_vo2max,
         current_classification=current_classification,
-        current_classification_scope=VO2_CLASS_SCOPE if current_classification else None,
+        current_classification_scope=(
+            vo2_scope(age, current_user.sex) if current_classification else None
+        ),
     )
 
 
