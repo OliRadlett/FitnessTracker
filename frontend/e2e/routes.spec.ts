@@ -47,6 +47,16 @@ test.describe('Routes Page', () => {
     await expect(page.getByText(/surrey hills loop/i)).toHaveCount(0);
   });
 
+  test('facet state is URL-addressable', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/routes?dist=short');
+    await expect(page.getByText(/richmond park circuit/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText(/surrey hills loop/i)).toHaveCount(0);
+
+    await page.locator('label:has(span:text-is("Distance")) select').selectOption('medium');
+    await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible({ timeout: 8000 });
+    await expect.poll(() => page.url(), { timeout: 5000 }).toContain('dist=medium');
+  });
+
   test('clear resets the filters', async ({ authenticatedPage: page }) => {
     await page.getByLabel('Search routes').fill('Richmond');
     await expect(page.getByText(/surrey hills loop/i)).toHaveCount(0, { timeout: 8000 });

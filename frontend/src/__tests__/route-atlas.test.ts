@@ -5,6 +5,8 @@ import {
   decodePolyline,
   elevationGeometry,
   elevationValues,
+  facetsFromParams,
+  facetsToParams,
   facetsToQuery,
   findHub,
   formatClimb,
@@ -130,6 +132,48 @@ describe('facetsToQuery', () => {
   it('counts only active facets', () => {
     expect(activeFacetCount(EMPTY_FACETS)).toBe(0);
     expect(activeFacetCount({ ...EMPTY_FACETS, distance: 'long', status: 'ridden' })).toBe(2);
+  });
+});
+
+describe('facet URL state', () => {
+  it('omits defaults so a plain library has a plain URL', () => {
+    expect(facetsToParams(EMPTY_FACETS, 'nearest')).toEqual({
+      q: null,
+      dist: null,
+      climb: null,
+      status: null,
+      shape: null,
+      sport: null,
+      sort: null,
+    });
+  });
+
+  it('round-trips every facet and the sort', () => {
+    const facets = {
+      ...EMPTY_FACETS,
+      q: 'gravel loop',
+      distance: 'long' as const,
+      climb: 'big' as const,
+      status: 'unridden' as const,
+      shape: 'loop' as const,
+      sport: 'cycling',
+    };
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(facetsToParams(facets, 'climb'))) {
+      if (value) params.set(key, value);
+    }
+    expect(facetsFromParams(`?${params.toString()}`)).toEqual({
+      facets,
+      sort: 'climb',
+    });
+  });
+
+  it('degrades unknown values to the defaults instead of throwing', () => {
+    const parsed = facetsFromParams('?dist=impossible&climb=steep&sort=nope&shape=round');
+    expect(parsed.facets.distance).toBe('any');
+    expect(parsed.facets.climb).toBe('any');
+    expect(parsed.facets.shape).toBe('any');
+    expect(parsed.sort).toBe('nearest');
   });
 });
 

@@ -234,6 +234,52 @@ export function activeFacetCount(facets: Facets): number {
   return n;
 }
 
+/** Facets -> URL params, omitting defaults so a plain library has a plain URL. */
+export function facetsToParams(
+  facets: Facets,
+  sort: SortKey,
+): Record<string, string | null> {
+  return {
+    q: facets.q.trim() || null,
+    dist: facets.distance === 'any' ? null : facets.distance,
+    climb: facets.climb === 'any' ? null : facets.climb,
+    status: facets.status === 'any' ? null : facets.status,
+    shape: facets.shape === 'any' ? null : facets.shape,
+    sport: facets.sport === 'any' ? null : facets.sport,
+    sort: sort === 'nearest' ? null : sort,
+  };
+}
+
+const DISTANCES = ['any', 'short', 'medium', 'long'] as const;
+const CLIMBS = ['any', 'flat', 'rolling', 'big'] as const;
+const STATUSES = ['any', 'ridden', 'unridden'] as const;
+const SHAPES = ['any', 'loop', 'point'] as const;
+const SORTS = ['nearest', 'recent', 'distance', 'climb', 'ridden'] as const;
+
+function pick<T extends string>(
+  value: string | null,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
+}
+
+/** URL params -> facets. Unknown values degrade to the default, never throw. */
+export function facetsFromParams(search: string): { facets: Facets; sort: SortKey } {
+  const params = new URLSearchParams(search);
+  return {
+    facets: {
+      q: params.get('q') ?? '',
+      distance: pick(params.get('dist'), DISTANCES, 'any'),
+      climb: pick(params.get('climb'), CLIMBS, 'any'),
+      status: pick(params.get('status'), STATUSES, 'any'),
+      shape: pick(params.get('shape'), SHAPES, 'any'),
+      sport: params.get('sport') || 'any',
+    },
+    sort: pick(params.get('sort'), SORTS, 'nearest'),
+  };
+}
+
 /**
  * Facets -> the list endpoint's query parameters. Bands are resolved here so
  * the API keeps its existing min/max semantics (and server-side pagination).

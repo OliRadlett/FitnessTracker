@@ -53,7 +53,10 @@ baseline frames and the lab that proved the replacement live in
     while it runs, and mounts the review queue only when a scan has finished.
     "Never scanned" and "no duplicates" are different states.
 - `lib/routeAtlas.ts`: pure projection, elevation (both stored shapes), hub,
-  nearest sort, facet→query mapping, formatting. 15 unit tests.
+  nearest sort, facet→query mapping, URL param round-trip, formatting. 18 unit
+  tests. Facets + sort are **URL state** (`?q=&dist=&climb=&status=&shape=&sport=&sort=`)
+  and are written with `replaceState` so they share and survive a refresh
+  without clobbering `?route=`/`?mode=`.
 - `RouteSummary`/`RouteData` types: `preview_polyline`, and
   `elevation_profile` now admits **both** `{elevations}` and
   `{distance, elevation}`.
@@ -73,7 +76,7 @@ baseline frames and the lab that proved the replacement live in
 | Duplicate scan is still CPU-bound | It now runs in a worker (~15–20 min for 86 routes), not a request. Shortening it needs a validated decimated matcher; not worth changing thresholds blind. |
 | Quality / terrain / surface still absent | 0/86 rows; the new page does not render controls for them. Fix the producers or leave them hidden. |
 | List is capped at 200 routes | Above that, the map cannot draw the library. Pagination or a bbox-limited map is the next step. |
-| Facet/tag/collection state is not in the URL | Mode + route are; filters are session state. Worth adding when the URL-state pattern is settled. |
+| Facet/tag/collection state | Facets + sort are in the URL; tag/collection selection still lives only in the Zustand store (a tag is multi-select, so it needs a delimited param before it is shareable). |
 | Map style is a CSS invert of keyless OSM | A keyed dark basemap is a vendor decision, not a code one. |
 
 ## Follow-ups

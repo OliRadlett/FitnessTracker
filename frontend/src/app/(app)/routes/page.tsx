@@ -24,6 +24,8 @@ import type { HomeAreaHeatmapResponse, RouteFilters } from '@/lib/api/types';
 import {
   EMPTY_FACETS,
   activeFacetCount,
+  facetsFromParams,
+  facetsToParams,
   facetsToQuery,
   findHub,
   sortRoutes,
@@ -73,9 +75,10 @@ export default function RoutesPage() {
   const [showActions, setShowActions] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [urlReady, setUrlReady] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Deep links: ?route=, ?mode=, and the legacy ?tab=duplicates (bookmarks).
+  // Deep links: ?route=, ?mode=, facet params, and the legacy ?tab=duplicates.
   useEffect(() => {
     const tab = getParam('tab');
     if (tab === 'duplicates') {
@@ -86,7 +89,24 @@ export default function RoutesPage() {
     if (getParam('mode') === 'maintain') setMode('maintain');
     const routeParam = getParam('route');
     if (routeParam) setSelectedId(routeParam);
+
+    const fromUrl = facetsFromParams(window.location.search);
+    setFacets(fromUrl.facets);
+    setSort(fromUrl.sort);
+    setUrlReady(true);
   }, [getParam, setParam]);
+
+  // Keep facets shareable/back-button-safe without clobbering ?route=/?mode=.
+  useEffect(() => {
+    if (!urlReady) return;
+    const params = new URLSearchParams(window.location.search);
+    for (const [key, value] of Object.entries(facetsToParams(facets, sort))) {
+      if (value === null) params.delete(key);
+      else params.set(key, value);
+    }
+    const query = params.toString();
+    window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname);
+  }, [facets, sort, urlReady]);
 
   const queryFilters: RouteFilters = useMemo(
     () => ({
