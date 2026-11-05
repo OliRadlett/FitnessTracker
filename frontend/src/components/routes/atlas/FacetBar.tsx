@@ -23,7 +23,7 @@ function FacetSelect<T extends string>({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value as T)}
-        className="h-10 appearance-none rounded-lg border border-surface-light/70 bg-surface px-3 pr-8 text-xs font-medium text-foreground outline-none transition-colors hover:bg-surface-light/40 focus:border-accent/60"
+        className="h-11 appearance-none rounded-lg border border-surface-light/70 bg-surface px-3 pr-8 text-xs font-medium text-foreground outline-none transition-colors hover:bg-surface-light/40 focus:border-accent/60"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -60,7 +60,7 @@ function ChipGroup<T extends string>({
             type="button"
             onClick={() => onChange(option.value)}
             aria-pressed={value === option.value}
-            className={`h-9 rounded-full px-3 text-xs font-medium transition-colors ${
+            className={`h-11 rounded-full px-3 text-xs font-medium transition-colors ${
               value === option.value
                 ? 'bg-accent text-white'
                 : 'bg-surface-light/50 text-muted hover:text-foreground'
@@ -118,7 +118,7 @@ export function FacetBar({
           onChange={(e) => setFacets({ ...facets, q: e.target.value })}
           placeholder="Search routes"
           aria-label="Search routes"
-          className="h-10 w-full rounded-lg border border-surface-light/70 bg-surface pl-9 pr-8 text-sm text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent/60"
+          className="h-11 w-full rounded-lg border border-surface-light/70 bg-surface pl-9 pr-8 text-sm text-foreground outline-none transition-colors placeholder:text-muted focus:border-accent/60"
         />
         {hasQuery && (
           <button
@@ -173,7 +173,7 @@ export function FacetBar({
           type="button"
           onClick={() => setFacets({ ...facets, shape: facets.shape === 'loop' ? 'any' : 'loop' })}
           aria-pressed={facets.shape === 'loop'}
-          className={`h-10 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors ${
+          className={`h-11 shrink-0 rounded-lg border px-3 text-xs font-medium transition-colors ${
             facets.shape === 'loop'
               ? 'border-accent/50 bg-accent/15 text-accent'
               : 'border-surface-light/70 bg-surface text-muted hover:text-foreground'
@@ -214,7 +214,7 @@ export function FacetBar({
           <button
             type="button"
             onClick={clearAll}
-            className="h-10 shrink-0 rounded-lg px-2 text-xs font-medium text-accent hover:text-foreground"
+            className="h-11 shrink-0 rounded-lg px-2 text-xs font-medium text-accent hover:text-foreground"
           >
             Clear
           </button>
@@ -225,7 +225,7 @@ export function FacetBar({
       <button
         type="button"
         onClick={() => setSheetOpen(true)}
-        className={`flex h-10 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium md:hidden ${
+        className={`flex h-11 shrink-0 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium md:hidden ${
           active > 0
             ? 'border-accent/50 bg-accent/15 text-accent'
             : 'border-surface-light/70 bg-surface text-muted'
@@ -248,7 +248,7 @@ export function FacetBar({
               type="button"
               onClick={() => setSheetOpen(false)}
               aria-label="Close filters"
-              className="flex h-9 w-9 items-center justify-center rounded-md text-muted hover:text-foreground"
+              className="flex h-11 w-11 items-center justify-center rounded-md text-muted hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </button>
@@ -330,14 +330,14 @@ export function FacetBar({
               type="button"
               onClick={clearAll}
               disabled={!clearable}
-              className="h-10 flex-1 rounded-lg border border-surface-light/70 text-xs font-medium text-muted disabled:opacity-40"
+              className="h-11 flex-1 rounded-lg border border-surface-light/70 text-xs font-medium text-muted disabled:opacity-40"
             >
               Clear all
             </button>
             <button
               type="button"
               onClick={() => setSheetOpen(false)}
-              className="h-10 flex-[2] rounded-lg bg-accent text-xs font-semibold text-white"
+              className="h-11 flex-[2] rounded-lg bg-accent text-xs font-semibold text-white"
             >
               Show {resultCount} routes
             </button>

@@ -253,7 +253,7 @@ export default function RoutesPage() {
               type="button"
               onClick={() => changeMode('browse')}
               aria-pressed={mode === 'browse'}
-              className={`h-8 rounded-md px-2.5 text-xs font-medium transition-colors ${
+              className={`h-11 rounded-md px-2.5 text-xs font-medium transition-colors ${
                 mode === 'browse' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
               }`}
             >
@@ -263,7 +263,7 @@ export default function RoutesPage() {
               type="button"
               onClick={() => changeMode('maintain')}
               aria-pressed={mode === 'maintain'}
-              className={`h-8 rounded-md px-2.5 text-xs font-medium transition-colors ${
+              className={`h-11 rounded-md px-2.5 text-xs font-medium transition-colors ${
                 mode === 'maintain' ? 'bg-accent text-white' : 'text-muted hover:text-foreground'
               }`}
             >
@@ -302,7 +302,7 @@ export default function RoutesPage() {
               type="button"
               onClick={() => syncMutation.mutate()}
               disabled={syncMutation.isPending}
-              className="flex h-9 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent/80 disabled:opacity-50"
+              className="flex h-11 items-center gap-1.5 rounded-lg bg-accent px-3 text-xs font-semibold text-white transition-colors hover:bg-accent/80 disabled:opacity-50"
             >
               <RefreshCw className={`h-4 w-4 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
               {syncMutation.isPending ? 'Syncing' : 'Sync'}
@@ -314,7 +314,7 @@ export default function RoutesPage() {
             type="button"
             onClick={() => setShowActions(true)}
             aria-label="Route actions"
-            className="flex h-10 w-10 items-center justify-center rounded-lg border border-surface-light/70 bg-surface text-muted md:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-surface-light/70 bg-surface text-muted md:hidden"
           >
             <MoreHorizontal className="h-5 w-5" />
           </button>
@@ -481,7 +481,7 @@ export default function RoutesPage() {
                 type="button"
                 onClick={() => setShowCollections(false)}
                 aria-label="Close collections"
-                className="flex h-9 w-9 items-center justify-center rounded-md text-muted hover:text-foreground"
+                className="flex h-11 w-11 items-center justify-center rounded-md text-muted hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -507,7 +507,7 @@ export default function RoutesPage() {
                     setActiveCollectionId(null);
                     setShowCollections(false);
                   }}
-                  className="h-10 w-full rounded-lg border border-surface-light/70 text-xs font-medium text-muted hover:text-foreground"
+                  className="h-11 w-full rounded-lg border border-surface-light/70 text-xs font-medium text-muted hover:text-foreground"
                 >
                   Clear tag / collection filter
                 </button>
@@ -531,7 +531,7 @@ export default function RoutesPage() {
               type="button"
               onClick={() => setShowActions(false)}
               aria-label="Close actions"
-              className="flex h-8 w-8 items-center justify-center rounded-md text-muted hover:text-foreground"
+              className="flex h-11 w-11 items-center justify-center rounded-md text-muted hover:text-foreground"
             >
               <X className="h-4 w-4" />
             </button>
@@ -624,7 +624,7 @@ function HeaderButton({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`flex h-9 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
+      className={`flex h-11 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-medium transition-colors ${
         active
           ? 'border-accent/40 bg-accent/10 text-accent'
           : 'border-surface-light/70 bg-surface text-muted hover:text-foreground'

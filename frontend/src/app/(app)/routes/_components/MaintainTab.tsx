@@ -189,7 +189,7 @@ export function MaintainTab({
                 type="button"
                 onClick={() => startScan.mutate()}
                 disabled={startScan.isPending}
-                className="h-9 rounded-lg bg-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
+                className="h-11 rounded-lg bg-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
               >
                 Retry scan
               </button>
@@ -206,7 +206,7 @@ export function MaintainTab({
                   type="button"
                   onClick={() => startScan.mutate()}
                   disabled={startScan.isPending}
-                  className="h-8 rounded-lg border border-surface-light/70 px-3 text-[11px] font-medium text-foreground hover:bg-surface-light/30 disabled:opacity-50"
+                  className="h-11 rounded-lg border border-surface-light/70 px-3 text-[11px] font-medium text-foreground hover:bg-surface-light/30 disabled:opacity-50"
                 >
                   Re-scan
                 </button>
@@ -230,7 +230,7 @@ export function MaintainTab({
                 type="button"
                 onClick={() => startScan.mutate()}
                 disabled={startScan.isPending}
-                className="h-9 rounded-lg bg-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
+                className="h-11 rounded-lg bg-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
               >
                 {startScan.isPending ? 'Queueing…' : 'Run duplicate scan'}
               </button>
@@ -307,7 +307,7 @@ export function MaintainTab({
             <button
               type="button"
               onClick={onOpenCollections}
-              className="h-9 rounded-lg border border-surface-light/70 px-4 text-xs font-medium text-foreground hover:bg-surface-light/30"
+              className="h-11 rounded-lg border border-surface-light/70 px-4 text-xs font-medium text-foreground hover:bg-surface-light/30"
             >
               Manage collections
             </button>
