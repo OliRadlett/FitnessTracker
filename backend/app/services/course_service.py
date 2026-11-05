@@ -342,6 +342,58 @@ async def list_suggestions(
     return out
 
 
+async def list_dismissed_suggestions(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    """Dismissed pairs, newest first, so a wrong decision can be restored."""
+    rows = (
+        (
+            await db.execute(
+                select(CourseSuggestionDismissal)
+                .where(CourseSuggestionDismissal.user_id == user_id)
+                .order_by(CourseSuggestionDismissal.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return []
+
+    route_ids = {r.route_a_id for r in rows} | {r.route_b_id for r in rows}
+    routes = (
+        (
+            await db.execute(
+                select(Route).where(Route.id.in_(route_ids), Route.user_id == user_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {route.id: route for route in routes}
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        a = by_id.get(row.route_a_id)
+        b = by_id.get(row.route_b_id)
+        if a is None or b is None:
+            continue
+        out.append(
+            {
+                "route_a_id": a.id,
+                "route_a_name": a.name,
+                "route_a_distance_meters": a.distance_meters,
+                "route_a_preview_polyline": preview_polyline(a.encoded_polyline),
+                "route_b_id": b.id,
+                "route_b_name": b.name,
+                "route_b_distance_meters": b.distance_meters,
+                "route_b_preview_polyline": preview_polyline(b.encoded_polyline),
+                "dismissed_at": row.created_at,
+            }
+        )
+    return out
+
+
 async def dismiss_suggestion(
     db: AsyncSession,
     user_id: uuid.UUID,

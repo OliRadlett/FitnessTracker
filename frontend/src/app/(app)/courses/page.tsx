@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
@@ -8,6 +8,7 @@ import {
   Link2,
   MapPin,
   Plus,
+  RefreshCw,
   Route as RouteIcon,
   Unlink,
   X,
@@ -20,19 +21,23 @@ import {
   getCourse,
   getCourseSuggestions,
   getCourses,
+  getDismissedCourseSuggestions,
   getUncoursedRoutes,
   groupRoute,
   mergeCourse,
   rejectRideLink,
+  restoreCourseSuggestion,
   ungroupRoute,
   updateCourse,
 } from '@/lib/api/courses';
+import { getRouteScanStatus, refreshRouteScan } from '@/lib/api/routes';
 import type {
   CourseActivity,
   CourseDetail,
   CourseRoute,
   CourseSuggestion,
   CourseSummary,
+  DismissedCourseSuggestion,
 } from '@/lib/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -151,6 +156,60 @@ function SuggestionCard({
           </Button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function DismissedSuggestionRow({
+  suggestion,
+  onRestore,
+  busy,
+}: {
+  suggestion: DismissedCourseSuggestion;
+  onRestore: () => void;
+  busy: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-b border-surface-light/30 py-2 last:border-b-0">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+        {[
+          {
+            shape: suggestion.route_a_preview_polyline,
+            name: suggestion.route_a_name,
+            distance: suggestion.route_a_distance_meters,
+          },
+          {
+            shape: suggestion.route_b_preview_polyline,
+            name: suggestion.route_b_name,
+            distance: suggestion.route_b_distance_meters,
+          },
+        ].map((side, index) => (
+          <div key={index} className="flex min-w-0 items-center gap-2">
+            <RouteShape
+              encoded={side.shape}
+              width={42}
+              height={32}
+              className="shrink-0 text-muted"
+              strokeWidth={2}
+              showEndpoints={false}
+            />
+            <span className="min-w-0">
+              <span className="block truncate text-xs text-foreground">
+                {side.name}
+              </span>
+              <span className="block text-[11px] text-muted">
+                {formatKm(side.distance)}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+      <span className="text-[11px] text-muted">
+        Dismissed {formatDate(suggestion.dismissed_at)}
+      </span>
+      <Button variant="secondary" size="sm" loading={busy} onClick={onRestore}>
+        Restore
+      </Button>
     </div>
   );
 }
@@ -461,6 +520,7 @@ export default function CoursesPage() {
   const [uncoursedFilter, setUncoursedFilter] = useState('');
   const [showAllUncoursed, setShowAllUncoursed] = useState(false);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+  const [showDismissed, setShowDismissed] = useState(false);
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
   const [busyActivityId, setBusyActivityId] = useState<string | null>(null);
 
@@ -479,10 +539,40 @@ export default function CoursesPage() {
     queryFn: () => getCourseSuggestions(token),
     enabled: !!token,
   });
+  const dismissedQuery = useQuery({
+    queryKey: ['course-suggestions', 'dismissed'],
+    queryFn: () => getDismissedCourseSuggestions(token),
+    enabled: !!token,
+  });
+  const scanQuery = useQuery({
+    queryKey: ['route-scan-status'],
+    queryFn: () => getRouteScanStatus(token),
+    enabled: !!token,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return state === 'queued' || state === 'running' ? 4000 : false;
+    },
+  });
+  const previousScanState = useRef<string | undefined>(undefined);
+
+  useEffect(() => {
+    const state = scanQuery.data?.state;
+    if (
+      state === 'ready' &&
+      previousScanState.current &&
+      previousScanState.current !== 'ready'
+    ) {
+      queryClient.invalidateQueries({ queryKey: ['course-suggestions'] });
+    }
+    previousScanState.current = state;
+  }, [queryClient, scanQuery.data?.state]);
 
   const courses = coursesQuery.data ?? [];
   const uncoursed = uncoursedQuery.data ?? [];
   const suggestions = suggestionsQuery.data ?? [];
+  const dismissed = dismissedQuery.data ?? [];
+  const scan = scanQuery.data;
+  const scanning = scan?.state === 'queued' || scan?.state === 'running';
   const visibleSuggestions = showAllSuggestions ? suggestions : suggestions.slice(0, 6);
   const filteredUncoursed = useMemo(() => {
     const query = uncoursedFilter.trim().toLowerCase();
@@ -581,6 +671,27 @@ export default function CoursesPage() {
     },
     onError: (err) =>
       toast.error(`Could not merge the courses: ${(err as Error).message}`),
+  });
+
+  const startScanMutation = useMutation({
+    mutationFn: () => refreshRouteScan(token),
+    onSuccess: () => {
+      scanQuery.refetch();
+      toast.success('Duplicate scan queued — suggestions update when it finishes.');
+    },
+    onError: (err) =>
+      toast.error(`Could not queue the scan: ${(err as Error).message}`),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: ({ routeAId, routeBId }: { routeAId: string; routeBId: string }) =>
+      restoreCourseSuggestion(routeAId, routeBId, token),
+    onSuccess: () => {
+      invalidate();
+      toast.success('Suggestion restored.');
+    },
+    onError: (err) =>
+      toast.error(`Could not restore the suggestion: ${(err as Error).message}`),
   });
 
   const renameMutation = useMutation({
@@ -695,8 +806,36 @@ export default function CoursesPage() {
               automatically.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-[11px] text-muted">
+              {scan?.finished_at
+                ? `Scanned ${formatDate(scan.finished_at)}`
+                : 'Not scanned yet'}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => startScanMutation.mutate()}
+              loading={startScanMutation.isPending || scanning}
+              title="Recompute the similarity graph in the background"
+            >
+              <RefreshCw className="h-4 w-4" aria-hidden />
+              {scanning
+                ? 'Scanning…'
+                : scan?.state === 'never'
+                  ? 'Run scan'
+                  : 'Refresh suggestions'}
+            </Button>
             <Badge variant="muted">{suggestions.length} suggestions</Badge>
+            {dismissed.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowDismissed((v) => !v)}
+              >
+                {showDismissed ? 'Hide dismissed' : `Dismissed ${dismissed.length}`}
+              </Button>
+            )}
             {suggestions.length > 6 && (
               <Button
                 variant="secondary"
@@ -708,6 +847,11 @@ export default function CoursesPage() {
             )}
           </div>
         </div>
+        {scan?.state === 'failed' && (
+          <p className="mb-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+            The last scan failed: {scan.error || 'unknown error'}
+          </p>
+        )}
         {suggestionsQuery.isLoading ? (
           <Card className="p-4">
             <p className="text-sm text-muted">Loading suggestions…</p>
@@ -715,8 +859,8 @@ export default function CoursesPage() {
         ) : suggestions.length === 0 ? (
           <Card className="p-4">
             <p className="text-sm text-muted">
-              No similarity pairs waiting for review. Run the duplicate scan on Routes
-              if the library has changed.
+              No similarity pairs waiting for review. Run the scan above after adding
+              routes or changing the matcher.
             </p>
           </Card>
         ) : (
@@ -754,6 +898,35 @@ export default function CoursesPage() {
               />
             ))}
           </div>
+        )}
+        {showDismissed && dismissed.length > 0 && (
+          <Card className="mt-2 p-4">
+            <h3 className="text-sm font-semibold text-foreground">
+              Dismissed suggestions
+            </h3>
+            <p className="mt-1 text-[11px] text-muted">
+              Restore one if the pair was dismissed by mistake; it will be proposed
+              again on the next cache rebuild.
+            </p>
+            <div className="mt-2">
+              {dismissed.map((suggestion) => (
+                <DismissedSuggestionRow
+                  key={`${suggestion.route_a_id}-${suggestion.route_b_id}`}
+                  suggestion={suggestion}
+                  busy={
+                    restoreMutation.isPending &&
+                    restoreMutation.variables?.routeBId === suggestion.route_b_id
+                  }
+                  onRestore={() =>
+                    restoreMutation.mutate({
+                      routeAId: suggestion.route_a_id,
+                      routeBId: suggestion.route_b_id,
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </Card>
         )}
       </section>
 

@@ -231,6 +231,11 @@ class TestCourseSuggestionDismissal:
         assert dismissed.json() == {"dismissed": True}
         assert (await client.get("/api/v1/courses/suggestions")).json() == []
 
+        dismissed_list = await client.get("/api/v1/courses/suggestions/dismissed")
+        assert dismissed_list.status_code == 200
+        assert len(dismissed_list.json()) == 1
+        assert dismissed_list.json()[0]["route_a_id"] == str(test_route.id)
+
         # Orientation-insensitive: the reverse dismissal also restores it.
         restored = await client.delete(
             f"/api/v1/courses/suggestions/{test_route_with_surface.id}/{test_route.id}/dismiss"
@@ -238,6 +243,7 @@ class TestCourseSuggestionDismissal:
         assert restored.status_code == 200
         assert restored.json() == {"restored": True}
         assert len((await client.get("/api/v1/courses/suggestions")).json()) == 1
+        assert (await client.get("/api/v1/courses/suggestions/dismissed")).json() == []
 
     async def test_dismiss_unknown_pair_is_404(self, client, test_route, test_user):
         resp = await client.post(

@@ -81,6 +81,20 @@ class CourseSuggestion(BaseModel):
     breakdown: dict | None = None
 
 
+class DismissedSuggestion(BaseModel):
+    """A pair the user marked "not the same course", for review/restore."""
+
+    route_a_id: uuid.UUID
+    route_a_name: str
+    route_a_distance_meters: float
+    route_a_preview_polyline: str | None = None
+    route_b_id: uuid.UUID
+    route_b_name: str
+    route_b_distance_meters: float
+    route_b_preview_polyline: str | None = None
+    dismissed_at: datetime
+
+
 class CourseUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=500)
     sport_type: str | None = None

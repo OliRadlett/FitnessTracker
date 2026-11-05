@@ -5,6 +5,7 @@ import type {
   CourseRoute,
   CourseSuggestion,
   CourseSummary,
+  DismissedCourseSuggestion,
   RideLinkResult,
 } from './types';
 
@@ -74,6 +75,16 @@ export async function ungroupRoute(
   return apiFetch<CourseDetail>(
     `/api/v1/courses/${courseId}/routes/${routeId}`,
     { method: 'DELETE' },
+    token,
+  );
+}
+
+export async function getDismissedCourseSuggestions(
+  token?: string,
+): Promise<DismissedCourseSuggestion[]> {
+  return apiFetch<DismissedCourseSuggestion[]>(
+    '/api/v1/courses/suggestions/dismissed',
+    {},
     token,
   );
 }

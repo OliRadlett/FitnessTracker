@@ -22,6 +22,7 @@ from app.schemas.course import (
     CourseSuggestion,
     CourseSummary,
     CourseUpdate,
+    DismissedSuggestion,
     RideLinkResult,
 )
 from app.services import course_service
@@ -86,6 +87,15 @@ async def list_course_suggestions(
     ``/uncoursed`` (single static segment, pitfall 13). Nothing is auto-merged.
     """
     return await course_service.list_suggestions(db, current_user.id, limit)
+
+
+@router.get("/suggestions/dismissed", response_model=list[DismissedSuggestion])
+async def list_dismissed_course_suggestions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Dismissed pairs, so a wrong "not the same" can be found and restored."""
+    return await course_service.list_dismissed_suggestions(db, current_user.id)
 
 
 @router.post("/suggestions/{route_a_id}/{route_b_id}/dismiss")

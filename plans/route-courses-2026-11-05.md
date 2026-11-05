@@ -5,12 +5,14 @@
 > `GET/POST /api/v1/courses`, `GET /uncoursed`, `GET /suggestions` (review-tier
 > pairs from `route_similarity`), group/ungroup under
 > `/{course_id}/routes/{route_id}`, merge `/{target_id}/merge/{source_id}`,
-> `PATCH /{course_id}` (rename), dismiss/restore a suggestion at
+> `PATCH /{course_id}` (rename), list dismissed suggestions at
+> `/suggestions/dismissed`, dismiss/restore a suggestion at
 > `/suggestions/{a}/{b}/dismiss`, and confirm/reject at
 > `/ride-links/{activity_id}/...`. The UI is
 > `frontend/src/app/(app)/courses/` (nav: More → Courses) and caps the course
 > list at 12 (filter + Show all 86) because the 1:1 backfill yields 86 one-route
-> courses. This plan is the production hand-off for the investigation in
+> courses. The suggestions header polls the duplicate-scan status and can queue
+> a refresh; dismissed pairs have a restore panel. This plan is the production hand-off for the investigation in
 > `prototype/route-merging/` (main worktree, not merged).
 
 ## 1. Why
