@@ -31,11 +31,25 @@ test.describe('Routes collections drawer', () => {
     });
   });
 
-  test('clicking a collection applies it and closes the drawer', async ({
+  test('clicking a collection applies it, closes the drawer and updates the URL', async ({
     authenticatedPage: page,
   }) => {
     await page.getByRole('button', { name: /Weekend Rides/ }).click();
     await expect(page.getByRole('dialog', { name: /collections and tags/i })).toHaveCount(0);
     await expect(page.getByText(/surrey hills loop/i).first()).toBeVisible();
+    await expect.poll(() => page.url(), { timeout: 5000 }).toContain('collection=col-1');
+  });
+
+  test('tag selection is URL state', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /Hilly/ }).first().click();
+    await expect.poll(() => page.url(), { timeout: 5000 }).toContain('tags=tag-1');
+  });
+
+  test('a tagged link opens with the tag applied', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/routes?tags=tag-1');
+    await page.getByRole('button', { name: /collections/i }).click();
+    await expect(page.getByRole('button', { name: /Remove tag filter Hilly/i })).toBeVisible({
+      timeout: 8000,
+    });
   });
 });

@@ -93,10 +93,17 @@ export default function RoutesPage() {
     const fromUrl = facetsFromParams(window.location.search);
     setFacets(fromUrl.facets);
     setSort(fromUrl.sort);
-    setUrlReady(true);
-  }, [getParam, setParam]);
 
-  // Keep facets shareable/back-button-safe without clobbering ?route=/?mode=.
+    // Tag/collection selection is store-backed (multi-select); make it shareable.
+    const tagParam = getParam('tags');
+    if (tagParam) setSelectedTagIds(tagParam.split(',').filter(Boolean));
+    const collectionParam = getParam('collection');
+    if (collectionParam) setActiveCollectionId(collectionParam);
+
+    setUrlReady(true);
+  }, [getParam, setParam, setSelectedTagIds, setActiveCollectionId]);
+
+  // Keep filters shareable/refresh-safe without clobbering ?route=/?mode=.
   useEffect(() => {
     if (!urlReady) return;
     const params = new URLSearchParams(window.location.search);
@@ -104,9 +111,14 @@ export default function RoutesPage() {
       if (value === null) params.delete(key);
       else params.set(key, value);
     }
+    if (selectedTagIds.length > 0) params.set('tags', selectedTagIds.join(','));
+    else params.delete('tags');
+    if (activeCollectionId) params.set('collection', activeCollectionId);
+    else params.delete('collection');
+
     const query = params.toString();
     window.history.replaceState(null, '', query ? `?${query}` : window.location.pathname);
-  }, [facets, sort, urlReady]);
+  }, [facets, sort, selectedTagIds, activeCollectionId, urlReady]);
 
   const queryFilters: RouteFilters = useMemo(
     () => ({

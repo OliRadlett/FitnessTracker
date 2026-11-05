@@ -81,7 +81,6 @@ baseline frames and the lab that proved the replacement live in
 | Duplicate scan is still CPU-bound | It now runs in a worker (~15–20 min for 86 routes), not a request. Shortening it needs a validated decimated matcher; not worth changing thresholds blind. |
 | Quality / terrain / surface still absent | 0/86 rows; the new page does not render controls for them. Fix the producers or leave them hidden. |
 | List is capped at 200 routes | Above that, the map cannot draw the library. Pagination or a bbox-limited map is the next step. |
-| Facet/tag/collection state | Facets + sort are in the URL; tag/collection selection still lives only in the Zustand store (a tag is multi-select, so it needs a delimited param before it is shareable). |
 | Map style is a CSS invert of keyless OSM | A keyed dark basemap is a vendor decision, not a code one. |
 
 ## Follow-ups
