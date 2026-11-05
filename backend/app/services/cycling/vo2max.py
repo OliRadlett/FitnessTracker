@@ -139,7 +139,7 @@ async def estimate_vo2max(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.7,
-                        f"FRIEND power-based (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
+                        f"FRIEND field estimate (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
                     )
                 )
         else:
@@ -151,7 +151,7 @@ async def estimate_vo2max(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.4,
-                        f"FRIEND power-based (5-min: {power_5min}W, no weight — estimated with 75kg)",
+                        f"FRIEND field estimate (5-min: {power_5min}W, no weight — estimated with 75kg)",
                     )
                 )
 
@@ -171,7 +171,7 @@ async def estimate_vo2max(
                 (
                     round(vo2_ml_kg_min, 1),
                     0.5,
-                    f"FRIEND power-based (8-min {power_8min}W scaled to 5-min equiv {power_5min_equiv}W via Riegel, {power_5min_equiv / weight_kg:.1f} W/kg)",
+                    f"FRIEND field estimate (8-min {power_8min}W scaled to 5-min equiv {power_5min_equiv}W via Riegel, {power_5min_equiv / weight_kg:.1f} W/kg)",
                 )
             )
 

@@ -314,6 +314,12 @@ export default function ActivityPage({ params }: { params: { id: string } }) {
         ))}
       </dl>
 
+      {isRide && analysis?.normalized_power_convention === 'includes_coasting_zeros' ? (
+        <p className="mt-2 text-[10px] leading-relaxed text-muted/45">
+          NP includes coasting zeros. Provider summaries may exclude them, so the two numbers are not directly comparable.
+        </p>
+      ) : null}
+
       {isEndurance ? (
         <>
           <section className="mt-8">
