@@ -10,7 +10,11 @@ fun formatWeight(value: Double): String = formatWeight(value.toFloat())
 
 fun formatDuration(millis: Long): String {
     val minutes = millis / 60_000
-    return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
+    return when {
+        minutes < 1 -> "<1m"
+        minutes >= 60 -> "${minutes / 60}h ${minutes % 60}m"
+        else -> "${minutes}m"
+    }
 }
 
 fun formatRemaining(millis: Long): String {

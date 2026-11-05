@@ -73,6 +73,17 @@ class AppFlowTest {
 
         compose.onNodeWithText("LAST 7 DAYS").assertExists()
         compose.onNodeWithText("Last time").assertExists()
+
+        // The log is readable, not just written.
+        compose.onNodeWithText("Log").performClick()
+        compose.waitForIdle()
+        save("app-7-log")
+        compose.onNodeWithText("1 session").assertExists()
+
+        compose.onNodeWithText("Push day").performClick()
+        compose.waitForIdle()
+        save("app-8-session-detail")
+        compose.onNodeWithText("TOP SET").assertExists()
     }
 
     private fun save(name: String) {
