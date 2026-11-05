@@ -20,6 +20,7 @@ import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
 import { CyclingMaintenanceCard } from '@/components/settings/CyclingMaintenanceCard';
 import { WahooZonesCard } from '@/components/settings/WahooZonesCard';
 import { AthleteProfileCard } from '@/components/settings/AthleteProfileCard';
+import { HealthEventsCard } from '@/components/settings/HealthEventsCard';
 import { WeightPanel } from '@/components/athlete/WeightPanel';
 import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -359,6 +360,8 @@ export default function SettingsPage() {
       </Card>
 
       <AthleteProfileCard />
+
+      <HealthEventsCard />
 
       {/* Preferences */}
       <Card>

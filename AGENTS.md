@@ -114,11 +114,11 @@ Quick reference maps in each package — use these for orientation before readin
 
 See [`docs/algorithms.md`](docs/algorithms.md) for scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption, lifting TSS). Full Celery task list in [`backend/app/tasks/scheduler.py`](backend/app/tasks/scheduler.py).
 
-## Database (45 tables, UUID PKs)
+## Database (46 tables, UUID PKs)
 
 | Parent | Children | Link |
 |--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight`, `UndoLog` | has many |
+| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `HealthEvent`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight`, `UndoLog` | has many |
 | `User` | `CyclingProfile` | has one |
 | `Activity` | `ActivitySource`, `ActivityStream` | has many |
 | `Activity` | `LiftingSession`, `Route` | optionally linked |

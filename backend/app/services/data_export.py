@@ -27,6 +27,7 @@ from app.models.event import Event
 from app.models.exercise import Exercise
 from app.models.goal import Goal
 from app.models.health_alert import HealthAlert
+from app.models.health_event import HealthEvent
 from app.models.lift_video_analysis import LiftVideoAnalysis
 from app.models.lifting import (
     LiftingSession,
@@ -125,6 +126,9 @@ async def build_full_export(db: AsyncSession, user_id, user: User) -> dict[str, 
         ],
         "health_alerts": [
             _serialize_row(r) for r in await _query_user_rows(db, HealthAlert, user_id)
+        ],
+        "health_events": [
+            _serialize_row(r) for r in await _query_user_rows(db, HealthEvent, user_id)
         ],
         "weight_logs": [
             _serialize_row(r) for r in await _query_user_rows(db, WeightLog, user_id)
@@ -301,6 +305,7 @@ async def iter_full_export(
         ("daily_metrics", DailyMetric, ()),
         ("sleep_logs", SleepLog, ()),
         ("health_alerts", HealthAlert, ()),
+        ("health_events", HealthEvent, ()),
         ("weight_logs", WeightLog, ()),
         ("personal_records", PersonalRecord, ()),
         ("cycling_power_records", CyclingPowerRecord, ()),

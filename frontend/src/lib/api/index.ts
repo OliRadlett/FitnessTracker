@@ -18,4 +18,5 @@ export * from './weight';
 export * from './search';
 export * from './account';
 export * from './healthPrefs';
+export * from './healthEvents';
 export * from './cycling';
