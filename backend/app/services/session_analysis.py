@@ -538,6 +538,9 @@ async def analyze_ride(
 
     return {
         "normalized_power": np_val,
+        "normalized_power_convention": (
+            "includes_coasting_zeros" if np_val is not None else None
+        ),
         "power_zones": power_zones,
         "power_distribution": power_distribution,
         "pacing_analysis": pacing_analysis

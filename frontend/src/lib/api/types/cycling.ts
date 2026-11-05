@@ -346,6 +346,8 @@ export interface RideAnalysis {
     power_variability?: number;
   };
   variability_index?: number;
+  normalized_power?: number;
+  normalized_power_convention?: string | null;
   intensity_factor?: number;
   decoupling?: {
     first_half_ratio?: number;
