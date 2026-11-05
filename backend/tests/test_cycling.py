@@ -322,6 +322,16 @@ class TestComputeTrainingLoad:
         assert last["ctl"] == pytest.approx(100.0, abs=1.0)
         assert last["tsb"] == pytest.approx(0.0, abs=1.0)
 
+    def test_tsb_is_lagged_one_day(self):
+        """Today's TSS changes CTL/ATL but must not change today's TSB."""
+        today = date.today()
+        base = {today - timedelta(days=1): 100.0}
+        with_today = {**base, today: 100.0}
+        without = compute_training_load(base, end_date=today, lookback_days=2)
+        with_it = compute_training_load(with_today, end_date=today, lookback_days=2)
+        assert without[-1]["tsb"] == pytest.approx(with_it[-1]["tsb"])
+        assert without[-1]["ctl"] != pytest.approx(with_it[-1]["ctl"])
+
     def test_warmup_output_length_unchanged(self):
         """Internal warm-up must not change the reported window length."""
         today = date.today()
