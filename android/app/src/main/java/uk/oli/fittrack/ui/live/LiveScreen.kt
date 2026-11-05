@@ -37,6 +37,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.PlanExercise
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
@@ -61,6 +62,7 @@ fun LiveScreen(
     session: SessionState,
     restUntil: Long?,
     now: Long,
+    history: List<FinishedSession>,
     onLog: (Double, Int, Int) -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit
@@ -74,7 +76,7 @@ fun LiveScreen(
     val resting = restUntil != null && restUntil > now
     val remaining = if (resting) (restUntil ?: now) - now else 0L
     val setNumber = SessionEngine.setNumber(session, exercise)
-    val prefill = SessionEngine.prefill(session, exercise)
+    val prefill = SessionEngine.prefill(session, exercise, history)
 
     var weight by remember(exercise.name, setNumber) { mutableFloatStateOf(prefill.weightKg.toFloat()) }
     var reps by remember(exercise.name, setNumber) { mutableIntStateOf(prefill.reps) }
@@ -114,16 +116,23 @@ fun LiveScreen(
                     )
                     Spacer(Modifier.height(2.dp))
                     Text(
-                        "${session.plan.title} · set $setNumber of ${exercise.sets}",
+                        "${session.plan.title} · set $setNumber of ${exercise.sets}" +
+                            " · ${formatRemaining(clock - session.startedAt)}",
                         fontSize = 13.sp,
                         color = Tokens.Muted
                     )
                 }
+                // You do not always complete the plan. Without this, the only way
+                // out of a session is to log all sixteen sets.
                 Text(
-                    formatRemaining(clock - session.startedAt),
+                    "Finish",
                     fontSize = 13.sp,
-                    color = Tokens.Muted,
-                    style = Tabular
+                    fontWeight = FontWeight.Medium,
+                    color = Tokens.Accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onFinish() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
                 )
             }
 

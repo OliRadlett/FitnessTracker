@@ -38,6 +38,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val restUntil by vm.restUntil.collectAsStateWithLifecycle()
     val now by vm.now.collectAsStateWithLifecycle()
     val auth by vm.auth.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
 
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
@@ -48,6 +49,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             TodayScreen(
                 session = session,
                 signedIn = auth.signedIn,
+                history = history,
                 onSignIn = { nav.navigate(Routes.SIGNIN) },
                 onStart = {
                     vm.startSession()
@@ -78,6 +80,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     session = current,
                     restUntil = restUntil,
                     now = now,
+                    history = history,
                     onLog = vm::logSet,
                     onBack = { nav.popBackStack() },
                     onFinish = { nav.navigate(Routes.DONE) }
@@ -92,6 +95,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             } else {
                 DoneScreen(
                     session = current,
+                    previous = history.firstOrNull { it.planTitle == current.plan.title },
                     onDone = {
                         vm.finishSession()
                         nav.popBackStack(Routes.TODAY, false)
