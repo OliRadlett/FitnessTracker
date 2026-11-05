@@ -101,6 +101,13 @@ beat_schedule: dict = {
         "schedule": crontab(hour=3, minute=30, day_of_week=0),
         "options": {"expires": 7200},
     },
+    # Match new rides to climbs daily (04:10 UTC, after the nightly syncs).
+    # Idempotent; only rides without an attempt are written.
+    "match-segment-efforts": {
+        "task": "app.tasks.scheduler.match_segment_efforts",
+        "schedule": crontab(hour=4, minute=10),
+        "options": {"expires": 3600},
+    },
     # Tag lifting-session notes with Jev (Phase 1). The inline post-write
     # trigger covers most rows; this backfills anything missed. No-op without Jev.
     "backfill-free-text-tags": {

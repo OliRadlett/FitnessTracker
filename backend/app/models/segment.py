@@ -25,6 +25,75 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+class SegmentGroup(Base):
+    """A physical/defined segment, merged across every route line it appears on.
+
+    ``Segment`` remains the per-route detection (the *line*); this is the thing a
+    rider names, ranks and looks at. ``kind`` is stored from day one because the
+    next kind (sprint, descent, custom) must not need a second table or URL.
+
+    ``identity_key`` is a quantised-geometry hash scoped to ``(user, kind)``. It
+    is the stable identity the old ``geo_cluster_id`` could not provide: that
+    value was the smallest member's UUID and moved whenever membership changed.
+    """
+
+    __tablename__ = "segment_groups"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id", "kind", "identity_key", name="uq_segment_groups_user_kind_identity"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="climb")
+    canonical_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # User-owned. A recompute may refresh canonical_name but must never touch this.
+    display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    name_source: Mapped[str] = mapped_column(String(20), nullable=False, default="route")
+    area: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    region: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    centroid_lat: Mapped[float | None] = mapped_column(Float, nullable=True)
+    centroid_lng: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Canonical-line measurements. Climb-shaped for kind='climb'.
+    distance_m: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    gain_m: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    avg_gradient_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    max_gradient_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    steepest_200m_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    sustained_share: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+    # 49 × [distance_m, elevation_m, gradient_pct] sampled from the route
+    # geometry; list reads never decode a polyline.
+    profile: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # ~40 × [lat, lng] along the canonical line, for future maps and corridor
+    # matching. Low precision is intentional: this is a shape, not a trace.
+    geometry: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    category: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    difficulty: Mapped[float | None] = mapped_column(Float, nullable=True)
+    identity_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped["User"] = relationship()  # type: ignore[name-defined]
+    segments: Mapped[list["Segment"]] = relationship(back_populates="group")
+
+
 class Segment(Base):
     __tablename__ = "segments"
     __table_args__ = (
@@ -48,6 +117,18 @@ class Segment(Base):
         nullable=False,
         index=True,
     )
+    # The merged physical segment this detection belongs to. NULL only between a
+    # sync and the group rebuild; every reader treats NULL as "not grouped yet".
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("segment_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # ~21 × [lat, lng] for THIS line's window. The group stores the canonical
+    # line's geometry for maps; matching needs every line, because a rider can
+    # take a 1,024 m line of a hill whose canonical detection is 896 m.
+    geometry: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     # Position along the route (meters from route start).
     start_dist_m: Mapped[float] = mapped_column(Float, nullable=False)
@@ -107,6 +188,7 @@ class Segment(Base):
 
     user: Mapped["User"] = relationship()  # type: ignore[name-defined]
     route: Mapped["Route"] = relationship()  # type: ignore[name-defined]
+    group: Mapped["SegmentGroup | None"] = relationship(back_populates="segments")
     efforts: Mapped[list["SegmentEffort"]] = relationship(
         back_populates="segment", cascade="all, delete-orphan"
     )
@@ -137,10 +219,24 @@ class SegmentEffort(Base):
         nullable=False,
         index=True,
     )
+    # Denormalised for group-level ranking. Set from ``segment.group_id`` when
+    # the group rebuild runs; the unique key below keeps one attempt per ride.
+    group_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("segment_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     elapsed_seconds: Mapped[float] = mapped_column(Float, nullable=False)
+    # Stopped time removed; NULL for rows written before the matcher could
+    # compute it. PR ranking falls back to elapsed_seconds when NULL.
+    moving_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # true = assisted/e-bike, false = human, NULL = unknown. Ranking requires
+    # false; true and NULL are visible but never become a PR.
+    assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     avg_power_watts: Mapped[float | None] = mapped_column(Float, nullable=True)
     avg_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
     avg_speed_mps: Mapped[float] = mapped_column(Float, nullable=False)
