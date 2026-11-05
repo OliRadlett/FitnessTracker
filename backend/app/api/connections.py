@@ -60,16 +60,26 @@ async def disconnect(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
-    from app.services.connection_revocation import revoke_grant
+    from app.services.connection_revocation import (
+        revoke_grant,
+        revoke_guidance,
+    )
 
     provider = connection.provider
     revoked = await revoke_grant(connection)
 
     await db.delete(connection)
-    return {
+    response: dict = {
         "detail": f"Disconnected from {provider}",
         "grant_revoked": revoked,
     }
+    if not revoked:
+        # Either the provider could not be reached, or there is no revocable
+        # grant. Only the second case has instructions worth printing.
+        guidance = revoke_guidance(provider)
+        if guidance:
+            response["grant_note"] = guidance
+    return response
 
 
 @router.post("/{connection_id}/sync")
