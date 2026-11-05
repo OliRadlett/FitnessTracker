@@ -16,12 +16,18 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.activity import Activity
-from app.models.route import Course, CourseLinkLog, Route, RouteSimilarity
+from app.models.route import (
+    Course,
+    CourseLinkLog,
+    CourseSuggestionDismissal,
+    Route,
+    RouteSimilarity,
+)
 from app.services.polyline_utils import preview_polyline
 
 
@@ -244,9 +250,10 @@ async def list_suggestions(
 ) -> list[dict[str, Any]]:
     """Review-tier course pair suggestions from the cached similarity graph.
 
-    The cache is already ordered by score; this only filters out pairs that are
-    already in one course (a successful merge) and dedupes two route pairs that
-    map to the same two courses. Nothing is auto-merged: the UI asks the user.
+    The cache is already ordered by score; this filters out pairs that are
+    already in one course (a successful merge), pairs the user dismissed as
+    "not the same course", and dedupes two route pairs that map to the same two
+    courses. Nothing is auto-merged: the UI asks the user.
     """
     rows = (
         (
@@ -279,12 +286,30 @@ async def list_suggestions(
     )
     by_id = {route.id: route for route in routes}
 
+    dismissed_rows = (
+        (
+            await db.execute(
+                select(CourseSuggestionDismissal).where(
+                    CourseSuggestionDismissal.user_id == user_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    dismissed: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    for d in dismissed_rows:
+        dismissed.add((d.route_a_id, d.route_b_id))
+        dismissed.add((d.route_b_id, d.route_a_id))
+
     out: list[dict[str, Any]] = []
     seen: set[tuple[str, ...]] = set()
     for row in rows:
         a = by_id.get(row.route_a_id)
         b = by_id.get(row.route_b_id)
         if a is None or b is None:
+            continue
+        if (a.id, b.id) in dismissed:
             continue
         if a.course_id is not None and a.course_id == b.course_id:
             continue
@@ -315,6 +340,81 @@ async def list_suggestions(
         if len(out) >= limit:
             break
     return out
+
+
+async def dismiss_suggestion(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    route_a_id: uuid.UUID,
+    route_b_id: uuid.UUID,
+) -> bool:
+    """Persistently reject a course-pair suggestion.
+
+    Idempotent and orientation-insensitive: dismissing ``(a, b)`` also hides
+    ``(b, a)`` from the rebuilt cache.
+    """
+    if route_a_id == route_b_id:
+        return False
+    owned = (
+        (
+            await db.execute(
+                select(Route.id).where(
+                    Route.id.in_([route_a_id, route_b_id]),
+                    Route.user_id == user_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if len(set(owned)) != 2:
+        return False
+
+    existing = (
+        await db.execute(
+            select(CourseSuggestionDismissal.id).where(
+                CourseSuggestionDismissal.user_id == user_id,
+                or_(
+                    (CourseSuggestionDismissal.route_a_id == route_a_id)
+                    & (CourseSuggestionDismissal.route_b_id == route_b_id),
+                    (CourseSuggestionDismissal.route_a_id == route_b_id)
+                    & (CourseSuggestionDismissal.route_b_id == route_a_id),
+                ),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return True
+
+    db.add(
+        CourseSuggestionDismissal(
+            user_id=user_id, route_a_id=route_a_id, route_b_id=route_b_id
+        )
+    )
+    await db.flush()
+    return True
+
+
+async def restore_suggestion(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    route_a_id: uuid.UUID,
+    route_b_id: uuid.UUID,
+) -> bool:
+    """Undo a suggestion dismissal (both orientations)."""
+    result = await db.execute(
+        delete(CourseSuggestionDismissal).where(
+            CourseSuggestionDismissal.user_id == user_id,
+            or_(
+                (CourseSuggestionDismissal.route_a_id == route_a_id)
+                & (CourseSuggestionDismissal.route_b_id == route_b_id),
+                (CourseSuggestionDismissal.route_a_id == route_b_id)
+                & (CourseSuggestionDismissal.route_b_id == route_a_id),
+            ),
+        )
+    )
+    await db.flush()
+    return bool(result.rowcount)
 
 
 async def _log_link(
@@ -380,6 +480,32 @@ async def create_course(
         )
     await db.flush()
     return await get_course(db, user_id, course.id)  # type: ignore[return-value]
+
+
+async def update_course(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    *,
+    name: str | None = None,
+    sport_type: str | None = None,
+) -> dict[str, Any] | None:
+    course = (
+        await db.execute(
+            select(Course).where(Course.id == course_id, Course.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if course is None:
+        return None
+    if name is not None:
+        cleaned = name.strip()
+        if not cleaned:
+            return None
+        course.name = cleaned
+    if sport_type is not None:
+        course.sport_type = sport_type
+    await db.flush()
+    return await get_course(db, user_id, course_id)
 
 
 async def group_route(

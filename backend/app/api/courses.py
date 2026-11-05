@@ -21,6 +21,7 @@ from app.schemas.course import (
     CourseRouteRead,
     CourseSuggestion,
     CourseSummary,
+    CourseUpdate,
     RideLinkResult,
 )
 from app.services import course_service
@@ -87,6 +88,36 @@ async def list_course_suggestions(
     return await course_service.list_suggestions(db, current_user.id, limit)
 
 
+@router.post("/suggestions/{route_a_id}/{route_b_id}/dismiss")
+async def dismiss_course_suggestion(
+    route_a_id: uuid.UUID,
+    route_b_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Persistently hide a suggestion pair (both orientations)."""
+    ok = await course_service.dismiss_suggestion(
+        db, current_user.id, route_a_id, route_b_id
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Route pair not found")
+    return {"dismissed": True}
+
+
+@router.delete("/suggestions/{route_a_id}/{route_b_id}/dismiss")
+async def restore_course_suggestion(
+    route_a_id: uuid.UUID,
+    route_b_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Undo a suggestion dismissal."""
+    restored = await course_service.restore_suggestion(
+        db, current_user.id, route_a_id, route_b_id
+    )
+    return {"restored": restored}
+
+
 @router.get("/{course_id}", response_model=CourseDetail)
 async def get_course(
     course_id: uuid.UUID,
@@ -95,6 +126,28 @@ async def get_course(
 ):
     """A course, its route variants, and its confirmed/suggested rides."""
     course = await course_service.get_course(db, current_user.id, course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course
+
+
+@router.patch("/{course_id}", response_model=CourseDetail)
+async def update_course(
+    course_id: uuid.UUID,
+    body: CourseUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rename a course or change its sport. Routes are untouched."""
+    if body.name is not None and not body.name.strip():
+        raise HTTPException(status_code=400, detail="Course name cannot be blank")
+    course = await course_service.update_course(
+        db,
+        current_user.id,
+        course_id,
+        name=body.name,
+        sport_type=body.sport_type,
+    )
     if course is None:
         raise HTTPException(status_code=404, detail="Course not found")
     return course

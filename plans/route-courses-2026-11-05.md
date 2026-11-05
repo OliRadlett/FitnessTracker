@@ -4,8 +4,10 @@
 > implemented on `feature/route-courses`; not deployed.** The API is
 > `GET/POST /api/v1/courses`, `GET /uncoursed`, `GET /suggestions` (review-tier
 > pairs from `route_similarity`), group/ungroup under
-> `/{course_id}/routes/{route_id}`, merge `/{target_id}/merge/{source_id}`, and
-> confirm/reject at `/ride-links/{activity_id}/...`. The UI is
+> `/{course_id}/routes/{route_id}`, merge `/{target_id}/merge/{source_id}`,
+> `PATCH /{course_id}` (rename), dismiss/restore a suggestion at
+> `/suggestions/{a}/{b}/dismiss`, and confirm/reject at
+> `/ride-links/{activity_id}/...`. The UI is
 > `frontend/src/app/(app)/courses/` (nav: More → Courses) and caps the course
 > list at 12 (filter + Show all 86) because the 1:1 backfill yields 86 one-route
 > courses. This plan is the production hand-off for the investigation in
@@ -90,6 +92,16 @@ Non-destructive group/ungroup audit: `user_id`, `course_id`, `route_id`,
 - Never promotes a link to `confirmed`.
 - Down: drop the constraint and columns; `activities.route_id` is untouched.
 
+### 109 — durable suggestion dismissals
+
+- New `course_suggestion_dismissals`: `user_id`, `route_a_id`, `route_b_id`,
+  `created_at`; unique per user/ordered pair; `a <> b` check.
+- The similarity cache is rebuilt on every scan, so a "not the same course"
+  decision cannot live on `route_similarity`. This table survives rebuilds and
+  the suggestion query skips both orientations.
+- `POST/DELETE /courses/suggestions/{a}/{b}/dismiss` persists/undoes it.
+- Down: drop the table. Dismissals are lost, but routes/courses are untouched.
+
 ## 4. Merge semantics
 
 | Operation | Behaviour |
@@ -171,6 +183,7 @@ They are intentionally not merged; the lab is deletable in one commit.
 - `backend/app/api/courses.py` + `backend/app/main.py` — `/api/v1/courses`.
 - `backend/alembic/versions/107_add_courses_and_route_course_id.py`
 - `backend/alembic/versions/108_add_activity_route_link_trust.py`
+- `backend/alembic/versions/109_add_course_suggestion_dismissals.py`
 - `backend/tests/test_course_schema.py`
 - `backend/tests/integration/test_courses_api.py`
 - `frontend/src/app/(app)/courses/page.tsx`

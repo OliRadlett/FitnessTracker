@@ -276,6 +276,55 @@ class CourseLinkLog(Base):
     )
 
 
+class CourseSuggestionDismissal(Base):
+    """A durable "these are not the same course" decision.
+
+    The similarity cache is rebuilt (delete + reinsert) on every scan, so a
+    dismissal cannot live on ``route_similarity``. This table is keyed by the
+    ordered route pair and survives cache rebuilds. The suggestion query skips
+    both orientations, so a rebuilt cache cannot re-propose the pair.
+    """
+
+    __tablename__ = "course_suggestion_dismissals"
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "route_a_id",
+            "route_b_id",
+            name="uq_course_suggestion_dismissal",
+        ),
+        CheckConstraint(
+            "route_a_id <> route_b_id",
+            name="ck_course_suggestion_dismissal_distinct",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    route_a_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("routes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    route_b_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("routes.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
 class RouteMergeLog(Base):
     """Audit trail for a route merge so it can be reviewed / undone.
 

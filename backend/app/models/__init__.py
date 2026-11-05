@@ -26,6 +26,7 @@ from app.models.push import PushSubscription
 from app.models.route import (
     Course,
     CourseLinkLog,
+    CourseSuggestionDismissal,
     Route,
     RouteMatchMetric,
     RouteMergeLog,
@@ -58,6 +59,7 @@ __all__ = [
     "CachedWeather",
     "Course",
     "CourseLinkLog",
+    "CourseSuggestionDismissal",
     "CrossDomainInsight",
     "CyclingPowerRecord",
     "CyclingProfile",

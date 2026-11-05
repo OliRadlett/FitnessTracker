@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Check,
@@ -16,6 +16,7 @@ import { useAuthFetch } from '@/lib/api';
 import {
   confirmRideLink,
   createCourse,
+  dismissCourseSuggestion,
   getCourse,
   getCourseSuggestions,
   getCourses,
@@ -24,6 +25,7 @@ import {
   mergeCourse,
   rejectRideLink,
   ungroupRoute,
+  updateCourse,
 } from '@/lib/api/courses';
 import type {
   CourseActivity,
@@ -51,16 +53,23 @@ function statusBadge(status: CourseActivity['route_link_status']) {
 function SuggestionCard({
   suggestion,
   onMerge,
+  onDismiss,
   busy,
+  dismissing,
 }: {
   suggestion: CourseSuggestion;
   onMerge: () => void;
+  onDismiss: () => void;
   busy: boolean;
+  dismissing: boolean;
 }) {
   const canMerge =
     !!suggestion.route_a_course_id &&
     !!suggestion.route_b_course_id &&
     suggestion.route_a_course_id !== suggestion.route_b_course_id;
+  const bd = suggestion.breakdown as
+    | { min_coverage?: number; frechet_similarity?: number }
+    | null;
 
   return (
     <div className="rounded-xl border border-surface-light/60 bg-surface p-3">
@@ -101,22 +110,46 @@ function SuggestionCard({
           </div>
         ))}
       </div>
-      <div className="mt-2 flex items-center justify-between gap-2">
+      {bd && (
+        <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-muted">
+          <span>
+            overlap{' '}
+            {Math.round((bd.min_coverage ?? 0) * 100)}%
+          </span>
+          <span>
+            shape{' '}
+            {Math.round((bd.frechet_similarity ?? 0) * 100)}%
+          </span>
+        </div>
+      )}
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] text-muted">
           {canMerge
             ? 'Review-tier suggestion — nothing is merged automatically.'
             : 'Both routes need a course before they can be merged.'}
         </span>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={!canMerge}
-          loading={busy}
-          onClick={onMerge}
-          title={canMerge ? 'Merge the two courses, keeping every route' : undefined}
-        >
-          Merge into one course
-        </Button>
+        <div className="flex gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={dismissing}
+            onClick={onDismiss}
+            title="Hide this pair; it will not be suggested again"
+          >
+            <X className="h-4 w-4" aria-hidden />
+            Not the same
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            disabled={!canMerge}
+            loading={busy}
+            onClick={onMerge}
+            title={canMerge ? 'Merge the two courses, keeping every route' : undefined}
+          >
+            Merge into one course
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -222,17 +255,28 @@ function CourseDetailPanel({
   loading,
   onUngroup,
   onLink,
+  onRename,
   busyRouteId,
   busyActivityId,
+  renaming,
 }: {
   detail: CourseDetail | undefined;
   loading: boolean;
   onUngroup: (routeId: string) => void;
   onLink: (activityId: string, status: 'confirmed' | 'rejected') => void;
+  onRename: (name: string) => void;
   busyRouteId: string | null;
   busyActivityId: string | null;
+  renaming: boolean;
 }) {
   const [showAllRides, setShowAllRides] = useState(false);
+  const [renamingOpen, setRenamingOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+
+  useEffect(() => {
+    setNameDraft(detail?.name ?? '');
+    setRenamingOpen(false);
+  }, [detail?.id, detail?.name]);
 
   if (loading) {
     return (
@@ -257,8 +301,49 @@ function CourseDetailPanel({
   return (
     <Card className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-foreground">{detail.name}</h2>
+        <div className="min-w-0 flex-1">
+          {renamingOpen ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                className="h-9 min-w-0 flex-1 rounded-lg border border-surface-light/60 bg-background px-3 text-sm font-semibold text-foreground outline-none focus:border-accent"
+                aria-label="Course name"
+              />
+              <Button
+                size="sm"
+                loading={renaming}
+                disabled={!nameDraft.trim()}
+                onClick={() => onRename(nameDraft)}
+              >
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setRenamingOpen(false);
+                  setNameDraft(detail.name);
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground">{detail.name}</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setNameDraft(detail.name);
+                  setRenamingOpen(true);
+                }}
+              >
+                Rename
+              </Button>
+            </div>
+          )}
           <p className="mt-1 text-xs text-muted">
             {detail.route_count} {detail.route_count === 1 ? 'variant' : 'variants'}
             {' · '}
@@ -498,6 +583,28 @@ export default function CoursesPage() {
       toast.error(`Could not merge the courses: ${(err as Error).message}`),
   });
 
+  const renameMutation = useMutation({
+    mutationFn: (name: string) =>
+      updateCourse(activeCourse!.id, { name: name.trim() }, token),
+    onSuccess: (course) => {
+      invalidate();
+      toast.success(`Course renamed to “${course.name}”.`);
+    },
+    onError: (err) =>
+      toast.error(`Could not rename the course: ${(err as Error).message}`),
+  });
+
+  const dismissMutation = useMutation({
+    mutationFn: ({ routeAId, routeBId }: { routeAId: string; routeBId: string }) =>
+      dismissCourseSuggestion(routeAId, routeBId, token),
+    onSuccess: () => {
+      invalidate();
+      toast.success('Suggestion dismissed — it will not be proposed again.');
+    },
+    onError: (err) =>
+      toast.error(`Could not dismiss the suggestion: ${(err as Error).message}`),
+  });
+
   const linkMutation = useMutation({
     mutationFn: ({
       activityId,
@@ -621,6 +728,16 @@ export default function CoursesPage() {
                 busy={
                   mergeMutation.isPending &&
                   mergeMutation.variables?.sourceId === suggestion.route_b_course_id
+                }
+                dismissing={
+                  dismissMutation.isPending &&
+                  dismissMutation.variables?.routeBId === suggestion.route_b_id
+                }
+                onDismiss={() =>
+                  dismissMutation.mutate({
+                    routeAId: suggestion.route_a_id,
+                    routeBId: suggestion.route_b_id,
+                  })
                 }
                 onMerge={() => {
                   if (
@@ -747,8 +864,10 @@ export default function CoursesPage() {
             onLink={(activityId, status) =>
               linkMutation.mutate({ activityId, status })
             }
+            onRename={(name) => renameMutation.mutate(name)}
             busyRouteId={busyRouteId}
             busyActivityId={busyActivityId}
+            renaming={renameMutation.isPending}
           />
         </section>
       </div>

@@ -16,6 +16,18 @@ export async function getCourse(id: string, token?: string): Promise<CourseDetai
   return apiFetch<CourseDetail>(`/api/v1/courses/${id}`, {}, token);
 }
 
+export async function updateCourse(
+  id: string,
+  payload: { name?: string; sport_type?: string },
+  token?: string,
+): Promise<CourseDetail> {
+  return apiFetch<CourseDetail>(
+    `/api/v1/courses/${id}`,
+    { method: 'PATCH', body: JSON.stringify(payload) },
+    token,
+  );
+}
+
 export async function getUncoursedRoutes(token?: string): Promise<CourseRoute[]> {
   return apiFetch<CourseRoute[]>('/api/v1/courses/uncoursed', {}, token);
 }
@@ -61,6 +73,30 @@ export async function ungroupRoute(
 ): Promise<CourseDetail> {
   return apiFetch<CourseDetail>(
     `/api/v1/courses/${courseId}/routes/${routeId}`,
+    { method: 'DELETE' },
+    token,
+  );
+}
+
+export async function dismissCourseSuggestion(
+  routeAId: string,
+  routeBId: string,
+  token?: string,
+): Promise<{ dismissed: boolean }> {
+  return apiFetch<{ dismissed: boolean }>(
+    `/api/v1/courses/suggestions/${routeAId}/${routeBId}/dismiss`,
+    { method: 'POST' },
+    token,
+  );
+}
+
+export async function restoreCourseSuggestion(
+  routeAId: string,
+  routeBId: string,
+  token?: string,
+): Promise<{ restored: boolean }> {
+  return apiFetch<{ restored: boolean }>(
+    `/api/v1/courses/suggestions/${routeAId}/${routeBId}/dismiss`,
     { method: 'DELETE' },
     token,
   );

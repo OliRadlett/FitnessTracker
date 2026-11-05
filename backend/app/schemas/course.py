@@ -81,6 +81,11 @@ class CourseSuggestion(BaseModel):
     breakdown: dict | None = None
 
 
+class CourseUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=500)
+    sport_type: str | None = None
+
+
 class CourseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=500)
     sport_type: str = "cycling"

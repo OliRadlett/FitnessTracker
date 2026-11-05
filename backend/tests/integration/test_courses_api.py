@@ -60,6 +60,21 @@ class TestCourseCrud:
         resp = await client.post("/api/v1/courses", json={"name": "   "})
         assert resp.status_code == 400
 
+    async def test_rename_course(self, client, test_route):
+        created = await client.post(
+            "/api/v1/courses",
+            json={"name": "Old name", "route_ids": [str(test_route.id)]},
+        )
+        course_id = created.json()["id"]
+        renamed = await client.patch(
+            f"/api/v1/courses/{course_id}", json={"name": "New name"}
+        )
+        assert renamed.status_code == 200
+        assert renamed.json()["name"] == "New name"
+
+        blank = await client.patch(f"/api/v1/courses/{course_id}", json={"name": "   "})
+        assert blank.status_code == 400
+
     async def test_unknown_course_is_404(self, client):
         resp = await client.get("/api/v1/courses/00000000-0000-0000-0000-000000000000")
         assert resp.status_code == 404
@@ -181,6 +196,54 @@ class TestCourseSuggestions:
         resp = await client.get("/api/v1/courses/suggestions")
         assert resp.status_code == 200
         assert resp.json() == []
+
+
+class TestCourseSuggestionDismissal:
+    async def test_dismiss_hides_pair_until_restored(
+        self, client, db_session, test_user, test_route, test_route_with_surface
+    ):
+        from app.models.route import RouteSimilarity
+
+        await client.post(
+            "/api/v1/courses",
+            json={"name": "A", "route_ids": [str(test_route.id)]},
+        )
+        await client.post(
+            "/api/v1/courses",
+            json={"name": "B", "route_ids": [str(test_route_with_surface.id)]},
+        )
+        db_session.add(
+            RouteSimilarity(
+                user_id=test_user.id,
+                route_a_id=test_route.id,
+                route_b_id=test_route_with_surface.id,
+                score=0.7,
+                tier="review",
+                breakdown={},
+            )
+        )
+        await db_session.flush()
+
+        dismissed = await client.post(
+            f"/api/v1/courses/suggestions/{test_route.id}/{test_route_with_surface.id}/dismiss"
+        )
+        assert dismissed.status_code == 200
+        assert dismissed.json() == {"dismissed": True}
+        assert (await client.get("/api/v1/courses/suggestions")).json() == []
+
+        # Orientation-insensitive: the reverse dismissal also restores it.
+        restored = await client.delete(
+            f"/api/v1/courses/suggestions/{test_route_with_surface.id}/{test_route.id}/dismiss"
+        )
+        assert restored.status_code == 200
+        assert restored.json() == {"restored": True}
+        assert len((await client.get("/api/v1/courses/suggestions")).json()) == 1
+
+    async def test_dismiss_unknown_pair_is_404(self, client, test_route, test_user):
+        resp = await client.post(
+            f"/api/v1/courses/suggestions/{test_route.id}/00000000-0000-0000-0000-000000000000/dismiss"
+        )
+        assert resp.status_code == 404
 
 
 class TestCourseMerge:
