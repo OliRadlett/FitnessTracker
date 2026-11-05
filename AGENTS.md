@@ -203,6 +203,19 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 
 ## Active Planning
 
+**Routes atlas** — [`plans/routes-atlas-2026-11-05.md`](plans/routes-atlas-2026-11-05.md)
+replaces the Routes IA: **Browse** (a map that draws every route as a line, a
+shape-led list, one-scroll detail, facet/sort URL state) and **Maintain**
+(library health). The list API carries **`RouteSummary.preview_polyline`** — a
+display-only ~90-point shape (`polyline_utils.preview_polyline`); the full
+polyline stays on `GET /routes/{id}` for GPX/3D/matching. Duplicate scanning is
+a **background job** (`services/route_similarity.py`): `POST
+/routes/duplicates/refresh` queues it, `GET /routes/duplicates/status` reports
+`never/queued/running/ready/failed`, and `GET /routes/duplicates` never scans on
+read. Quality/terrain/surface remain **0/86** for the real account; the page
+renders no controls for them. Evidence lives in
+[`prototype/routes/`](prototype/routes/README.md).
+
 **Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–4 landed;
 Waves 0–2 merged to `main` as PR #234, Waves 3–4 in review). Nine specs in
 [`plans/`](plans/) from a re-baselined brainstorm, plus
@@ -282,7 +295,7 @@ only see sets *we* created, so the feature's value rests on a one-time manual
 probe also settled that `ftp` alone does not recompute boundaries, so the ratio rescale
 is required, not optional.
 
-Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/lifting-redesign-plan.md`](plans/lifting-redesign-plan.md) (redesign of `/lifting` page — tabbed IA, session cards, PR timeline, plan integration), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/relive-3d-next-level.md`](plans/relive-3d-next-level.md) (Phases A–D: atmosphere, director, perf, audio shipped; WebGPU/share/montage/AI open), [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (training page redesign — V2.1 emoji pass shipped in `33a86e9`; V3.0 weekly master bar + `DayCell`/`ConformitySummaryCard`/`PlanGoalsStrip` shipped in `520edff`; missed-day quick-actions popover shipped in `cf18415`; prod deploy open), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md), [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md) (training page overhaul — plan spine + one Plan-mode editor; supersedes the `v3-planning` surface scope), [`plans/training-strength-programming.md`](plans/training-strength-programming.md) (companion — multi-week strength targets + weight suggestions).
+Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/lifting-redesign-plan.md`](plans/lifting-redesign-plan.md) (redesign of `/lifting` page — tabbed IA, session cards, PR timeline, plan integration), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/relive-3d-next-level.md`](plans/relive-3d-next-level.md) (Phases A–D: atmosphere, director, perf, audio shipped; WebGPU/share/montage/AI open), [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (training page redesign — V2.1 emoji pass shipped in `33a86e9`; V3.0 weekly master bar + `DayCell`/`ConformitySummaryCard`/`PlanGoalsStrip` shipped in `520edff`; missed-day quick-actions popover shipped in `cf18415`; prod deploy open), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/routes-atlas-2026-11-05.md`](plans/routes-atlas-2026-11-05.md) (Routes Browse/Maintain rewrite — `preview_polyline`, background duplicate scan), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md), [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md) (training page overhaul — plan spine + one Plan-mode editor; supersedes the `v3-planning` surface scope), [`plans/training-strength-programming.md`](plans/training-strength-programming.md) (companion — multi-week strength targets + weight suggestions).
 
 ## Git & Deployment Strategy
 
