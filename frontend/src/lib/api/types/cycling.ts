@@ -269,6 +269,12 @@ export interface Vo2maxResponse {
   method: string;
   classification: string;
   all_estimates: Vo2maxDetail[];
+  /** 95 % interval. The API returns these; the type was missing them, so the
+   *  page could not show how wide the estimate really is. */
+  vo2max_ci_low?: number | null;
+  vo2max_ci_high?: number | null;
+  /** What `classification` is relative to ("general-population bands …"). */
+  classification_scope?: string | null;
 }
 
 export interface Vo2maxHistoryPoint {
