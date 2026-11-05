@@ -114,7 +114,12 @@
 | `Chart` | Generic Recharts wrapper — line, bar, scatter, area, pie + CSS-grid calendar heatmap. Renders `ChartData` from backend. Unit-aware tooltips, date tick formatting, adaptive dots, secondary Y axis (`y_axis`), Brush zoom when >20 points. Theme + label-culling from `chartTheme` (12px floor, tabular-nums, rotate-or-drop ticks); insights via `InsightCallout` |
 | `ChartBody` | Quint-state chart body — loading spinner / error + Retry / designed Honest Empty (`emptyMessage` + `emptyHint` + `emptyAction`, backward compatible) / `Chart` + degraded `StaleBadge` overlay (`stale=true` or detail string; chart still renders) |
 | `ChartCard` | Card wrapper with title, header actions slot, `InsightCallout` takeaway, and ChartBody (empty/degraded passthrough) |
-| `chartTheme` | **Phase 3 (ui-redesign-v2 §3.3)** shared viz tokens — axis/legend/grid/tooltip/zone hexes mirroring the dark CSS channels, series palette, 12px/11px floors, `xTickInterval`/`xTickAngle`/`xAxisHeight` culling + `legendWrapperStyle` |
+| `chartTheme` | **Phase 3 (ui-redesign-v2 §3.3)** shared viz tokens — axis/grid/tooltip/zone hexes mirroring the dark CSS channels, series palette, 12px/11px floors, `xTickInterval`/`xTickAngle`/`xAxisHeight` culling. Legend placement is not here: `Chart` renders it as HTML under the plot |
+| `chartScale` | Fitted axis maths for the hand-rolled series below — `fitDomain` (1/2/5 steps, `zero` anchoring), `axisTicks`, `visibleTicks` (end tick wins), `niceStep`. Pure, unit-tested in `chartScale.test.ts` |
+| `LineSeries` | Hand-rolled SVG line chart with a fitted y-domain, no legend (the last value carries its own label) and culled x ticks. Optional `refY` reference line, `zeroAxis`, `xAt` for log-spaced durations. Used by the cycling page's Form/Power modes |
+| `BarSeries` | Hand-rolled SVG bars around a zero baseline (weekly change, daily load). Same scale helpers, one rect per non-null value |
+| `StackBar` | One 100 % bar with no axis — a zone split that cannot collide with a label |
+| `Spark` | Bare trend line for a stat row (no axes), last point marked |
 | `InsightCallout` | **Phase 3 (ui-redesign-v2 §3.3)** one shared insight line (+ `ChartInsights` block for `ChartData.insights`) — replaces the ad-hoc callouts in `Chart`/`ChartCard` |
 | `CombinedLoadChart` | **B-31 unified load** — cycling TSS + lifting estimates on one axis (`['chart-combined-load', days]`). Shared by `/analytics` and the lifting Analytics tab (one cache entry); designed empty (what + how) via shared `ChartBody` |
 
