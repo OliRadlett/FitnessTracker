@@ -29,14 +29,19 @@ against those decisions.
   reflects what you actually lifted. Fail-open: no signal means no sync, never a
   blocked workout. Warm-up sets are dropped — prefill must not come from an
   empty bar.
+- **Push**: a finished session is uploaded to `POST /api/v1/lifting/sessions`
+  in the background, so finishing never waits on the network. `live_key` carries
+  the phone's session id, which makes the retry idempotent — and on success the
+  local id is rewritten to the server's, so the next pull cannot duplicate it.
+  Offline sessions stay pending and go up on the next sync.
 - Account: Google Sign-In through Credential Manager, verified server-side
   ([docs/ANDROID-AUTH.md](../docs/ANDROID-AUTH.md)). You → **Continue with Google**.
 
 ## What does not work yet
 
-- **No push**: the phone's own sessions are not sent to the server, and the
-  training plan is still a seeded constant (`data/SessionStore.kt › SeedPlan`).
-  Server and phone ids differ for the same workout until push exists.
+- **The plan is still a seeded constant** (`data/SessionStore.kt › SeedPlan`).
+  It does not come from the training-plan API yet, so the app prescribes the
+  same push day until that lands.
 - No widgets, Health Connect, background sync or notifications.
 - Sign-in is not a gate — the gym flow works before you authenticate. Logging a
   set must never wait on a network round trip.

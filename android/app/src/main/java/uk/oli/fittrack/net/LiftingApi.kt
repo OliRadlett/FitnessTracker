@@ -3,11 +3,15 @@ package uk.oli.fittrack.net
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.LoggedSet
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
@@ -76,7 +80,9 @@ object LiftingJson {
                     rpe = (set.rpe ?: 7.0).roundToInt(),
                     at = end
                 )
-            }
+            },
+            // It came from the server; pushing it back would be a loop.
+            synced = true
         )
     }
 
@@ -121,4 +127,94 @@ class LiftingApi(private val baseUrl: String) {
                 LiftingJson.decode(body)
             }
         }
+
+    /**
+     * Push one finished session. Returns the server's id.
+     *
+     * `live_key` carries the phone's own session id, so a retry after a lost
+     * response resolves to the same row instead of creating a second copy.
+     */
+    suspend fun createSession(token: String, session: FinishedSession): String =
+        withContext(Dispatchers.IO) {
+            val payload = json.encodeToString(LiftingPush.body(session))
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions")
+                .header("Authorization", "Bearer $token")
+                .post(payload.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw ApiException(
+                        response.code,
+                        "Could not save the session (${response.code})"
+                    )
+                }
+                json.decodeFromString<CreatedSession>(body).id
+            }
+        }
+
+    private val json = Json { ignoreUnknownKeys = true }
+}
+
+@Serializable
+private data class CreatedSession(val id: String)
+
+@Serializable
+internal data class CreateSessionBody(
+    val session_date: String,
+    val focus: String? = null,
+    val duration_seconds: Int,
+    val live_key: String,
+    val sets: List<CreateSetBody>
+)
+
+@Serializable
+internal data class CreateSetBody(
+    val exercise_name: String,
+    val set_number: Int,
+    val weight_kg: Double,
+    val reps: Int,
+    val rpe: Int,
+    val order_index: Int,
+    val client_id: String
+)
+
+/**
+ * Builds the create payload. Pure and separately tested: `set_number` is
+ * per-exercise (the backend's semantics) while `order_index` is global, and the
+ * two are easy to swap by accident.
+ */
+internal object LiftingPush {
+
+    fun body(session: FinishedSession, zone: ZoneId = ZoneId.systemDefault()): CreateSessionBody {
+        val date = Instant.ofEpochMilli(session.startedAt).atZone(zone).toLocalDate().toString()
+        val perExercise = mutableMapOf<String, Int>()
+
+        val sets = session.sets.mapIndexed { index, set ->
+            val number = (perExercise[set.exercise] ?: 0) + 1
+            perExercise[set.exercise] = number
+            CreateSetBody(
+                exercise_name = set.exercise,
+                set_number = number,
+                weight_kg = set.weightKg,
+                reps = set.reps,
+                rpe = set.rpe,
+                order_index = index,
+                // Stable across retries: derived from the session and position.
+                client_id = "${session.id}:$index"
+            )
+        }
+
+        return CreateSessionBody(
+            session_date = date,
+            focus = session.planTitle,
+            duration_seconds = ((session.endedAt - session.startedAt) / 1000)
+                .coerceAtLeast(0)
+                .toInt(),
+            live_key = session.id,
+            sets = sets
+        )
+    }
 }
