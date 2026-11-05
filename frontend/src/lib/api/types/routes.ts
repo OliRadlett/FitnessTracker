@@ -36,8 +36,20 @@ export interface RouteData {
   elevation_gain_meters?: number;
   estimated_time_seconds?: number;
   encoded_polyline: string;
-  elevation_profile?: { elevations: (number | null)[] };
+  elevation_profile?: {
+    elevations?: (number | null)[];
+    // The DB also stores {distance, elevation} on some routes; both shapes
+    // reach the client until the producer is normalised.
+    elevation?: (number | null)[];
+    distance?: number[];
+  };
   surface_profile?: Record<string, number>;
+  terrain_classification?: {
+    terrain_type?: string;
+    climb_count?: number;
+    total_climb_m?: number;
+    climb_rate_pct?: number;
+  } | null;
   start_lat: number;
   start_lng: number;
   end_lat: number;
@@ -75,6 +87,8 @@ export interface RouteSummary {
   ride_count: number;
   is_ridden: boolean;
   last_ridden_date?: string;
+  /** Decimated geometry for list/card silhouettes (~90 points). Display only. */
+  preview_polyline?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -97,8 +111,7 @@ export interface RouteFilters {
   sort_by?: string;
   sort_order?: string;
   limit?: number;
-  offset?: number;
-}
+  offset?: number;}
 
 export interface RouteTagCreate {
   name: string;
@@ -325,8 +338,20 @@ export interface MergedRouteView {
   elevation_gain_meters?: number;
   estimated_time_seconds?: number;
   encoded_polyline: string;
-  elevation_profile?: { elevations: (number | null)[] };
+  elevation_profile?: {
+    elevations?: (number | null)[];
+    // The DB also stores {distance, elevation} on some routes; both shapes
+    // reach the client until the producer is normalised.
+    elevation?: (number | null)[];
+    distance?: number[];
+  };
   surface_profile?: Record<string, number>;
+  terrain_classification?: {
+    terrain_type?: string;
+    climb_count?: number;
+    total_climb_m?: number;
+    climb_rate_pct?: number;
+  } | null;
   start_lat: number;
   start_lng: number;
   end_lat: number;
@@ -354,4 +379,21 @@ export interface HomeAreaHeatmapResponse {
   center_lng: number;
   radius_km: number;
   points: HomeAreaActivityPoint[];
+}
+
+// ── Duplicate scan state ─────────────────────────────────────────────────────
+
+export type RouteScanState = 'never' | 'queued' | 'running' | 'ready' | 'failed';
+
+/**
+ * The duplicate matcher is a background job (full-resolution geometry over
+ * every candidate pair). `never` and `ready` with `pairs: 0` are different
+ * answers: "not scanned" vs "scanned, nothing found".
+ */
+export interface RouteScanStatus {
+  state: RouteScanState;
+  started_at: string | null;
+  finished_at: string | null;
+  pairs: number | null;
+  error: string | null;
 }

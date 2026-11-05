@@ -32,6 +32,25 @@ class TestListRoutes:
         assert "x-total-count" in resp.headers
         assert int(resp.headers["x-total-count"]) >= 1
 
+    async def test_list_routes_includes_preview_polyline(self, client, test_route):
+        """List carries a display polyline so cards can draw the route shape."""
+        resp = await client.get("/api/v1/routes/")
+        assert resp.status_code == 200
+        route = next(r for r in resp.json() if r["id"] == str(test_route.id))
+
+        assert route["preview_polyline"]
+        from app.services.polyline_utils import decode_polyline
+
+        assert len(decode_polyline(route["preview_polyline"])) == len(
+            decode_polyline(test_route.encoded_polyline)
+        )
+
+    async def test_detail_keeps_full_polyline(self, client, test_route):
+        """The preview is additive; detail still returns the full polyline."""
+        resp = await client.get(f"/api/v1/routes/{test_route.id}")
+        assert resp.status_code == 200
+        assert resp.json()["encoded_polyline"] == test_route.encoded_polyline
+
     async def test_list_routes_empty(self, client):
         """List returns empty when no routes exist."""
         resp = await client.get("/api/v1/routes/")
@@ -185,9 +204,172 @@ class TestDuplicatesQueue:
         # RouteRead must serialise cleanly, including tags.
         assert "tags" in data[0]["route_a"]
 
-    async def test_duplicates_without_cache_returns_200(self, client, test_route):
-        """The local-scan fallback path must also not 500 (empty cache)."""
+    async def test_duplicates_without_cache_returns_empty_and_reports_never(
+        self, client, test_route
+    ):
+        """An empty cache must not trigger the 15-minute synchronous scan."""
         resp = await client.get("/api/v1/routes/duplicates")
         assert resp.status_code == 200, resp.text
-        assert isinstance(resp.json(), list)
+        assert resp.json() == []
+        assert resp.headers["x-scan-status"] == "never"
+
+    async def test_duplicates_never_scans_on_read(self, client, test_route, monkeypatch):
+        from app.services import route_service
+
+        async def _boom(*args, **kwargs):
+            raise AssertionError("the review queue must not scan on read")
+
+        monkeypatch.setattr(route_service, "find_potential_duplicates", _boom)
+
+        resp = await client.get("/api/v1/routes/duplicates")
+        assert resp.status_code == 200, resp.text
+
+    async def test_scan_status_is_never_before_the_first_scan(self, client):
+        resp = await client.get("/api/v1/routes/duplicates/status")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["state"] == "never"
+        assert body["pairs"] is None
+
+    async def test_refresh_queues_a_background_scan(self, client, monkeypatch):
+        from app.services import route_similarity
+
+        queued: list[str] = []
+
+        async def _fake_enqueue(user_id):
+            queued.append(str(user_id))
+            return "queued"
+
+        monkeypatch.setattr(route_similarity, "enqueue_user_similarity", _fake_enqueue)
+
+        resp = await client.post("/api/v1/routes/duplicates/refresh")
+        assert resp.status_code == 202, resp.text
+        assert resp.json() == {"status": "queued"}
+        assert len(queued) == 1
+
+
+class TestRouteIntelligenceRefresh:
+    """POST /api/v1/routes/intelligence/refresh — terrain + quality, now.
+
+    Both are weekly-only jobs, so a route synced/imported today used to wait up
+    to a week for terrain and a score. The refresh is also what sync and GPX
+    import call.
+    """
+
+    async def _hill_route(self, db_session, test_user):
+        from app.services.route_service import create_route
+
+        return await create_route(
+            db_session,
+            test_user.id,
+            "Hill Rep",
+            "cycling",
+            3_000.0,
+            "o}~mH~}xMz@z@z@z@z@z@",
+            elevation_profile={
+                "distance": [0, 500, 1000, 1500, 2000, 2500, 3000],
+                "elevation": [100, 130, 170, 220, 270, 320, 360],
+            },
+        )
+
+    async def test_refresh_classifies_terrain_and_scores_quality(
+        self, client, db_session, test_user
+    ):
+        from sqlalchemy import select
+
+        from app.models.route import Route
+        from app.models.route_organize import RouteQuality
+
+        route = await self._hill_route(db_session, test_user)
+        await db_session.flush()
+
+        resp = await client.post("/api/v1/routes/intelligence/refresh")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["terrain_classified"] >= 1
+        assert body["quality_scored"] >= 1
+
+        refreshed = (
+            await db_session.execute(select(Route).where(Route.id == route.id))
+        ).scalar_one()
+        assert refreshed.terrain_classification
+        assert refreshed.terrain_classification["terrain_type"] != "unknown"
+        assert refreshed.quality_score is not None
+
+        quality = (
+            await db_session.execute(
+                select(RouteQuality).where(RouteQuality.route_id == route.id)
+            )
+        ).scalar_one_or_none()
+        assert quality is not None
+        assert quality.overall_score is not None
+
+    async def test_refresh_is_idempotent(self, client, db_session, test_user):
+        await self._hill_route(db_session, test_user)
+        await db_session.flush()
+
+        await client.post("/api/v1/routes/intelligence/refresh")
+        second = await client.post("/api/v1/routes/intelligence/refresh")
+        assert second.status_code == 200, second.text
+        assert second.json()["terrain_classified"] == 0
+
+    async def test_refresh_backfills_a_profile_from_the_activity_stream(
+        self, client, db_session, test_user, test_activity
+    ):
+        """Strava routes carry no profile; the source activity's stream has one."""
+        from sqlalchemy import select
+
+        from app.models.activity import ActivityStream
+        from app.models.route import Route, RouteSource
+        from app.services.route_service import create_route
+
+        route = await create_route(
+            db_session,
+            test_user.id,
+            "Stream Route",
+            "cycling",
+            3_000.0,
+            "o}~mH~}xMz@z@z@z@z@z@",
+        )
+        db_session.add(
+            RouteSource(
+                route_id=route.id,
+                user_id=test_user.id,
+                provider="strava",
+                provider_route_id="activity-stream-test",
+                provider_name="Stream Route",
+                encoded_polyline="o}~mH~}xMz@z@z@z@z@z@",
+                raw_data={
+                    "source": "activity_polyline",
+                    "activity_id": str(test_activity.id),
+                },
+            )
+        )
+        db_session.add(
+            ActivityStream(
+                activity_id=test_activity.id,
+                stream_type="altitude",
+                data={"data": [100, 110, 120, 130, 140, 150]},
+            )
+        )
+        db_session.add(
+            ActivityStream(
+                activity_id=test_activity.id,
+                stream_type="distance",
+                data={"data": [0, 500, 1000, 1500, 2000, 3000]},
+            )
+        )
+        await db_session.flush()
+
+        resp = await client.post("/api/v1/routes/intelligence/refresh")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["elevation_backfilled"] >= 1
+
+        refreshed = (
+            await db_session.execute(select(Route).where(Route.id == route.id))
+        ).scalar_one()
+        assert refreshed.elevation_profile
+        assert refreshed.elevation_profile.get("elevation")
+        assert refreshed.terrain_classification
+        assert refreshed.terrain_classification["terrain_type"] != "unknown"
 
