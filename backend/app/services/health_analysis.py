@@ -406,16 +406,28 @@ async def analyze_overtraining(
     ) / available
     severity = _classify_severity(score)
 
+    heavy_days = 0
+    for tsb in reversed(tsb_values):
+        if tsb < -35:
+            heavy_days += 1
+        else:
+            break
+
     messages = {
-        "none": "All clear — no overtraining signals detected. Your training load, recovery, HRV, and sleep are all within normal ranges.",
-        "info": "Training load is high — monitor recovery closely.",
-        "warning": "Overtraining risk elevated — consider a rest day or easy week.",
-        "critical": "Significant overtraining risk — take 2-3 rest days immediately.",
+        "none": "All clear — training load, recovery, HRV, and sleep are within a manageable range.",
+        "info": "Heavy load block — monitor recovery; this is not yet an overtraining diagnosis.",
+        "warning": "Training-load stress is elevated — consider an easy day or a lighter week.",
+        "critical": "High training-load stress — take 2-3 easy days and prioritise recovery.",
     }
 
     # Build evidence with human-readable signal labels
     evidence = {
         "TSB (Training Stress Balance)": f"{'✅' if tsb_s == 0 else '⚠️'} Signal score: {tsb_s:.0f}/100",
+        "Heavy load block": (
+            f"{heavy_days} consecutive day(s) below -35 TSB"
+            if heavy_days
+            else "none"
+        ),
         "Recovery Score": f"{'✅' if recovery_s == 0 else '⚠️'} Signal score: {recovery_s:.0f}/100",
         "HRV Trend": f"{'✅' if hrv_s == 0 else '⚠️'} Signal score: {hrv_s:.0f}/100",
         "Sleep Efficiency": f"{'✅' if sleep_s == 0 else '⚠️'} Signal score: {sleep_s:.0f}/100",
@@ -446,7 +458,7 @@ async def analyze_overtraining(
     return {
         "alert_type": "overtraining",
         "severity": severity,
-        "title": "Overtraining Risk",
+        "title": "Training Load Stress",
         "description": messages[severity],
         "score": round(score, 1),
         "evidence": evidence,
