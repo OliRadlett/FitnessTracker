@@ -294,6 +294,16 @@ export default function LiftingPage() {
   const [selectedE1rmExercise, setSelectedE1rmExercise] = useState('');
   const effectiveE1rmExercise = selectedE1rmExercise || e1rmExerciseList[0] || '';
 
+  // `?exercise=<name>` opens Analytics with that exercise selected. Read once
+  // on mount; the main deep-link effect owns tab/session/pr.
+  useEffect(() => {
+    const exercise = new URLSearchParams(window.location.search).get('exercise');
+    if (exercise) {
+      setSelectedE1rmExercise(exercise);
+      setActiveTab('analytics');
+    }
+  }, []);
+
   const { data: e1rmHistoryChart, isLoading: e1rmHistoryLoading } = useQuery<ChartData>({
     queryKey: ['chart-estimated-1rm-history', effectiveE1rmExercise],
     queryFn: () => authFetch<ChartData>(

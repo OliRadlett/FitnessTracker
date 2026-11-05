@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { listGoals, useAuthFetch } from '@/lib/api';
@@ -42,6 +42,13 @@ export default function TrainingPage() {
   const { getParam, setParam } = useDeepLink();
   const shell = useTrainingShell();
   const [plansOpen, setPlansOpen] = useState(false);
+  const [focusEventId, setFocusEventId] = useState<string | null>(null);
+
+  // `?event=<id>` opens the Events view and highlights that card.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get('event');
+    if (id) setFocusEventId(id);
+  }, []);
 
   const today = todayStr();
 
@@ -186,7 +193,7 @@ export default function TrainingPage() {
               </>
             )}
 
-            {view === 'events' && <EventsView onBack={() => setView('plan')} />}
+            {view === 'events' && <EventsView onBack={() => setView('plan')} focusEventId={focusEventId} />}
           </div>
         )}
       </div>
