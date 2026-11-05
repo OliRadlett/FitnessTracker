@@ -58,7 +58,17 @@ def test_pbf_is_preferred_over_geojson(tmp_path):
 
     def _stub(_pbf, bbox):
         calls["n"] += 1
-        return [("w1:0", "w1:0", "w1:1", [(55.0, -1.0), (55.0, -0.998)], "Test St", "residential")]
+        return [
+            (
+                "w1:0",
+                "w1:0",
+                "w1:1",
+                [(55.0, -1.0), (55.0, -0.998)],
+                "Test St",
+                "residential",
+                "asphalt",
+            )
+        ]
 
     original = mod._build_edges_from_pbf
     mod._build_edges_from_pbf = _stub

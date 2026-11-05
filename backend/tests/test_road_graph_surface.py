@@ -3,10 +3,33 @@
 from app.services.road_graph import (
     RoadEdge,
     RoadGraph,
+    edges_from_tuples,
     roads_from_geojson,
     snap_polyline,
 )
 from app.services.surface_types import clean_surface_type, surface_mix_to_profile
+
+
+def test_pbf_tuples_convert_without_dropping_surface():
+    # The Modal PBF path used to unpack six fields; the seventh (surface) broke
+    # every match in production with "too many values to unpack".
+    edges = edges_from_tuples(
+        [
+            (
+                "10:1",
+                "1",
+                "2",
+                [(51.5, -0.1), (51.5, -0.099)],
+                "Way 10",
+                "cycleway",
+                "asphalt",
+            )
+        ]
+    )
+
+    assert len(edges) == 1
+    assert edges[0].surface == "asphalt"
+    assert edges[0].length_m > 0
 
 
 def _feature(surface: str | None, coords: list[list[float]], way_id: int = 1):
