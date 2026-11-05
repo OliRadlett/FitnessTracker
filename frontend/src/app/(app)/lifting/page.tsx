@@ -7,6 +7,8 @@ import { useAuthFetch, deleteLiftingSession } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
 import type {
   LiftingSession,
+  LiftingSet,
+  AddSetPayload,
   PersonalRecord,
   CreateSessionPayload,
   CreatePRPayload,
@@ -456,6 +458,21 @@ export default function LiftingPage() {
       queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
     },
     onError: (err: Error) => setActionError(err.message || 'Failed to backfill links'),
+  });
+
+  const addSetMutation = useMutation({
+    mutationFn: ({ sessionId, payload }: { sessionId: string; payload: AddSetPayload }) =>
+      authFetch<LiftingSet>(`/api/v1/lifting/sessions/${sessionId}/sets`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['lifting-sessions'] });
+      queryClient.invalidateQueries({ queryKey: ['lifting-session', selectedSessionId] });
+      queryClient.invalidateQueries({ queryKey: ['personal-records'] });
+      queryClient.invalidateQueries({ queryKey: ['lifting-volume'] });
+    },
+    onError: (err: Error) => setActionError(err.message || 'Failed to add set'),
   });
 
   const updateSetMutation = useMutation({
@@ -1019,6 +1036,11 @@ export default function LiftingPage() {
                 </div>
               )}
 
+              {/* Quick-add: next set for an existing exercise, sticky in view */}
+              <div className="mb-4">
+                <QuickAddSetBar session={sessionDetail} />
+              </div>
+
               {/* Set ladder — read-only review layer, separate from logging/editing */}
               {sessionDetail.sets && sessionDetail.sets.length > 0 && (
                 <div className="mb-4 rounded-lg border border-surface-light/50 p-3 sm:p-4">
@@ -1050,6 +1072,7 @@ export default function LiftingPage() {
                 <div ref={addExerciseRef} className="mb-4">
                   <AddExerciseForm
                     sessionId={selectedSessionId}
+                    existingSets={sessionDetail.sets}
                     onDone={() => setShowAddExercise(false)}
                   />
                 </div>
@@ -1072,8 +1095,30 @@ export default function LiftingPage() {
                       sets={sets}
                       onUpdateSet={(setId, data) => updateSetMutation.mutate({ setId, data })}
                       onDeleteSet={(setId) => deleteSetMutation.mutate(setId)}
+                      onAddSet={(name, previous) => {
+                        const nextNumber =
+                          Math.max(
+                            0,
+                            ...sessionDetail.sets
+                              .filter((s) => s.exercise_name === name)
+                              .map((s) => s.set_number),
+                          ) + 1;
+                        addSetMutation.mutate({
+                          sessionId: selectedSessionId,
+                          payload: {
+                            exercise_name: name,
+                            set_number: nextNumber,
+                            weight_kg: previous?.weight_kg ?? 0,
+                            reps: previous?.reps ?? 0,
+                            rpe: previous?.rpe ?? undefined,
+                            is_warmup: previous?.is_warmup ?? false,
+                            is_amrap: false,
+                          },
+                        });
+                      }}
                       isUpdating={updateSetMutation.isPending}
                       isDeleting={deleteSetMutation.isPending}
+                      isAdding={addSetMutation.isPending}
                     />
                   ))}
                 </div>
@@ -1098,10 +1143,6 @@ export default function LiftingPage() {
               <SessionAiAnalysisCard sessionId={selectedSessionId} />
             </div>
 
-            {/* Quick-add: one-line set logging, sticky at the detail bottom */}
-            <div className="mt-6">
-              <QuickAddSetBar session={sessionDetail} />
-            </div>
             </div>
           ) : selectedSessionId && (sessionDetailLoading || !sessionDetailError) ? (
             <div className="space-y-3" aria-label="Loading session detail">

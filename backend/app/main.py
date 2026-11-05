@@ -221,6 +221,7 @@ from app.api.account import router as account_router
 from app.api.activities import router as activities_router
 from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
+from app.api.calendar import router as calendar_router
 from app.api.charts import router as charts_router
 from app.api.connections import router as connections_router
 from app.api.cross_domain import router as cross_domain_router
@@ -255,6 +256,7 @@ app.include_router(
     connections_router, prefix="/api/v1/connections", tags=["connections"]
 )
 app.include_router(activities_router, prefix="/api/v1/activities", tags=["activities"])
+app.include_router(calendar_router, prefix="/api/v1/calendar", tags=["calendar"])
 app.include_router(lifting_router, prefix="/api/v1/lifting", tags=["lifting"])
 app.include_router(
     videos_router, prefix="/api/v1/lifting/videos", tags=["lifting-videos"]
