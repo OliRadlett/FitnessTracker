@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import Date, DateTime, Float, ForeignKey, String, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -40,6 +40,15 @@ class WeightLog(Base):
     hydration_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
     visceral_fat_index: Mapped[float | None] = mapped_column(Float, nullable=True)
     bmi: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # The provider's own weigh-in payload, verbatim (a Withings ``measuregrp``:
+    # grpid, deviceid, category, and every ``measures[{value,type,unit}]`` the
+    # scale sent). Withings returns ~30 measurement types and only the handful
+    # above have columns, so without this the rest were decoded and thrown away
+    # — a reading could not be recovered without re-querying the device's
+    # history. Every other provider already keeps its payload (Activity.raw_data,
+    # Route.raw_data); this closes the last gap, and makes widening the mapped
+    # columns a backfill from stored data rather than a re-sync.
+    raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

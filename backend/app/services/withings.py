@@ -156,6 +156,11 @@ def group_measurements(measuregrps: list[dict]) -> list[dict]:
             {
                 "date": dt.date(),
                 "timestamp": int(ts),
+                # The provider's weigh-in payload, kept whole. Only the eight
+                # mapped types reach columns; anything else the scale computed
+                # (heart pulse, vascular age, BMR, segmental masses) survives
+                # here rather than being decoded and discarded.
+                "raw": grp,
                 **fields,
             }
         )
@@ -281,6 +286,7 @@ async def sync_withings_measurements(
             "hydration_percent": g.get("hydration_percent"),
             "visceral_fat_index": g.get("visceral_fat_index"),
             "bmi": g.get("bmi"),
+            "raw_data": g.get("raw"),
         }
         stmt = (
             pg_insert(WeightLog)
@@ -298,6 +304,23 @@ async def sync_withings_measurements(
 
     await db.flush()
     logger.info(f"Withings sync for user {user_id}: {len(synced)} weigh-ins upserted")
+    # Which measurement types did this device actually send? The answer decides
+    # whether heart pulse / vascular age / BMR are worth mapping into columns,
+    # and it is the only way to know which scale model is connected without
+    # asking the user. Logged once per sync, not per weighing.
+    observed_types = sorted(
+        {
+            measure.get("type")
+            for g in grouped
+            for measure in (g.get("raw") or {}).get("measures", [])
+            if measure.get("type") is not None
+        }
+    )
+    if observed_types:
+        logger.info(
+            f"Withings sync for user {user_id}: measurement types observed "
+            f"{observed_types}"
+        )
 
     if synced:
         # Keep the canonical reference weight (W/kg, strength standards,
@@ -305,5 +328,22 @@ async def sync_withings_measurements(
         from app.services.cycling import sync_profile_reference_weight
 
         await sync_profile_reference_weight(db, user_id)
+
+        # Mirror it onto Wahoo, whose calorie and W/kg estimates read a weight
+        # nothing in this app has ever written. Best effort by contract: a failed
+        # profile write must not fail the weigh-in sync that triggered it.
+        try:
+            from app.services.wahoo import push_weight_to_wahoo
+
+            mirrored = await push_weight_to_wahoo(db, user_id)
+            if mirrored.get("pushed"):
+                logger.info(
+                    f"Withings sync for user {user_id}: mirrored "
+                    f"{mirrored['weight_kg']:.1f}kg to the Wahoo profile"
+                )
+        except Exception as exc:  # a profile write is never worth losing a weigh-in
+            logger.warning(
+                f"Withings sync for user {user_id}: Wahoo weight mirror failed: {exc}"
+            )
 
     return synced

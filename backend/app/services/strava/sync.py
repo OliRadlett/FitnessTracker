@@ -16,6 +16,7 @@ from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.lifting import LiftingSession
 from app.models.user import OAuthConnection
+from app.services.power_provenance import from_strava_payload
 from app.services.route_quarantine import active_routes_clause
 from app.services.sport_filter import is_allowed_sport
 
@@ -121,6 +122,7 @@ async def _create_activity_from_strava(
         average_heartrate=_safe_float(sa.get("average_heartrate")),
         max_heartrate=_safe_float(sa.get("max_heartrate")),
         average_power=_safe_float(sa.get("average_watts")),
+        power_provenance=from_strava_payload(sa),
         max_power=_safe_float(sa.get("max_watts")),
         normalized_power=_safe_float(sa.get("weighted_average_watts")),
         average_speed=_safe_float(sa.get("average_speed")),
@@ -308,6 +310,7 @@ async def sync_activities(
                     "average_heartrate": _safe_float(sa.get("average_heartrate")),
                     "max_heartrate": _safe_float(sa.get("max_heartrate")),
                     "average_power": _safe_float(sa.get("average_watts")),
+                    "power_provenance": from_strava_payload(sa),
                     "max_power": _safe_float(sa.get("max_watts")),
                     "normalized_power": _safe_float(sa.get("weighted_average_watts")),
                     "average_speed": _safe_float(sa.get("average_speed")),
@@ -492,6 +495,18 @@ async def sync_activities(
     for activity in synced:
         await link_activity_to_route(db, activity, routes=routes)
 
+    # Resolve equipment last, and never fatally: every ride above is already
+    # stored, so a gear failure leaves `gear_id` NULL and retries next sync (the
+    # provider id stays in raw_data). One call per *new* gear, one per gear per
+    # day thereafter — see services/gear.py for the rate-budget reasoning.
+    if synced:
+        try:
+            from app.services.gear import sync_strava_gear
+
+            await sync_strava_gear(db, user_id, connection)
+        except Exception as exc:
+            logger.warning("Strava gear sync failed for user %s: %s", user_id, exc)
+
     return synced
 
 
@@ -618,6 +633,7 @@ async def backfill_all_activities_stream(
                         "average_heartrate": _safe_float(sa.get("average_heartrate")),
                         "max_heartrate": _safe_float(sa.get("max_heartrate")),
                         "average_power": _safe_float(sa.get("average_watts")),
+                        "power_provenance": from_strava_payload(sa),
                         "normalized_power": _safe_float(
                             sa.get("weighted_average_watts")
                         ),

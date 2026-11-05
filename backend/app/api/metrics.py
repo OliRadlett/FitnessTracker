@@ -133,12 +133,31 @@ async def get_sleep_debt(
 
     debt = compute_sleep_debt(logs, needed_hours=target_hours, window_days=days)
 
+    # Which requirement produced the number? Whoop publishes a per-night need
+    # (baseline + debt + recent strain + naps), which is a better target than a
+    # flat `target_hours` — but only for the nights that carry it, so a mixed
+    # window is reported as mixed rather than as one or the other.
+    counted = debt.get("nights_counted", 0)
+    provider_nights = debt.get("provider_nights", 0)
+    if provider_nights and provider_nights == counted:
+        need_source = "whoop"
+    elif provider_nights:
+        need_source = "mixed"
+    else:
+        need_source = "target"
+
     return {
         "debt_hours": debt["debt_hours"],
         "avg_sleep_hours": debt["avg_sleep_hours"],
         "days_below_target": debt["days_below_target"],
         "target_hours": target_hours,
         "window_days": days,
+        "need_source": need_source,
+        "provider_nights": provider_nights,
+        "nights_counted": counted,
+        # Most recent night's decomposition, so the UI can explain the target
+        # instead of asserting it ("need 8h20: baseline 8h + 25m strain").
+        "sleep_need": debt.get("sleep_need"),
     }
 
 

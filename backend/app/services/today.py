@@ -274,6 +274,89 @@ async def _session_mix_row(db: AsyncSession, user_id: uuid.UUID) -> EngineRow:
     )
 
 
+def _environment_stance(
+    aqi: float | None, pollen: dict[str, float]
+) -> tuple[str, str, str]:
+    """Read an air-quality sample as a stance, a confidence and a reason.
+
+    Pure and separate from the fetch so the thresholds can be tested without a
+    network or a database.
+
+    Three decisions:
+
+    * **Confidence is always "low".** Air is an explanation, not an instruction:
+      ``should_rest`` only counts high/medium confidence, so this row can inform
+      the verdict and can never force a rest day. Being told to skip a ride
+      because the grass pollen count is up would be the sort of confident
+      nonsense this whole module exists to avoid.
+    * **Thresholds are conservative and named.** AQI 60 (European AQI: "moderate")
+      and 30 grains/m³ of any species. They come from the published bands, not
+      from fitting this athlete.
+    * **The driver is named.** "Air quality is poor" is unfalsifiable; "grass
+      pollen 46 grains/m³" is a claim the athlete can look at and disagree with.
+    """
+    worst_name: str | None = None
+    worst_value = 0.0
+    for name, value in pollen.items():
+        if value is not None and float(value) > worst_value:
+            worst_name, worst_value = name, float(value)
+
+    drivers: list[str] = []
+    if aqi is not None and aqi >= 60:
+        drivers.append(f"European AQI {aqi:.0f}")
+    if worst_name is not None and worst_value >= 30:
+        drivers.append(f"{worst_name} pollen {worst_value:.0f} grains/m³")
+
+    if drivers:
+        return (
+            STANCE_CUT,
+            "low",
+            "Air is a plausible reason today feels harder than the numbers say: "
+            + ", ".join(drivers)
+            + ". Not a reason to skip — a reason to expect a higher HR at the "
+            "same power.",
+        )
+    if aqi is None and not pollen:
+        return (
+            STANCE_TRAIN,
+            "low",
+            (
+                "No air-quality or pollen data for this location (pollen covers "
+                "Europe only)."
+            ),
+        )
+    return (STANCE_TRAIN, "low", "Air quality and pollen are not a factor today.")
+
+
+async def _environment_row(db: AsyncSession, user_id: uuid.UUID) -> EngineRow:
+    """Air quality and pollen for the athlete's home coordinate.
+
+    Silent (``available=False`` with the reason) when there is no home location
+    or the fetch fails, so the consensus keeps a constant width — the failure
+    mode pitfall 42 describes, where a missing row reads as agreement.
+    """
+    from app.services.weather import get_air_quality, resolve_user_coords
+
+    coords = await resolve_user_coords(db, user_id)
+    if coords is None:
+        return EngineRow(
+            "environment", available=False, reason="no home location set"
+        )
+
+    lat, lng = coords
+    data = await get_air_quality(db, user_id, lat, lng)
+    stance, confidence, note = _environment_stance(
+        data.get("european_aqi"), data.get("pollen") or {}
+    )
+    return EngineRow(
+        "environment",
+        stance=stance,
+        confidence=confidence,
+        available=True,
+        note=note,
+    )
+
+
 def _headline(should_rest: bool, consensus: list[EngineRow], plan_active: bool) -> str:
     """One sentence, driven by whichever engine actually voted.
 
@@ -432,6 +515,17 @@ async def compute_today_verdict(
     except Exception as exc:
         consensus.append(
             EngineRow("session_mix", available=False, reason=f"{type(exc).__name__}: {exc}")
+        )
+
+    # 7. Environment — air quality and pollen. Explained, never acted on:
+    #    confidence is always "low" above, so this row cannot enter
+    #    `strong_rest`. It is here to answer "why does today feel harder than my
+    #    numbers say", which no other engine can.
+    try:
+        consensus.append(await _environment_row(db, user_id))
+    except Exception as exc:
+        consensus.append(
+            EngineRow("environment", available=False, reason=f"{type(exc).__name__}: {exc}")
         )
 
     # The verdict follows the strongest rest signal, not the average: a verdict

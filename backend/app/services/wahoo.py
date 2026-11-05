@@ -17,6 +17,7 @@ from app.services.polyline_utils import (
     polyline_total_distance,
     wahoo_points_to_polyline,
 )
+from app.services.power_provenance import POWER_MEASURED
 from app.services.route_service import create_or_merge_route
 from app.services.sport_filter import is_allowed_sport
 
@@ -138,6 +139,78 @@ async def refresh_if_needed(
     from app.services.connection_health import refresh_connection
 
     return await refresh_connection(db, connection, wahoo_client)
+
+
+# ── Profile sync ─────────────────────────────────────────────────────────────
+
+# A weigh-in that moves by less than this is not worth a write. Scale readings
+# drift by tenths between mornings, and Wahoo's field is a profile, not a log —
+# rewriting it twice a day would be churn, not accuracy.
+WAHOO_WEIGHT_TOLERANCE_KG = 0.2
+
+
+async def push_weight_to_wahoo(db: AsyncSession, user_id: uuid.UUID) -> dict:
+    """Mirror the latest weigh-in onto the Wahoo profile.
+
+    Wahoo estimates calories and W/kg from the weight stored on its own profile,
+    and nothing in this app has ever written it — so the head unit has been using
+    whatever was typed when the account was created. Same shape as the zone sync:
+    the device holds its own copy of a number we own, and drifts until told
+    otherwise.
+
+    Deliberately narrow:
+
+    * no Wahoo connection → a no-op, not an error;
+    * no weigh-in → nothing to mirror;
+    * a move smaller than :data:`WAHOO_WEIGHT_TOLERANCE_KG` → no write;
+    * every failure is logged and returned, never raised — a failed profile write
+      must not fail the weigh-in sync that triggered it.
+
+    Returns a dict with ``pushed`` and a ``reason`` instead of raising, so the
+    caller can log one line and carry on.
+    """
+    connection = await get_wahoo_connection(db, user_id)
+    if connection is None:
+        return {"pushed": False, "reason": "no_connection"}
+
+    from app.services.lifting import latest_body_weight
+
+    weight_kg = await latest_body_weight(db, user_id)
+    if weight_kg is None:
+        return {"pushed": False, "reason": "no_weight"}
+
+    try:
+        connection = await refresh_if_needed(db, connection)
+        profile = await wahoo_client.get_user(connection.access_token)
+        current = _safe_float(profile.get("weight"))
+    except Exception as exc:  # auth, transport, unexpected payload
+        logger.warning(
+            f"Could not read the Wahoo profile for user {user_id}: {exc}"
+        )
+        return {"pushed": False, "reason": "profile_unavailable"}
+
+    if current is not None and abs(current - weight_kg) < WAHOO_WEIGHT_TOLERANCE_KG:
+        return {
+            "pushed": False,
+            "reason": "unchanged",
+            "weight_kg": weight_kg,
+            "wahoo_weight_kg": current,
+        }
+
+    try:
+        await wahoo_client.update_user(connection.access_token, weight_kg=weight_kg)
+    except Exception as exc:
+        logger.warning(
+            f"Could not write {weight_kg:.1f}kg to the Wahoo profile for user "
+            f"{user_id}: {exc}"
+        )
+        return {"pushed": False, "reason": "write_failed"}
+
+    logger.info(
+        f"Mirrored {weight_kg:.1f}kg to the Wahoo profile for user {user_id} "
+        f"(was {current if current is not None else 'unset'})"
+    )
+    return {"pushed": True, "weight_kg": weight_kg, "wahoo_weight_kg": current}
 
 
 # ── Activity sync ────────────────────────────────────────────────────────────
@@ -309,6 +382,10 @@ async def sync_wahoo_activities(
                 "average_heartrate": average_heartrate,
                 "max_heartrate": max_heartrate,
                 "average_power": average_power,
+                # Wahoo's summary power is recorded by the head unit (or the
+                # paired meter/trainer); Wahoo publishes no estimate, so a
+                # present value is measured. Absent → merge skips the field.
+                "power_provenance": POWER_MEASURED if average_power else None,
                 "normalized_power": normalized_power,
                 "average_speed": average_speed,
                 "calories": calories,

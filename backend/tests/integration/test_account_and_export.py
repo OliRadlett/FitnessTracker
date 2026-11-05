@@ -56,6 +56,10 @@ async def test_json_export_includes_collections(
     assert len(coll["daily_metrics"]) >= 1
     assert len(coll["sleep_logs"]) >= 1
     assert len(coll["weight_logs"]) >= 1
+    # Equipment is exported even when the user has none yet: an exported
+    # activity's `gear_id` must resolve to something, or the file references a
+    # row that is not in it (migration 113).
+    assert isinstance(coll["gear"], list)
     assert len(coll["health_alerts"]) >= 1
     assert len(coll["events"]) >= 1
     assert len(coll["training_plans"]) >= 1

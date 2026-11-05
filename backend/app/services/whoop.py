@@ -272,6 +272,44 @@ async def validate_and_store_token(
 # ── Cycle + Recovery sync ──────────────────────────────────────────────────
 
 
+def _recovery_fields(recovery: dict | None) -> dict:
+    """Project a Whoop recovery payload into ``DailyMetric`` column values.
+
+    One implementation for three callers — the scheduled cycle sync, the
+    on-demand full backfill, and the per-cycle gap filler — because they had
+    drifted: each read its own hand-picked subset, and all three read four of
+    the score's seven fields. That is how ``spo2_percentage`` and
+    ``skin_temp_celsius`` were never collected, despite arriving on every
+    recovery response we already paid for.
+
+    A key is present only when the provider supplied a value, so a caller that
+    merges this dict can never overwrite stored data with a null. Returns ``{}``
+    for an unscored or missing recovery, which is normal for a cycle Whoop has
+    not scored yet.
+
+    ``respiratory_rate`` is vestigial on recovery in v2 — it lives on the sleep
+    score, and the sleep sync is authoritative (migration 105 backfilled from
+    there) — but it is projected when present rather than silently dropped.
+    """
+    if not recovery or recovery.get("score_state") != "SCORED":
+        return {}
+    score = recovery.get("score") or {}
+
+    fields: dict = {}
+    for provider_key, column in (
+        ("recovery_score", "recovery_score"),
+        ("hrv_rmssd_milli", "hrv_ms"),
+        ("resting_heart_rate", "resting_hr"),
+        ("respiratory_rate", "respiratory_rate"),
+        ("spo2_percentage", "spo2_percentage"),
+        ("skin_temp_celsius", "skin_temp_celsius"),
+    ):
+        value = score.get(provider_key)
+        if value is not None:
+            fields[column] = float(value)
+    return fields
+
+
 async def _backfill_missing_recovery(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -336,29 +374,11 @@ async def _backfill_missing_recovery(
                 )
                 continue
 
-            if recovery and recovery.get("score_state") == "SCORED":
-                rec_score = recovery.get("score", {})
-                rec_recovery = rec_score.get("recovery_score")
-                rec_hrv = rec_score.get("hrv_rmssd_milli")
-                rec_rhr = rec_score.get("resting_heart_rate")
-                rec_rr = rec_score.get("respiratory_rate")
-                if rec_recovery is not None:
-                    dm.recovery_score = rec_recovery
-                if rec_hrv is not None:
-                    dm.hrv_ms = rec_hrv
-                if rec_rhr is not None:
-                    dm.resting_hr = float(rec_rhr)
-                if rec_rr is not None:
-                    dm.respiratory_rate = rec_rr
-                dm.raw_data = {
-                    **dm.raw_data,
-                    "_recovery": {
-                        "recovery_score": rec_recovery,
-                        "hrv_rmssd_milli": rec_hrv,
-                        "resting_heart_rate": rec_rhr,
-                        "respiratory_rate": rec_rr,
-                    },
-                }
+            rec = _recovery_fields(recovery)
+            if rec:
+                for column, value in rec.items():
+                    setattr(dm, column, value)
+                dm.raw_data = {**dm.raw_data, "_recovery": dict(rec)}
                 backfilled += 1
         except PermanentAuthError:
             raise
@@ -381,8 +401,8 @@ async def sync_whoop_cycles(
     - Extracts date from cycle.start
     - Maps score.strain → DailyMetric.strain
     - Maps score.kilojoule → DailyMetric.calories (kJ → kcal)
-    - Maps score.average_heart_rate → DailyMetric.resting_hr
-    - Fetches recovery data per cycle (recovery_score, hrv_ms, resting_hr, respiratory_rate)
+    - Joins recovery from one paginated window fetch (see `_recovery_fields`
+      for the fields projected: recovery, HRV, resting HR, SpO2, skin temp)
     - Stores full cycle in raw_data
     - Upserts based on unique constraint (user_id, metric_date, source='whoop')
 
@@ -406,6 +426,38 @@ async def sync_whoop_cycles(
     except Exception as e:
         logger.error(f"Failed to fetch Whoop cycles for user {user_id}: {e}")
         raise ValueError(f"Failed to fetch Whoop data: {e}")
+
+    # Prefetch recovery for the whole window in one paginated walk, keyed by
+    # cycle id. This replaces a per-cycle request loop with a sleep between
+    # calls: the same records, ~25× fewer requests.
+    #
+    # A failure here must not cost the run its strain/calories, so it degrades
+    # to an empty map. The gap is not silent: `_backfill_missing_recovery`
+    # below revisits any DailyMetric whose recovery is still NULL, and it uses
+    # the per-cycle endpoint — which is exactly the fallback we want if the
+    # collection endpoint is unavailable or changes shape.
+    recoveries_by_cycle: dict[str, dict] = {}
+    try:
+        recovery_records = await whoop_client.get_all_recovery(
+            token,
+            start=start,
+            max_records=limit,
+        )
+        for record in recovery_records:
+            record_cycle_id = record.get("cycle_id")
+            if record_cycle_id is not None:
+                # str() on both sides: the cycle id is an int in both payloads,
+                # but a type mismatch would silently empty this map and strip
+                # recovery from every row.
+                recoveries_by_cycle[str(record_cycle_id)] = record
+    except PermanentAuthError:
+        raise
+    except Exception as e:
+        logger.warning(
+            f"Whoop recovery prefetch failed for user {user_id} ({e}); "
+            "continuing with cycle data only — the backfill pass will retry "
+            "the missing recoveries one cycle at a time"
+        )
 
     synced: list[DailyMetric] = []
 
@@ -440,75 +492,26 @@ async def sync_whoop_cycles(
 
         calories = round(kilojoule * 0.239006, 1) if kilojoule else None
 
-        # Fetch recovery data for this cycle with retry
-        recovery_score = None
-        hrv_ms = None
-        # Never fall back to cycle-average HR: a failed recovery fetch must not
-        # overwrite a previously-stored real resting HR with average HR.
-        resting_hr = None
-        resting_hr_from_recovery = False
-        respiratory_rate = None
-
+        # Recovery comes from the window prefetch above, keyed by cycle id. A
+        # miss is normal — Whoop scores recovery hours after the cycle closes —
+        # and `_backfill_missing_recovery` retries it on a later run.
         cycle_id = cycle.get("id")
-        if cycle_id:
-            import asyncio
-
-            for _retry in range(3):
-                try:
-                    await asyncio.sleep(
-                        _RECOVERY_FETCH_DELAY_SECONDS
-                    )  # Rate limit: space recovery fetches
-                    recovery = await whoop_client.get_recovery_for_cycle(
-                        token, cycle_id
-                    )
-                    if recovery and recovery.get("score_state") == "SCORED":
-                        rec_score = recovery.get("score", {})
-                        recovery_score = rec_score.get("recovery_score")
-                        hrv_ms = rec_score.get("hrv_rmssd_milli")
-                        rr = rec_score.get("resting_heart_rate")
-                        if rr is not None:
-                            resting_hr = float(rr)
-                            resting_hr_from_recovery = True
-                        respiratory_rate = rec_score.get("respiratory_rate")
-                    break  # Success or no data — move on
-                except PermanentAuthError:
-                    raise
-                except httpx.HTTPStatusError as e:
-                    if e.response.status_code in (401, 403):
-                        raise PermanentAuthError(
-                            "Whoop token is expired. Please reconnect via OAuth in Settings."
-                        ) from e
-                    if e.response.status_code == 429:
-                        logger.warning(
-                            f"Rate limited fetching recovery for cycle {cycle_id}, retry {_retry + 1}/3"
-                        )
-                        await asyncio.sleep(2.0 * (_retry + 1))  # Backoff: 2s, 4s, 6s
-                        continue
-                    logger.warning(
-                        f"Failed to fetch recovery for cycle {cycle_id}: {e}"
-                    )
-                    break  # Non-rate-limit error — don't retry
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to fetch recovery for cycle {cycle_id}: {e}"
-                    )
-                    break
+        rec = _recovery_fields(
+            recoveries_by_cycle.get(str(cycle_id)) if cycle_id else None
+        )
 
         # Merge recovery data into cycle raw_data for reference
         cycle_with_recovery = {**cycle}
-        if recovery_score is not None:
-            cycle_with_recovery["_recovery"] = {
-                "recovery_score": recovery_score,
-                "hrv_rmssd_milli": hrv_ms,
-                "resting_heart_rate": resting_hr,
-                "respiratory_rate": respiratory_rate,
-            }
+        if rec:
+            cycle_with_recovery["_recovery"] = dict(rec)
 
         # Upsert: insert or update on conflict.
         # IMPORTANT: Only overwrite recovery/hrv fields if we have non-null values,
         # to prevent a cycle sync from clobbering recovery data that was already stored
         # from a previous sync where recovery was available. The same protection
         # applies to strain/calories — a sparse payload must not erase earlier data.
+        # `rec` holds only the fields the provider actually sent, so merging it
+        # cannot null anything out.
         update_fields: dict = {
             "raw_data": cycle_with_recovery,
             "updated_at": datetime.now(UTC),
@@ -517,14 +520,7 @@ async def sync_whoop_cycles(
             update_fields["strain"] = float(strain)
         if calories is not None:
             update_fields["calories"] = calories
-        if recovery_score is not None:
-            update_fields["recovery_score"] = recovery_score
-        if hrv_ms is not None:
-            update_fields["hrv_ms"] = hrv_ms
-        if resting_hr_from_recovery:
-            update_fields["resting_hr"] = resting_hr
-        if respiratory_rate is not None:
-            update_fields["respiratory_rate"] = respiratory_rate
+        update_fields.update(rec)
 
         stmt = (
             pg_insert(DailyMetric)
@@ -532,15 +528,15 @@ async def sync_whoop_cycles(
                 user_id=user_id,
                 metric_date=metric_date,
                 source="whoop",
-                recovery_score=recovery_score,
-                hrv_ms=hrv_ms,
-                resting_hr=resting_hr,
-                respiratory_rate=respiratory_rate,
                 sleep_duration_minutes=None,  # Populated by sleep sync
                 sleep_efficiency=None,  # Populated by sleep sync
                 strain=float(strain) if strain else None,
                 calories=calories,
                 raw_data=cycle_with_recovery,
+                # Supplies whichever of recovery_score / hrv_ms / resting_hr /
+                # respiratory_rate / spo2 / skin temp the provider sent.
+                # Absent keys fall back to the column's NULL default.
+                **rec,
             )
             .on_conflict_do_update(
                 index_elements=["user_id", "metric_date", "source"],
@@ -1187,6 +1183,56 @@ def _minutes_to_time_str(minutes: float) -> str:
     return f"{h:02d}:{m:02d}"
 
 
+def whoop_sleep_need(log: SleepLog) -> dict | None:
+    """Whoop's own decomposition of how much sleep that night required.
+
+    Already in the database: ``sync_whoop_sleep`` stores the whole sleep record in
+    ``SleepLog.raw_data``. Everything here was being kept and never read.
+    No provider call, no migration.
+
+    The decomposition is the point. A flat "8 hours" target cannot explain that a
+    hard session is why tonight needs forty more minutes; Whoop splits the
+    requirement into a personal baseline plus debt, recent strain and recent naps.
+    ``need_hours`` is their sum.
+
+    Returns ``None`` when the payload predates these fields or the night was
+    unscored — callers must fall back to their own target rather than treating a
+    missing requirement as zero.
+    """
+    raw = log.raw_data or {}
+    score = raw.get("score") or {}
+    needed = score.get("sleep_needed") or {}
+
+    def _hours(key: str) -> float | None:
+        value = needed.get(key)
+        return round(float(value) / 3_600_000, 2) if value is not None else None
+
+    baseline = _hours("baseline_milli")
+    debt_component = _hours("need_from_sleep_debt_milli")
+    strain_component = _hours("need_from_recent_strain_milli")
+    nap_component = _hours("need_from_recent_nap_milli")
+
+    parts = [
+        value
+        for value in (baseline, debt_component, strain_component, nap_component)
+        if value is not None
+    ]
+    if not parts:
+        return None
+
+    stage_summary = score.get("stage_summary") or {}
+    return {
+        "baseline_hours": baseline,
+        "debt_component_hours": debt_component,
+        "strain_component_hours": strain_component,
+        "nap_component_hours": nap_component,
+        "need_hours": round(sum(parts), 2),
+        "performance_percent": score.get("sleep_performance_percentage"),
+        "consistency_percent": score.get("sleep_consistency_percentage"),
+        "disturbances": stage_summary.get("disturbance_count"),
+    }
+
+
 def compute_sleep_debt(
     sleep_logs: list[SleepLog],
     needed_hours: float = 8.0,
@@ -1194,35 +1240,76 @@ def compute_sleep_debt(
 ) -> dict:
     """Calculate cumulative sleep debt over a rolling window.
 
-    Returns {"debt_hours": float, "avg_sleep_hours": float, "days_below_target": int}.
+    Each night is scored against its **own** requirement when Whoop supplies one
+    (see :func:`whoop_sleep_need`) and against ``needed_hours`` otherwise. That
+    distinction changes the answer rather than decorating it: a 7h night after a
+    heavy session needs more than 7h, and scoring it against a flat 8h target
+    counts a normal night as debt while missing that the strain caused it.
+
+    Mixed windows are expected and are handled per night, not per window — an
+    older night without the payload still counts against the flat target instead
+    of dropping out of the average.
+
+    Returns ``debt_hours``, ``avg_sleep_hours``, ``days_below_target``, plus
+    ``nights_counted``, ``provider_nights`` and ``sleep_need`` (the most recent
+    decomposition) so a caller can say which model produced the target.
     """
     if not sleep_logs:
-        return {"debt_hours": 0, "avg_sleep_hours": 0, "days_below_target": 0}
+        return {
+            "debt_hours": 0,
+            "avg_sleep_hours": 0,
+            "days_below_target": 0,
+            "nights_counted": 0,
+            "provider_nights": 0,
+            "sleep_need": None,
+        }
 
     total_sleep_hours = 0.0
+    total_need_hours = 0.0
     days_below = 0
     count = 0
+    provider_nights = 0
+    latest_need: dict | None = None
 
     for log in sleep_logs:
         effective = log.effective_total_sleep_seconds
-        if effective:
-            hours = effective / 3600
-            total_sleep_hours += hours
-            count += 1
-            if hours < needed_hours:
-                days_below += 1
+        if not effective:
+            continue
+        hours = effective / 3600
+        need = whoop_sleep_need(log)
+        if need is not None:
+            target = need["need_hours"]
+            provider_nights += 1
+            latest_need = need
+        else:
+            target = needed_hours
+
+        total_sleep_hours += hours
+        total_need_hours += target
+        count += 1
+        if hours < target:
+            days_below += 1
 
     if count == 0:
-        return {"debt_hours": 0, "avg_sleep_hours": 0, "days_below_target": 0}
+        return {
+            "debt_hours": 0,
+            "avg_sleep_hours": 0,
+            "days_below_target": 0,
+            "nights_counted": 0,
+            "provider_nights": 0,
+            "sleep_need": None,
+        }
 
     avg_sleep = total_sleep_hours / count
-    target_total = needed_hours * count
-    debt = target_total - total_sleep_hours
+    debt = total_need_hours - total_sleep_hours
 
     return {
         "debt_hours": round(max(0, debt), 1),
         "avg_sleep_hours": round(avg_sleep, 1),
         "days_below_target": days_below,
+        "nights_counted": count,
+        "provider_nights": provider_nights,
+        "sleep_need": latest_need,
     }
 
 
@@ -1469,12 +1556,7 @@ async def backfill_whoop_data(
         calories = round(kilojoule * 0.239006, 1) if kilojoule else None
 
         # Fetch recovery for this cycle
-        recovery_score = None
-        hrv_ms = None
-        # Never fall back to cycle-average HR (see sync_whoop_cycles).
-        resting_hr = None
-        resting_hr_from_recovery = False
-        respiratory_rate = None
+        rec: dict = {}
 
         cycle_id = cycle.get("id")
         if cycle_id:
@@ -1507,28 +1589,15 @@ async def backfill_whoop_data(
                     logger.warning(
                         f"Backfill recovery exhausted retries for cycle {cycle_id}"
                     )
-                if recovery and recovery.get("score_state") == "SCORED":
-                    rec_score = recovery.get("score", {})
-                    recovery_score = rec_score.get("recovery_score")
-                    hrv_ms = rec_score.get("hrv_rmssd_milli")
-                    rr = rec_score.get("resting_heart_rate")
-                    if rr is not None:
-                        resting_hr = float(rr)
-                        resting_hr_from_recovery = True
-                    respiratory_rate = rec_score.get("respiratory_rate")
+                rec = _recovery_fields(recovery)
             except PermanentAuthError:
                 raise
             except Exception as e:
                 logger.warning(f"Failed to fetch recovery for cycle {cycle_id}: {e}")
 
         cycle_with_recovery = {**cycle}
-        if recovery_score is not None:
-            cycle_with_recovery["_recovery"] = {
-                "recovery_score": recovery_score,
-                "hrv_rmssd_milli": hrv_ms,
-                "resting_heart_rate": resting_hr,
-                "respiratory_rate": respiratory_rate,
-            }
+        if rec:
+            cycle_with_recovery["_recovery"] = dict(rec)
 
         # Build conditional update fields — only overwrite recovery fields
         # if we have non-null values, to prevent clobbering existing data
@@ -1542,14 +1611,7 @@ async def backfill_whoop_data(
             update_fields["strain"] = float(strain)
         if calories is not None:
             update_fields["calories"] = calories
-        if recovery_score is not None:
-            update_fields["recovery_score"] = recovery_score
-        if hrv_ms is not None:
-            update_fields["hrv_ms"] = hrv_ms
-        if resting_hr_from_recovery:
-            update_fields["resting_hr"] = resting_hr
-        if respiratory_rate is not None:
-            update_fields["respiratory_rate"] = respiratory_rate
+        update_fields.update(rec)
 
         stmt = (
             pg_insert(DailyMetric)
@@ -1557,15 +1619,12 @@ async def backfill_whoop_data(
                 user_id=user_id,
                 metric_date=metric_date,
                 source="whoop",
-                recovery_score=recovery_score,
-                hrv_ms=hrv_ms,
-                resting_hr=resting_hr,
-                respiratory_rate=respiratory_rate,
                 sleep_duration_minutes=None,
                 sleep_efficiency=None,
                 strain=float(strain) if strain else None,
                 calories=calories,
                 raw_data=cycle_with_recovery,
+                **rec,
             )
             .on_conflict_do_update(
                 index_elements=["user_id", "metric_date", "source"],
