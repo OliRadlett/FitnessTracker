@@ -632,7 +632,7 @@ export function DayEditor({
         <div className="rounded-lg bg-positive/10 border border-positive/20 px-2 py-1.5">
           {day.actual_activity ? (
             <Link
-              href={`/activities?activity=${day.actual_activity.id}`}
+              href={`/activity/${day.actual_activity.id}`}
               className="text-xs text-positive font-medium truncate"
             >
               {day.actual_activity.name} →

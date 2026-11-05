@@ -50,7 +50,7 @@ function flattenHits(data: SearchResponse | undefined): Hit[] {
         title = item.name;
         subtitle = item.date ?? '';
         id = item.id;
-        href = `/activities?activity=${item.id}`;
+        href = `/activity/${item.id}`;
         hits.push({ kind, id, title, subtitle, href, emoji: KIND_EMOJI[kind] });
       }
     } else if (kind === 'route') {

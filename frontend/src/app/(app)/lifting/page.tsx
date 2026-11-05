@@ -94,7 +94,7 @@ function LinkedActivityCard({ activity, onUnlink }: { activity: LinkedActivity; 
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-orange-400 bg-orange-400/10 px-2 py-0.5 rounded">Strava</span>
           <Link
-            href={`/activities?activity=${activity.id}`}
+            href={`/activity/${activity.id}`}
             className="text-sm font-medium text-foreground truncate max-w-[200px] hover:text-accent transition-colors"
             title="View in Activities"
           >

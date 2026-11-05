@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
@@ -330,7 +330,7 @@ export function DayDetailPanel({
                  <span className={`w-6 h-6 rounded-full ${getSportColor(activity.sport_type)}`} aria-hidden="true" />
                  <div className="flex-1 min-w-0">
                   <Link
-                    href={`/activities?activity=${activity.id}`}
+                    href={`/activity/${activity.id}`}
                     className="hover:text-accent transition-colors"
                     title="View this activity in Activities"
                   >
