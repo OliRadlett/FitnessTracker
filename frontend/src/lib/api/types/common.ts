@@ -5,6 +5,8 @@ export interface User {
   email: string;
   name: string;
   avatar_url?: string;
+  birth_date?: string | null;
+  sex?: string | null;
 }
 
 export interface Connection {

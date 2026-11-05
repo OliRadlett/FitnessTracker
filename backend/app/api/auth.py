@@ -16,6 +16,7 @@ from app.schemas.auth import (
     TokenPayload,
     TokenResponse,
     UserRead,
+    UserUpdate,
 )
 from app.services.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -490,6 +491,20 @@ async def get_me(
     current_user: User = Depends(get_current_user),
 ):
     """Return the currently authenticated user."""
+    return UserRead.model_validate(current_user)
+
+
+@router.patch("/me", response_model=UserRead)
+async def update_me(
+    payload: UserUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Update optional demographics used for age/sex-adjusted VO2max bands."""
+    for field in payload.model_fields_set:
+        setattr(current_user, field, getattr(payload, field))
+    await db.flush()
+    await db.refresh(current_user)
     return UserRead.model_validate(current_user)
 
 
