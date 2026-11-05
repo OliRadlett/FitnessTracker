@@ -1183,6 +1183,56 @@ def _minutes_to_time_str(minutes: float) -> str:
     return f"{h:02d}:{m:02d}"
 
 
+def whoop_sleep_need(log: SleepLog) -> dict | None:
+    """Whoop's own decomposition of how much sleep that night required.
+
+    Already in the database: ``sync_whoop_sleep`` stores the whole sleep record in
+    ``SleepLog.raw_data``. Everything here was being kept and never read.
+    No provider call, no migration.
+
+    The decomposition is the point. A flat "8 hours" target cannot explain that a
+    hard session is why tonight needs forty more minutes; Whoop splits the
+    requirement into a personal baseline plus debt, recent strain and recent naps.
+    ``need_hours`` is their sum.
+
+    Returns ``None`` when the payload predates these fields or the night was
+    unscored — callers must fall back to their own target rather than treating a
+    missing requirement as zero.
+    """
+    raw = log.raw_data or {}
+    score = raw.get("score") or {}
+    needed = score.get("sleep_needed") or {}
+
+    def _hours(key: str) -> float | None:
+        value = needed.get(key)
+        return round(float(value) / 3_600_000, 2) if value is not None else None
+
+    baseline = _hours("baseline_milli")
+    debt_component = _hours("need_from_sleep_debt_milli")
+    strain_component = _hours("need_from_recent_strain_milli")
+    nap_component = _hours("need_from_recent_nap_milli")
+
+    parts = [
+        value
+        for value in (baseline, debt_component, strain_component, nap_component)
+        if value is not None
+    ]
+    if not parts:
+        return None
+
+    stage_summary = score.get("stage_summary") or {}
+    return {
+        "baseline_hours": baseline,
+        "debt_component_hours": debt_component,
+        "strain_component_hours": strain_component,
+        "nap_component_hours": nap_component,
+        "need_hours": round(sum(parts), 2),
+        "performance_percent": score.get("sleep_performance_percentage"),
+        "consistency_percent": score.get("sleep_consistency_percentage"),
+        "disturbances": stage_summary.get("disturbance_count"),
+    }
+
+
 def compute_sleep_debt(
     sleep_logs: list[SleepLog],
     needed_hours: float = 8.0,
@@ -1190,35 +1240,76 @@ def compute_sleep_debt(
 ) -> dict:
     """Calculate cumulative sleep debt over a rolling window.
 
-    Returns {"debt_hours": float, "avg_sleep_hours": float, "days_below_target": int}.
+    Each night is scored against its **own** requirement when Whoop supplies one
+    (see :func:`whoop_sleep_need`) and against ``needed_hours`` otherwise. That
+    distinction changes the answer rather than decorating it: a 7h night after a
+    heavy session needs more than 7h, and scoring it against a flat 8h target
+    counts a normal night as debt while missing that the strain caused it.
+
+    Mixed windows are expected and are handled per night, not per window — an
+    older night without the payload still counts against the flat target instead
+    of dropping out of the average.
+
+    Returns ``debt_hours``, ``avg_sleep_hours``, ``days_below_target``, plus
+    ``nights_counted``, ``provider_nights`` and ``sleep_need`` (the most recent
+    decomposition) so a caller can say which model produced the target.
     """
     if not sleep_logs:
-        return {"debt_hours": 0, "avg_sleep_hours": 0, "days_below_target": 0}
+        return {
+            "debt_hours": 0,
+            "avg_sleep_hours": 0,
+            "days_below_target": 0,
+            "nights_counted": 0,
+            "provider_nights": 0,
+            "sleep_need": None,
+        }
 
     total_sleep_hours = 0.0
+    total_need_hours = 0.0
     days_below = 0
     count = 0
+    provider_nights = 0
+    latest_need: dict | None = None
 
     for log in sleep_logs:
         effective = log.effective_total_sleep_seconds
-        if effective:
-            hours = effective / 3600
-            total_sleep_hours += hours
-            count += 1
-            if hours < needed_hours:
-                days_below += 1
+        if not effective:
+            continue
+        hours = effective / 3600
+        need = whoop_sleep_need(log)
+        if need is not None:
+            target = need["need_hours"]
+            provider_nights += 1
+            latest_need = need
+        else:
+            target = needed_hours
+
+        total_sleep_hours += hours
+        total_need_hours += target
+        count += 1
+        if hours < target:
+            days_below += 1
 
     if count == 0:
-        return {"debt_hours": 0, "avg_sleep_hours": 0, "days_below_target": 0}
+        return {
+            "debt_hours": 0,
+            "avg_sleep_hours": 0,
+            "days_below_target": 0,
+            "nights_counted": 0,
+            "provider_nights": 0,
+            "sleep_need": None,
+        }
 
     avg_sleep = total_sleep_hours / count
-    target_total = needed_hours * count
-    debt = target_total - total_sleep_hours
+    debt = total_need_hours - total_sleep_hours
 
     return {
         "debt_hours": round(max(0, debt), 1),
         "avg_sleep_hours": round(avg_sleep, 1),
         "days_below_target": days_below,
+        "nights_counted": count,
+        "provider_nights": provider_nights,
+        "sleep_need": latest_need,
     }
 
 

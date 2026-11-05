@@ -350,7 +350,7 @@ one small feature attached, not a Medium-value item.
 | 1 | **Power provenance** — record `device_watts` as `activities.power_provenance`, expose it on the read contract. ~~Exclude it from CP/W′/PR fits~~ — **wrong, see §4 note** | XS | High — every power number becomes either measured or honestly labelled | already in `raw_data` | none |
 | 2 | **Whoop bulk recovery + SpO2 + skin temp** — replace the per-cycle N+1 with `/v2/recovery`; store both new signals; feed the illness composite | S | High — fewer calls *and* the two best early-illness signals we don't have | 2 columns on `DailyMetric` | migration |
 | 3 | **Gear & wear** — `gear_id` → gear table, `GET /gear/{id}` distance, wear thresholds, chain/shoe alerts | S | High — the only maintenance loop a cyclist actually wants | `raw_data` + 1 call per gear item | migration |
-| 4 | **Whoop sleep-need decomposition** — store `sleep_needed.*`, `sleep_performance`, `sleep_consistency`, `disturbances` | S | Medium-High — replaces a hand-rolled debt model with the provider's, and explains it | `SleepLog`/`DailyMetric` columns | migration |
+| 4 | **Whoop sleep-need decomposition** — shipped. ~~Store `sleep_needed.*`~~ **no storage needed**: the sync has always kept the whole sleep record in `SleepLog.raw_data`; the debt model now reads it | XS | Medium — replaces a flat 8-hour target with the athlete's per-night requirement, and explains it | already stored | none |
 | 5 | **Strava streams: `latlng` only** — shipped. ~~`temp`, `grade_smooth`~~ dropped: no consumer exists, so asking for them would add stored-never-read streams | XS | Medium — zero extra calls; replay uses recorded GPS instead of resampling the route shape | none (new rides only — no stream-backfill task exists) | none |
 | 6 | **Wahoo weight write-back** — push the scale's weight to Wahoo (and optionally Strava `PUT /athlete`). ~~FTP/zone push~~ **already shipped** as migration `103` (`/cycling/wahoo-zones`) | S | Medium — the head unit stops estimating calories and W/kg from a weight typed months ago | scopes already granted (`user_write`, `profile:write`) | none |
 | 7 | **Whoop + Wahoo webhooks** — mirror the Strava queue pattern; handle `.deleted` | M | Medium — 30 min → seconds, and deletions stop lingering | endpoint + queue table | #2 helps |
@@ -462,6 +462,24 @@ lands, deleting that assertion is the deliberate act of adding the key.
 Scope note: there is no stream-backfill task, so existing rides keep interpolated geometry.
 That is the right default — backfilling would cost one read-bucket call per ride against a
 1,000/day limit for a cosmetic gain.
+
+### What #4 turned out to be: a reader, not a migration
+
+The draft said "store `sleep_needed.*` on a column". It was already stored:
+`sync_whoop_sleep` writes the entire sleep record to `SleepLog.raw_data`, and
+`compute_sleep_debt` scored every night against a flat `target_hours` anyway. So the work
+was a reader and a decision, not a migration — and adding seven columns would have
+duplicated data the row already had.
+
+`whoop_sleep_need()` extracts baseline + debt + strain + nap (Whoop's own split) and
+`compute_sleep_debt` now scores each night against **its own** requirement, falling back per
+night — not per window — to the flat target. That fallback shape is the whole design: an old
+night without the payload still counts, and a new one is measured properly.
+
+It changes the answer in both directions, which is why it is worth doing: a 7 h night after a
+heavy session is not debt, and a 7 h night whose own requirement was 7 h is not an hour
+short. The endpoint reports `need_source` (`whoop` / `mixed` / `target`) plus the latest
+decomposition, so the number can explain itself instead of asserting an 8-hour default.
 
 ### What #3 needs beyond the field
 
