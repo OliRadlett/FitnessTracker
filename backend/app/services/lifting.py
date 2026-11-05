@@ -116,7 +116,8 @@ def calculate_session_volume(sets: list[dict]) -> float:
 # and a 3×3 at 40 kg identically — it never looked at the work actually done,
 # which is the entire point of a training-load metric.
 #
-# Foster's method: session load = tonnage × session RPE. Raw tonnage is not
+# Bodyweight-normalised volume-load adaptation (NOT Foster's session-RPE: his
+# load is RPE × duration). Raw tonnage is not
 # comparable between a 60 kg lifter and a 120 kg one, so it is divided by
 # bodyweight first, giving a *volume load* in kg lifted per kg bodyweight. That
 # makes the metric scale-free, and it is what separates "an hour of heavy
