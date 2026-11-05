@@ -48,10 +48,19 @@ Add **both** fingerprints to the same Android client if you ship both.
 
 ## Configuration
 
-**App** — `android/local.properties` (gitignored):
+**App** — the Web client id is committed as the default in
+`android/app/build.gradle.kts`, because a client id is public (it appears in the
+browser's authorize URL), never a secret:
 
 ```
-googleWebClientId=<the WEB client id>.apps.googleusercontent.com
+1001764393180-brsceeq11chgls2svvojdg2kl4hlibj8.apps.googleusercontent.com
+```
+
+Override it in `android/local.properties` (gitignored) only if you point the app
+at a different project:
+
+```
+googleWebClientId=<other>.apps.googleusercontent.com
 # apiBaseUrl=https://oliradlett.co.uk/api/v1
 ```
 
@@ -61,13 +70,36 @@ googleWebClientId=<the WEB client id>.apps.googleusercontent.com
 **Backend** — `.env`:
 
 ```
-GOOGLE_CLIENT_ID=<the WEB client id>          # already set for NextAuth
+GOOGLE_CLIENT_ID=1001764393180-brsceeq11chgls2svvojdg2kl4hlibj8.apps.googleusercontent.com
 # GOOGLE_MOBILE_CLIENT_ID=...                 # only if the app should use a different audience
 ```
 
 `GOOGLE_MOBILE_CLIENT_ID` is optional and falls back to `GOOGLE_CLIENT_ID`.
 Until one of them is set the endpoint returns **503**, which is deliberate: an
 unconfigured server must not accept any identity.
+
+## Why the Android client still needs the Console
+
+The web client id above can be read from the live sign-in redirect. The Android
+client cannot be created from a shell:
+
+- `gcloud` has no OAuth-client command group; `alpha iap oauth-clients` creates
+  **IAP** clients (web type), not Android app registrations.
+- The API the Console itself uses, `clientauthconfig.googleapis.com`, returns
+  **404** to a normal access token — it is not public.
+- `iap.googleapis.com/v1/projects/…/brands` returns **403** on this project.
+- `docs/GCP-AUDIT.md` §"Cannot be checked by any CLI" reached the same
+  conclusion for the list endpoint.
+
+Registering package + SHA-1 is therefore the one irreducibly manual step.
+
+## Deploying the backend
+
+The endpoint ships with the branch; `prod` deploys from `prod`. Until it is
+released, the app gets **404** from `/auth/mobile/google` (verified: prod returns
+404 while `/auth/me` returns 401, so the router is there and the route is not).
+For local testing point `apiBaseUrl` at your machine — `http://10.0.2.2:8000/api/v1`
+from an emulator, or the LAN IP from a phone.
 
 ## Testing
 

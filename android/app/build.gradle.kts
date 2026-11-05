@@ -19,7 +19,11 @@ val localProps: Map<String, String> = rootProject.file("local.properties").let {
 }
 val googleWebClientId: String =
     (findProperty("googleWebClientId") as String?)?.takeIf { it.isNotBlank() }
-        ?: localProps["googleWebClientId"].orEmpty()
+        ?: localProps["googleWebClientId"]?.takeIf { it.isNotBlank() }
+        // FitTrack's Web application client in fitness-tracker-505713. A client
+        // id is public (it appears in the browser's authorize URL), never a
+        // secret — committing it keeps `assembleDebug` working on any machine.
+        ?: "1001764393180-brsceeq11chgls2svvojdg2kl4hlibj8.apps.googleusercontent.com"
 val apiBaseUrl: String =
     (findProperty("apiBaseUrl") as String?)?.takeIf { it.isNotBlank() }
         ?: localProps["apiBaseUrl"]?.takeIf { it.isNotBlank() }
