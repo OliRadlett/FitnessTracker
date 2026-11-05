@@ -36,7 +36,7 @@ from app.models.route_organize import (
     RouteTagging,
 )
 from app.models.rpe_calibration import RpeCalibration
-from app.models.segment import Segment, SegmentEffort
+from app.models.segment import Segment, SegmentEffort, SegmentGroup
 from app.models.sleep import SleepLog
 from app.models.training_plan import TrainingPlan, TrainingPlanBlock, TrainingPlanDay
 from app.models.undo import UndoLog
@@ -86,6 +86,7 @@ __all__ = [
     "RpeCalibration",
     "Segment",
     "SegmentEffort",
+    "SegmentGroup",
     "SleepLog",
     "StravaWebhookEvent",
     "TrainingPlan",

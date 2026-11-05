@@ -13,8 +13,15 @@ from app.schemas.segment import (
     ClimbDetail,
     SegmentDetail,
     SegmentEffortRead,
+    SegmentGroupBest,
+    SegmentGroupDetail,
+    SegmentGroupList,
+    SegmentGroupPrediction,
+    SegmentGroupRead,
+    SegmentGroupUpdate,
     SegmentRead,
 )
+from app.services import segment_groups as group_service
 from app.services import segments as segment_service
 from app.services.auth import get_current_user
 
@@ -66,11 +73,119 @@ def _effort_read(effort) -> SegmentEffortRead:
         activity_name=effort.activity.name if effort.activity else None,
         started_at=effort.started_at,
         elapsed_seconds=effort.elapsed_seconds,
+        moving_seconds=effort.moving_seconds,
         avg_power_watts=effort.avg_power_watts,
         avg_hr=effort.avg_hr,
         avg_speed_mps=effort.avg_speed_mps,
         effort_vam=effort.effort_vam,
+        assisted=effort.assisted,
         is_pr=effort.is_pr,
+        line_id=effort.segment_id,
+    )
+
+
+def _ranked_group_attempts(group):
+    """One attempt per ride, best climb rate per line, assisted excluded.
+
+    Ranking requires ``assisted is False``: ``True`` (assisted) and ``None``
+    (unclassified) are visible in the detail but cannot become a PR.
+    """
+    rows = []
+    for seg in group.segments:
+        for e in seg.efforts or []:
+            if e.assisted is not False or not e.elapsed_seconds:
+                continue
+            rate = (
+                e.effort_vam
+                if e.effort_vam is not None
+                else (seg.distance_m / e.elapsed_seconds) * 3600
+            )
+            rows.append((e, seg, rate))
+    by_activity = {}
+    for row in rows:
+        prev = by_activity.get(row[0].activity_id)
+        if prev is None or row[2] > prev[2]:
+            by_activity[row[0].activity_id] = row
+    return list(by_activity.values())
+
+
+def _group_read(group) -> SegmentGroupRead:
+    attempts = _ranked_group_attempts(group)
+    best = None
+    if attempts:
+        distances = [seg.distance_m for _, seg, _ in attempts]
+        comparable = (
+            max(distances) - min(distances) <= max(distances) * 0.02
+            if distances
+            else True
+        )
+        # The lab's D7 rule: a faster ride is faster when the lines are the same
+        # length; otherwise climb rate is the only fair comparison.
+        if comparable:
+            chosen = min(
+                attempts,
+                key=lambda r: r[0].moving_seconds
+                if r[0].moving_seconds is not None
+                else r[0].elapsed_seconds,
+            )
+        else:
+            chosen = max(attempts, key=lambda r: r[2])
+        effort, _seg, _rate = chosen
+        best = SegmentGroupBest(
+            seconds=(
+                effort.moving_seconds
+                if effort.moving_seconds is not None
+                else effort.elapsed_seconds
+            ),
+            moving_seconds=effort.moving_seconds,
+            power_watts=effort.avg_power_watts,
+            vam=effort.effort_vam,
+            date=effort.started_at,
+        )
+
+    canonical = (
+        max(group.segments, key=lambda s: (len(s.efforts or []), s.distance_m))
+        if group.segments
+        else None
+    )
+    prediction = None
+    if not attempts and canonical is not None and canonical.predicted_time_seconds:
+        if (canonical.prediction_confidence or 0.0) >= 0.4:
+            prediction = SegmentGroupPrediction(
+                seconds=canonical.predicted_time_seconds,
+                vam=canonical.predicted_vam,
+                power_watts=canonical.predicted_power_watts,
+                confidence=canonical.prediction_confidence,
+            )
+
+    last_ridden = max(
+        (e.started_at for e, _, _ in attempts if e.started_at is not None),
+        default=None,
+    )
+    return SegmentGroupRead(
+        id=group.id,
+        kind=group.kind,
+        name=group.display_name or group.canonical_name,
+        canonical_name=group.canonical_name,
+        display_name=group.display_name,
+        name_source=group.name_source,
+        area=group.area,
+        region=group.region,
+        country=group.country,
+        distance_m=group.distance_m,
+        gain_m=group.gain_m,
+        avg_gradient_pct=group.avg_gradient_pct,
+        max_gradient_pct=group.max_gradient_pct,
+        steepest_200m_pct=group.steepest_200m_pct,
+        sustained_share=group.sustained_share,
+        profile=[list(p) for p in (group.profile or [])],
+        category=group.category,
+        difficulty=group.difficulty,
+        attempts=len(attempts),
+        best=best,
+        last_ridden=last_ridden,
+        route_count=len({s.route_id for s in group.segments}),
+        prediction=prediction,
     )
 
 
@@ -104,6 +219,126 @@ async def list_segments(
 # paths, so order decides which wins (pitfall 13): `/{segment_id}` would
 # otherwise swallow `/status` as a segment id and 404. `/climbs/{geo_cluster_id}`
 # is two segments and cannot collide, but status stays above both for readability.
+# NOTE: `/groups` is a single-segment static path and MUST stay above
+# `/{segment_id}` (pitfall 13). `/groups/{group_id}` is two segments and cannot
+# collide with the one-segment dynamic route.
+@router.get("/groups", response_model=SegmentGroupList)
+async def list_segment_groups(
+    kind: str = "climb",
+    tab: str = "all",
+    q: str | None = None,
+    area: str | None = None,
+    region: str | None = None,
+    sort: str = "attempts",
+    limit: int = 100,
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Every physical/defined segment for the user, merged across route lines.
+
+    ``tab`` / ``sort`` are deliberately forgiving: an unknown value falls back
+    to the default rather than 422ing the whole page.
+    """
+    groups = await group_service.list_groups(db, current_user.id, kind=kind)
+    reads = [_group_read(g) for g in groups]
+
+    counts = {
+        "ridden": sum(1 for r in reads if r.attempts > 0),
+        "to_ride": sum(1 for r in reads if r.attempts == 0),
+        "all": len(reads),
+    }
+
+    if tab not in ("ridden", "to_ride", "all"):
+        tab = "all"
+    if tab == "ridden":
+        reads = [r for r in reads if r.attempts > 0]
+    elif tab == "to_ride":
+        reads = [r for r in reads if r.attempts == 0]
+
+    if q:
+        needle = q.strip().lower()
+        reads = [
+            r
+            for r in reads
+            if needle
+            in " ".join(
+                filter(None, [r.name, r.canonical_name, r.area, r.region, r.country])
+            ).lower()
+        ]
+    if area:
+        reads = [r for r in reads if (r.area or "").lower() == area.lower()]
+    if region:
+        reads = [r for r in reads if (r.region or "").lower() == region.lower()]
+
+    if sort == "recent":
+        reads.sort(key=lambda r: r.last_ridden.timestamp() if r.last_ridden else 0, reverse=True)
+    elif sort == "hardest":
+        reads.sort(key=lambda r: r.difficulty or 0, reverse=True)
+    elif sort == "longest":
+        reads.sort(key=lambda r: r.distance_m, reverse=True)
+    elif sort == "steepest":
+        reads.sort(key=lambda r: r.avg_gradient_pct, reverse=True)
+    elif sort == "name":
+        reads.sort(key=lambda r: r.name.lower())
+    else:  # attempts
+        reads.sort(key=lambda r: (r.attempts, r.difficulty or 0), reverse=True)
+
+    total = len(reads)
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
+    return SegmentGroupList(items=reads[offset : offset + limit], total=total, counts=counts)
+
+
+@router.get("/groups/{group_id}", response_model=SegmentGroupDetail)
+async def get_segment_group(
+    group_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One merged segment: canonical stats, its lines, and every attempt."""
+    group = await group_service.get_group(db, current_user.id, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Segment group not found")
+
+    size = len(group.segments)
+    efforts = []
+    for seg in group.segments:
+        for effort in seg.efforts or []:
+            read = _effort_read(effort)
+            read.line_km = [
+                round(seg.start_dist_m / 1000, 1),
+                round(seg.end_dist_m / 1000, 1),
+            ]
+            efforts.append(read)
+    efforts.sort(
+        key=lambda e: e.started_at.timestamp() if e.started_at else 0, reverse=True
+    )
+
+    return SegmentGroupDetail(
+        group=_group_read(group),
+        segments=[_segment_read(s, geo_cluster_size=size) for s in group.segments],
+        efforts=efforts,
+        route_names=sorted({s.route.name for s in group.segments if s.route}),
+    )
+
+
+@router.patch("/groups/{group_id}", response_model=SegmentGroupRead)
+async def rename_segment_group(
+    group_id: uuid.UUID,
+    payload: SegmentGroupUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Set or clear the user-owned name. Empty/null restores the generated one."""
+    group = await group_service.rename_group(
+        db, current_user.id, group_id, payload.display_name
+    )
+    if group is None:
+        raise HTTPException(status_code=404, detail="Segment group not found")
+    return _group_read(group)
+
+
 @router.get("/status")
 async def get_segments_intelligence_status(
     db: AsyncSession = Depends(get_db),
