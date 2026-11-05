@@ -204,8 +204,13 @@ activity streams. The rest is surface (Komoot-only) and completeness.
   look is a client-side CSS invert of the tile pane, not a dependency.
 - **Road graph:** optional Modal/OSM infrastructure for matching and
   embeddings. It is not needed for the map, and it is currently dark (0/86).
-- **Surface from OSM:** would need the graph to retain `surface` tags and an
-  aggregation step over matched ways — a new feature, not a repair.
+- **Surface from OSM — implemented, pending the graph.** The PBF parser keeps
+  the `surface` tag, the GeoJSON cache carries it, `RoadEdge`/`snap_polyline`
+  report a length-weighted `surface_mix`, and `store_road_matches` writes it as
+  `surface_profile` **only when the route has none** (Komoot wins). Activation
+  is operational: run `scripts/osm_bootstrap.py --build`, set the Modal token
+  and let `map_match_routes` run. Until then `road_match` is 0/86 and surface
+  stays Komoot-only.
 
 ## Recommendations (ordered)
 
@@ -234,9 +239,10 @@ activity streams. The rest is surface (Komoot-only) and completeness.
 5. **Backfill jobs for all users**, not just this account: surface from stored
    payloads, terrain for eligible routes, quality afterwards — one idempotent
    task each, safe to re-run.
-6. **OSM surface (optional):** extend the road graph to keep `surface` (and
-   `highway`) tags, aggregate by matched distance, and only then use it as a
-   fallback for non-Komoot routes.
+6. **OSM surface — implemented.** The parser keeps `surface`, the graph and
+   matcher produce a length-weighted mix, and it is written only where Komoot
+   has no surface. Remaining work is operational: bootstrap the OSM graph and
+   run `map_match_routes` with Modal configured.
 
 ## Evidence
 

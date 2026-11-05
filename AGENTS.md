@@ -213,7 +213,8 @@ a **background job** (`services/route_similarity.py`): `POST
 /routes/duplicates/refresh` queues it, `GET /routes/duplicates/status` reports
 `never/queued/running/ready/failed`, and `GET /routes/duplicates` never scans on
 read. Route intelligence: the Komoot surface parser now reads the real
-`summary.surfaces` list, so **surface 50/86** (Komoot only) and **terrain
+`summary.surfaces` list, so **surface 50/86** (Komoot; OSM map-matching now
+carries `surface` tags and fills the gap when the road graph runs) and **terrain
 86/86** — Strava writes no elevation profile, so `services/route_elevation.py`
 resamples the source activity's altitude stream onto the route; quality is
 **86/86**. `services/route_intelligence_refresh.py` backfills profiles,

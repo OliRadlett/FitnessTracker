@@ -27,6 +27,7 @@ from app.services.polyline_utils import (
     polyline_total_distance,
 )
 from app.services.route_service import create_or_merge_route
+from app.services.surface_types import clean_surface_type
 
 logger = logging.getLogger(__name__)
 
@@ -89,31 +90,6 @@ def _build_polyline_from_trackpoints(trackpoints: list[dict]) -> str | None:
     return encode_polyline(points)
 
 
-_SURFACE_ALIASES = {
-    "asphalt": "paved",
-    "paved": "paved",
-    "sealed": "paved",
-    "concrete": "paved",
-    "concrete_plates": "paved",
-    "compacted": "compacted_gravel",
-    "compacted_gravel": "compacted_gravel",
-    "fine_gravel": "gravel",
-    "gravel": "gravel",
-    "dirt": "dirt",
-    "earth": "dirt",
-    "ground": "dirt",
-    "grass": "grass",
-    "grass_paver": "grass",
-    "singletrack": "singletrack",
-    "trail": "trail",
-    "path": "trail",
-    "cobblestone": "cobblestone",
-    "cobbles": "cobblestone",
-    "sett": "cobblestone",
-    "sand": "sand",
-}
-
-
 def _surface_amount(item: dict) -> float | None:
     """Komoot uses ``amount``; the API fallback has used percentage/share."""
     for key in ("amount", "percentage", "share", "value", "fraction"):
@@ -121,21 +97,6 @@ def _surface_amount(item: dict) -> float | None:
         if isinstance(value, (int, float)):
             return float(value)
     return None
-
-
-def _clean_surface_type(raw: str) -> str | None:
-    """``sb#asphalt`` -> ``paved``; ``sf#unknown``/``wt#*`` -> None."""
-    text = str(raw)
-    if "#" in text:
-        prefix, name = text.split("#", 1)
-        # wt# is Komoot's way-type axis (cycleway, path, …), not a surface.
-        if prefix.strip().lower() == "wt":
-            return None
-        text = name
-    name = text.strip().lower()
-    if not name or name == "unknown":
-        return None
-    return _SURFACE_ALIASES.get(name, name)
 
 
 def _extract_surface_profile(surface_data: dict | list | None) -> dict[str, float] | None:
@@ -170,13 +131,13 @@ def _extract_surface_profile(surface_data: dict | list | None) -> dict[str, floa
         for item in raw:
             if not isinstance(item, dict):
                 continue
-            name = _clean_surface_type(item.get("type") or item.get("name") or "")
+            name = clean_surface_type(item.get("type") or item.get("name") or "")
             amount = _surface_amount(item)
             if name and amount is not None and amount > 0:
                 pairs.append((name, amount))
     elif isinstance(raw, dict):
         for key, value in raw.items():
-            name = _clean_surface_type(key)
+            name = clean_surface_type(key)
             if name and isinstance(value, (int, float)) and value > 0:
                 pairs.append((name, float(value)))
 
