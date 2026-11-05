@@ -174,7 +174,14 @@ export default function CalendarPage() {
   const hasAnyData =
     !!data &&
     (data.plan !== null ||
-      data.days.some((day) => day.plan.length || day.activities.length || day.lifts.length) ||
+      data.days.some(
+        (day) =>
+          day.plan.length ||
+          day.activities.length ||
+          day.lifts.length ||
+          day.metric ||
+          day.sleep,
+      ) ||
       data.events.length > 0 ||
       data.goals.length > 0);
 

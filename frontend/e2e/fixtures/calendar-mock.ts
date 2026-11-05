@@ -242,6 +242,14 @@ export const mockCalendarResponse = {
       metric: null,
       sleep: null,
     },
+    {
+      date: '2026-09-27',
+      plan: [],
+      activities: [],
+      lifts: [],
+      metric: null,
+      sleep: null,
+    },
   ],
   weeks: [
     {
