@@ -48,6 +48,9 @@ class Settings(BaseSettings):
     # Google OAuth
     google_client_id: str = ""
     google_client_secret: str = ""
+    # Audience accepted from native clients (the Android app's server client id).
+    # Defaults to google_client_id when unset.
+    google_mobile_client_id: str = ""
 
     # GitHub OAuth
     github_client_id: str = ""
