@@ -313,3 +313,63 @@ class TestRouteIntelligenceRefresh:
         assert second.status_code == 200, second.text
         assert second.json()["terrain_classified"] == 0
 
+    async def test_refresh_backfills_a_profile_from_the_activity_stream(
+        self, client, db_session, test_user, test_activity
+    ):
+        """Strava routes carry no profile; the source activity's stream has one."""
+        from sqlalchemy import select
+
+        from app.models.activity import ActivityStream
+        from app.models.route import Route, RouteSource
+        from app.services.route_service import create_route
+
+        route = await create_route(
+            db_session,
+            test_user.id,
+            "Stream Route",
+            "cycling",
+            3_000.0,
+            "o}~mH~}xMz@z@z@z@z@z@",
+        )
+        db_session.add(
+            RouteSource(
+                route_id=route.id,
+                user_id=test_user.id,
+                provider="strava",
+                provider_route_id="activity-stream-test",
+                provider_name="Stream Route",
+                encoded_polyline="o}~mH~}xMz@z@z@z@z@z@",
+                raw_data={
+                    "source": "activity_polyline",
+                    "activity_id": str(test_activity.id),
+                },
+            )
+        )
+        db_session.add(
+            ActivityStream(
+                activity_id=test_activity.id,
+                stream_type="altitude",
+                data={"data": [100, 110, 120, 130, 140, 150]},
+            )
+        )
+        db_session.add(
+            ActivityStream(
+                activity_id=test_activity.id,
+                stream_type="distance",
+                data={"data": [0, 500, 1000, 1500, 2000, 3000]},
+            )
+        )
+        await db_session.flush()
+
+        resp = await client.post("/api/v1/routes/intelligence/refresh")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["elevation_backfilled"] >= 1
+
+        refreshed = (
+            await db_session.execute(select(Route).where(Route.id == route.id))
+        ).scalar_one()
+        assert refreshed.elevation_profile
+        assert refreshed.elevation_profile.get("elevation")
+        assert refreshed.terrain_classification
+        assert refreshed.terrain_classification["terrain_type"] != "unknown"
+

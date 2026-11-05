@@ -213,13 +213,14 @@ a **background job** (`services/route_similarity.py`): `POST
 /routes/duplicates/refresh` queues it, `GET /routes/duplicates/status` reports
 `never/queued/running/ready/failed`, and `GET /routes/duplicates` never scans on
 read. Route intelligence: the Komoot surface parser now reads the real
-`summary.surfaces` list, so **surface 50/86** and **terrain 50/86** (Komoot
-routes; Strava writes no elevation profile) and **quality 86/86** on the real
-account. `services/route_intelligence_refresh.py` classifies missing terrain
-and rescores quality after sync/import (and `POST /routes/intelligence/refresh`);
-the composite is effort 40 / terrain 35 / completeness 25 with popularity and
-surface as zero-weight context. The detail shows terrain and surface; the page
-renders no quality controls. Audit:
+`summary.surfaces` list, so **surface 50/86** (Komoot only) and **terrain
+86/86** — Strava writes no elevation profile, so `services/route_elevation.py`
+resamples the source activity's altitude stream onto the route; quality is
+**86/86**. `services/route_intelligence_refresh.py` backfills profiles,
+classifies missing terrain and rescores quality after sync/import (and `POST
+/routes/intelligence/refresh`); the composite is effort 40 / terrain 35 /
+completeness 25 with popularity and surface as zero-weight context. The detail
+shows terrain and surface; the page renders no quality controls. Audit:
 [`docs/route-intelligence-audit-2026-11-05.md`](docs/route-intelligence-audit-2026-11-05.md).
 Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
 

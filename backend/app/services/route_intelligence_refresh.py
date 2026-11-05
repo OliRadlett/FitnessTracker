@@ -35,7 +35,10 @@ async def refresh_route_intelligence(db: AsyncSession, user_id: uuid.UUID) -> di
     """Classify missing terrain and rescore quality. Best-effort per route."""
     from app.integrations.route_intelligence import classify_route_terrain
     from app.services.polyline_utils import decode_polyline
+    from app.services.route_elevation import backfill_route_elevations
     from app.services.route_quality_service import compute_and_store_quality
+
+    elevation_backfilled = await backfill_route_elevations(db, user_id)
 
     routes = (
         await db.execute(
@@ -78,6 +81,7 @@ async def refresh_route_intelligence(db: AsyncSession, user_id: uuid.UUID) -> di
     await db.flush()
     return {
         "routes": len(routes),
+        "elevation_backfilled": elevation_backfilled,
         "terrain_classified": terrain_classified,
         "quality_scored": quality_scored,
     }

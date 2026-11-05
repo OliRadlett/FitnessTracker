@@ -132,17 +132,28 @@ they are kept as-is rather than mislabelled. `cobbles` is mapped to
 `cobblestone`. The backfill re-extracts **every** Komoot route (not only null
 ones), so a vocabulary change normalises existing rows too.
 
-### Terrain — 50/50 eligible
+### Elevation profiles — 86/86
+
+The 36 Strava-only routes carried no profile, so terrain could never reach
+them. They were created from an activity (`raw_data.activity_id`) and the
+activity's **altitude stream** is already stored, so
+`services/route_elevation.py` resamples it onto the route (distance stream when
+present, uniform otherwise) and writes the canonical
+`{distance, elevation}` profile. All 36 got a profile; **86/86 routes now have
+elevation**.
+
+### Terrain — 86/86
 
 | terrain_type | routes |
 |---|---|
-| rolling | 21 |
-| mountainous | 16 |
-| flat | 11 |
+| flat | 39 |
+| rolling | 28 |
+| mountainous | 17 |
 | hilly | 2 |
 
-Average terrain component: **80.2**. No `unknown` results were persisted (by
-design, so they retry).
+Average terrain component: **72.4**. No `unknown` results were persisted (by
+design, so they retry). The 39 "flat" routes include activity-derived town
+rides with little climbing — a real classification, not missing data.
 
 ### Quality — 86/86
 
@@ -169,22 +180,22 @@ designed, and the design measuring the wrong thing.
 
 Weights are now **effort match 40%, terrain 35%, completeness 25%**.
 Popularity and surface are still stored as context, with **zero weight**: usage
-is not quality, and paving is a preference. Same data, rescored:
+is not quality, and paving is a preference. Progression with the same data:
 
-| Metric | Before | After |
-|---|---|---|
-| mean / median | 60.1 / 64.95 | **68.5 / 67.45** |
-| range | 42.1 – 81.3 | **51.0 – 91.7** |
-| top route | unnamed “Cycling” import | **Leschaux Circuit** (real named route) |
-
-| Group | n | before | after |
+| Metric | Before | Redesigned | + full terrain |
 |---|---|---|---|
-| Komoot-sourced | 50 | 70.6 | **77.3** |
-| Strava-only | 36 | 45.4 | **56.2** |
+| mean / median | 60.1 / 64.95 | 68.5 / 67.45 | **71.4 / 71.2** |
+| range | 42.1 – 81.3 | 51.0 – 91.7 | **57.4 – 91.7** |
+| top route | unnamed “Cycling” import | Leschaux Circuit | Leschaux Circuit |
 
-The source gap narrowed (25.2 → 21.1 points) but did not close, because the 36
-Strava routes still have no terrain component and lower completeness. Coverage,
-not weighting, is the remaining cause — see the recommendations.
+| Group | n | before | redesigned | + full terrain |
+|---|---|---|---|---|
+| Komoot-sourced | 50 | 70.6 | 77.3 | **77.3** |
+| Strava-only | 36 | 45.4 | 56.2 | **63.1** |
+| source gap | — | 25.2 | 21.1 | **14.2** |
+
+The gap closed by 11 points once the 36 Strava routes got terrain from their
+activity streams. The rest is surface (Komoot-only) and completeness.
 
 ## OSM clarification
 
@@ -214,8 +225,12 @@ not weighting, is the remaining cause — see the recommendations.
      mix, loop/point) — then it can mean "how well does this match what I want".
    - the atlas already shows the raw facts; showing a composite score that
      rewards metadata is worse than showing none.
-4. **Fill Strava elevation profiles** (route detail or DEM sampling) so terrain
-   can cover more than the Komoot half.
+4. **Strava elevation profiles — implemented.** `services/route_elevation.py`
+   resamples the source activity's altitude stream (distance stream when
+   present) onto the route; the refresh calls it before terrain. All 36
+   Strava-only routes now have profiles, so terrain is 86/86. Saved Strava
+   routes without a linked activity still need the route-detail API or DEM
+   sampling.
 5. **Backfill jobs for all users**, not just this account: surface from stored
    payloads, terrain for eligible routes, quality afterwards — one idempotent
    task each, safe to re-run.
