@@ -33,6 +33,15 @@ class DailyMetric(Base):
     hrv_ms: Mapped[float | None] = mapped_column(Float, nullable=True)
     resting_hr: Mapped[float | None] = mapped_column(Float, nullable=True)
     respiratory_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Blood oxygen (%) and absolute skin temperature (°C) during sleep, both from
+    # Whoop's *recovery* score. Neither is on any other endpoint we call, and
+    # both were being dropped because the sync read recovery one cycle at a time
+    # and only kept four of its fields. Skin temperature is only useful as a
+    # deviation from the user's own baseline (see health_analysis), so the
+    # absolute value is stored and the baseline computed on read — storing a
+    # delta would bake in whatever baseline existed when the row was written.
+    spo2_percentage: Mapped[float | None] = mapped_column(Float, nullable=True)
+    skin_temp_celsius: Mapped[float | None] = mapped_column(Float, nullable=True)
     sleep_duration_minutes: Mapped[float | None] = mapped_column(Float, nullable=True)
     sleep_efficiency: Mapped[float | None] = mapped_column(Float, nullable=True)
     strain: Mapped[float | None] = mapped_column(Float, nullable=True)

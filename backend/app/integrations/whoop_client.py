@@ -277,6 +277,35 @@ class WhoopClient:
 
         return await retry_request(_fetch)
 
+    async def get_all_recovery(
+        self,
+        access_token: str,
+        start: str | None = None,
+        end: str | None = None,
+        max_records: int = 500,
+    ) -> list[dict]:
+        """Fetch recovery records for a window, with automatic pagination.
+
+        The collection endpoint returns every recovery in one paginated walk,
+        each carrying ``cycle_id`` (the join key to cycles joined against),
+        ``score_state`` and ``score.{recovery_score, hrv_rmssd_milli,
+        resting_heart_rate, spo2_percentage, skin_temp_celsius,
+        user_calibrating}``.
+
+        Fetching one cycle at a time cost N requests plus a deliberate sleep
+        between each, for exactly the same data. It also hid two fields: only
+        four of the payload's fields were read, which is why blood oxygen and
+        sleeping skin temperature were never collected.
+        """
+        return await self._paginated_get(
+            access_token,
+            "/developer/v2/recovery",
+            start=start,
+            end=end,
+            max_records=max_records,
+            label="recovery records",
+        )
+
     # ── Sleep activities ───────────────────────────────────────────────────
 
     async def get_sleep_activities(

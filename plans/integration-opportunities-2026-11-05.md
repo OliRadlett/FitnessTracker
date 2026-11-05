@@ -1,7 +1,7 @@
 # Integration opportunity review — 2026-11-05
 
-> **Status 2026-11-05:** #1 and the storage half of #8 are implemented on
-> `feature/power-provenance-withings-payload` (migrations `107`, `108`). Two claims in the
+> **Status 2026-11-05:** #1, #2 and the storage half of #8 are implemented on
+> `feature/power-provenance-withings-payload` (migrations `107`, `108`, `109`). Two claims in the
 > first draft did not survive contact with the code and are corrected inline: #1's proposed
 > *exclusion* was aimed at a consumer that never sees an estimate (all stream-gated), and
 > #6's Wahoo zone push already shipped as migration `103` before this review ran.
@@ -397,14 +397,38 @@ The weather regression is the sharpest of the four: an estimate is derived partl
 rate, and heart rate rises with heat, so an unrestricted regression can manufacture a
 temperature–power coefficient. Worth doing next, and now possible.
 
-**#2 Whoop recovery.** `whoop_client.get_all_recovery(start, end, max_records)` using the
-existing `_paginated_get`; `sync_whoop_cycles` indexes that list by `cycle_id` instead of
-looping with `asyncio.sleep` between calls. Two new nullable `DailyMetric` columns
-(`spo2_percentage`, `skin_temp_celsius`), which then enter
-`health_analysis._illness_composite` — currently recovery 25 / RR 20 / HRV 25 / sleep 15 /
-fatigue 15, with RR's weight redistributed when absent. Re-weight rather than append, and
-apply the same "missing → redistribute" rule that RR already uses, or a missing SpO2 will
-read as a normal SpO2.
+**#2 Whoop recovery — as built.** Shipped: `whoop_client.get_all_recovery()` over
+`/developer/v2/recovery`; `sync_whoop_cycles` prefetches the window once and joins by
+`cycle_id`, deleting the per-cycle request loop and its sleeps (~25× fewer requests for the
+same data). `_recovery_fields()` is now the single projector for **three** call sites — the
+scheduled sync, `backfill_whoop_data` and `_backfill_missing_recovery` — which had each
+hand-picked their own four of the score's seven fields; that divergence is why SpO2 and
+skin temperature were never collected. `spo2_percentage` + `skin_temp_celsius` land on
+`DailyMetric` (migration 109) and vote in `_illness_composite`.
+
+Three decisions worth recording:
+
+- **A prefetch failure degrades to cycle data only**, logging a warning; the existing gap
+  filler then retries each missing recovery through the *per-cycle* endpoint. So the
+  fallback is a path that already exists and is exercised, not new code written for a case
+  we hope never happens.
+- **Skin temperature is stored absolute, the baseline computed on read.** Absolute values
+  vary by person, bedding and room; storing a delta would freeze in whatever baseline
+  existed the day the row was written.
+- **The SpO2 rule was wrong in the first draft, and a test caught it.** "Two readings" was
+  meant as "one bad night is not evidence", but the implemented gate was *two observations*,
+  so `[97, 88]` scored 100. The rule is now two readings **below 95%** among the last three,
+  banded on the worst. The test that failed is the one that documents it.
+
+Composite weights: recovery 25 / RR 20 / HRV 25 / sleep 15 / fatigue 15, plus SpO2 10 and
+skin temp 10 when present. Adding a vote dilutes the others proportionally (full-data total
+1.20) rather than rescaling them, and every signal still drops out of the denominator when
+absent — so a strap with no SpO2 scores exactly as it did before, which is asserted.
+
+Not done, deliberately: rows written before migration 109 have NULL SpO2/skin temp and will
+not gain them — the gap filler only revisits rows missing `recovery_score`, and backfilling
+two optional fields would mean re-fetching every cycle ever recorded. The signal is about
+the last week, so the history is not worth it.
 
 The pattern to keep: **every composite must degrade per-signal and say so** (pitfall 42's
 lesson, applied to inputs rather than engines).

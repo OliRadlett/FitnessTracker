@@ -274,6 +274,56 @@ def _recovery_illness_signal(recovery_values: list[float | None]) -> float:
     return 0.0
 
 
+def _spo2_signal(values: list[float | None]) -> float:
+    """Score 0-100 from recent blood-oxygen readings.
+
+    Absolute, not relative: SpO2 has no personal baseline the way HRV does, so
+    this is a clinical band rather than a deviation from the user's own norm.
+    Whoop samples it during sleep, where one low reading is commonly an artefact
+    (cold hand, movement, a loose strap), so **two** of the last three readings
+    must be below 95% before anything scores, and the band then comes from the
+    worst of them. One bad night is not evidence of illness, and an alert raised
+    on one would train the user to ignore the alert.
+    """
+    recent = [float(v) for v in values if v is not None][-3:]
+    low = [v for v in recent if v < 95.0]
+    if len(low) < 2:
+        return 0.0
+    worst = min(low)
+    if worst < 90:
+        return 100.0
+    if worst < 93:
+        return 70.0
+    return 40.0
+
+
+def _skin_temp_signal(
+    current_c: float | None,
+    baseline_c: float | None,
+) -> float:
+    """Score 0-100 from sleeping skin temperature versus the user's own baseline.
+
+    Absolute skin temperature varies by person, bedding and room, so only a
+    deviation carries signal — the same reason resting HR is compared with a
+    30-day baseline instead of a fixed number. The bands are +0.2 / +0.4 / +0.6 °C.
+
+    One-sided on purpose. An elevated sleeping skin temperature is the febrile
+    marker; a *low* one is dominated by a cold bedroom and would produce an alert
+    about the heating rather than about the athlete. These are heuristics, not a
+    clinical cut-off, and the composite reports the value so the user can judge.
+    """
+    if current_c is None or not baseline_c or baseline_c <= 0:
+        return 0.0
+    delta = current_c - baseline_c
+    if delta > 0.6:
+        return 100.0
+    if delta > 0.4:
+        return 70.0
+    if delta > 0.2:
+        return 40.0
+    return 0.0
+
+
 # ── Severity classification ─────────────────────────────────────────────────
 
 
@@ -296,13 +346,22 @@ def _illness_composite(
     fatigue_s: float,
     has_rr_data: bool,
     has_sleep_data: bool = True,
+    spo2_s: float = 0.0,
+    has_spo2_data: bool = False,
+    skin_temp_s: float = 0.0,
+    has_skin_temp_data: bool = False,
 ) -> float:
     """Weighted illness composite (0-100), renormalised over present signals.
 
-    Full weights: recovery 25% + RR 20% + HRV 25% + sleep 15% + fatigue 15%.
+    Full weights: recovery 25% + RR 20% + HRV 25% + sleep 15% + fatigue 15%,
+    plus SpO2 10% and skin temperature 10% when Whoop supplies them.
+
     A missing signal is unknown, not zero: drop its weight and divide by the
     remaining weight. This matters most for sleep, where the old path scored a
-    missing night as perfect sleep (0) and understated the risk.
+    missing night as perfect sleep (0) and understated the risk. The new signals
+    default to absent, so a user without them gets exactly the score they got
+    before — and adding a vote dilutes the others proportionally, which is the
+    point of adding it.
     """
     weights = {
         "recovery": 0.25,
@@ -310,6 +369,8 @@ def _illness_composite(
         "hrv": 0.25,
         "sleep": 0.15 if has_sleep_data else 0.0,
         "fatigue": 0.15,
+        "spo2": 0.10 if has_spo2_data else 0.0,
+        "skin_temp": 0.10 if has_skin_temp_data else 0.0,
     }
     total = sum(weights.values())
     return (
@@ -318,6 +379,8 @@ def _illness_composite(
         + hrv_s * weights["hrv"]
         + sleep_s * weights["sleep"]
         + fatigue_s * weights["fatigue"]
+        + spo2_s * weights["spo2"]
+        + skin_temp_s * weights["skin_temp"]
     ) / total
 
 
@@ -635,11 +698,13 @@ async def analyze_illness(
     db: AsyncSession,
     user_id: uuid.UUID,
 ) -> dict | None:
-    """Analyze illness risk by combining recovery score, respiratory rate, HRV, sleep, and unexplained fatigue.
+    """Analyze illness risk from recovery, respiratory rate, HRV, sleep, fatigue, SpO2 and skin temperature.
 
-    Illness risk is physiology-focused: Recovery Score (25%) + RR (20%) + HRV (25%)
-    = 70% of the composite. When respiratory rate data is missing, its weight is
-    redistributed to the other signals.
+    Illness risk is physiology-focused. Full weights: Recovery Score 25% +
+    RR 20% + HRV 25% + sleep 15% + fatigue 15%, plus SpO2 10% and sleeping skin
+    temperature 10% when Whoop supplies them. Any missing signal has its weight
+    redistributed rather than scored as zero, so a strap that reports no SpO2
+    does not read as perfect oxygenation.
 
     Always returns a dict with score, severity, title, description, and evidence.
     Returns None only on unexpected errors.
@@ -713,6 +778,34 @@ async def analyze_illness(
     rr_s = _respiratory_rate_signal(current_rr, baseline_rr)
     hrv_s = _hrv_trend_signal(hrv_values)
 
+    # Blood oxygen and sleeping skin temperature — recovery-only fields that
+    # arrive with the bulk recovery fetch (migration 109). Both are optional: a
+    # strap can report no SpO2 in the window, and rows written before the columns
+    # existed are NULL, so each contributes only when present and the composite
+    # redistributes the rest (see _illness_composite).
+    spo2_values = [m.spo2_percentage for m in metrics]
+    has_spo2_data = sum(1 for v in spo2_values if v is not None) >= 2
+    spo2_s = _spo2_signal(spo2_values)
+
+    skin_temp_values = [
+        m.skin_temp_celsius for m in metrics if m.skin_temp_celsius is not None
+    ]
+    current_skin_temp = skin_temp_values[-1] if skin_temp_values else None
+    baseline_skin_temp = None
+    if current_skin_temp is not None:
+        baseline_result = await db.execute(
+            select(func.avg(DailyMetric.skin_temp_celsius)).where(
+                DailyMetric.user_id == user_id,
+                DailyMetric.skin_temp_celsius.isnot(None),
+                DailyMetric.metric_date >= cutoff_30d,
+            )
+        )
+        baseline_skin_temp = baseline_result.scalar()
+    skin_temp_s = _skin_temp_signal(current_skin_temp, baseline_skin_temp)
+    has_skin_temp_data = (
+        current_skin_temp is not None and baseline_skin_temp is not None
+    )
+
     # Sleep quality
     result = await db.execute(
         select(SleepLog)
@@ -744,6 +837,10 @@ async def analyze_illness(
         fatigue_s,
         has_rr_data,
         has_sleep_data,
+        spo2_s=spo2_s,
+        has_spo2_data=has_spo2_data,
+        skin_temp_s=skin_temp_s,
+        has_skin_temp_data=has_skin_temp_data,
     )
 
     severity = _classify_severity(score)
@@ -762,10 +859,30 @@ async def analyze_illness(
         rr_pct = (current_rr - baseline_rr) / baseline_rr * 100
         rr_change = f" ({rr_pct:+.1f}% vs baseline)"
 
+    # Display strings for the two recovery-only signals. "No data" is stated
+    # rather than shown as a clean ✅: an absent signal is not a normal one.
+    recent_spo2 = [float(v) for v in spo2_values if v is not None][-3:]
+    spo2_display = (
+        f"worst of last {len(recent_spo2)}: {min(recent_spo2):.0f}%"
+        if recent_spo2
+        else "No data"
+    )
+    if current_skin_temp is None:
+        skin_temp_display = "No data"
+    elif baseline_skin_temp:
+        skin_temp_display = (
+            f"{current_skin_temp:.1f}°C "
+            f"({(current_skin_temp - baseline_skin_temp):+.1f}°C vs baseline)"
+        )
+    else:
+        skin_temp_display = f"{current_skin_temp:.1f}°C (no baseline yet)"
+
     evidence = {
         "Recovery Score": f"{'✅' if recovery_illness_s == 0 else '⚠️'} Signal score: {recovery_illness_s:.0f}/100",
         "Respiratory Rate": f"{'✅' if rr_s == 0 else '⚠️'} Current: {rr_display}{rr_change}",
         "Respiratory Baseline": baseline_display,
+        "Blood Oxygen": f"{'✅' if spo2_s == 0 else '⚠️'} {spo2_display}",
+        "Skin Temperature": f"{'✅' if skin_temp_s == 0 else '⚠️'} {skin_temp_display}",
         "HRV Trend": f"{'✅' if hrv_s == 0 else '⚠️'} Signal score: {hrv_s:.0f}/100",
         "Sleep Quality": f"{'✅' if sleep_s == 0 else '⚠️'} Signal score: {sleep_s:.0f}/100",
         "Unexplained Fatigue": f"{'✅' if fatigue_s == 0 else '⚠️'} Signal score: {fatigue_s:.0f}/100",
