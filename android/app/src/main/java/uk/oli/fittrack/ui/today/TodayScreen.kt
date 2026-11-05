@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.LoggedSet
+import uk.oli.fittrack.domain.Plan
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.ui.BottomAction
@@ -59,15 +60,17 @@ import java.util.Locale
 @Composable
 fun TodayScreen(
     session: SessionState?,
+    plan: Plan,
     signedIn: Boolean,
     history: List<FinishedSession>,
+    onEditPlan: () -> Unit,
     onOpenSession: (String) -> Unit,
     onSignIn: () -> Unit,
     onStart: () -> Unit,
     onResume: () -> Unit,
     onTab: (NavKind) -> Unit
 ) {
-    val plan = session?.plan ?: uk.oli.fittrack.data.SeedPlan.pushDay
+    val active = session?.plan ?: plan
     val now = remember { System.currentTimeMillis() }
     // 0 = the session in front of you, 1 = the log. Log nests under Today
     // because "what did I do" is a view of time, and Today owns time.
@@ -77,7 +80,7 @@ fun TodayScreen(
             .uppercase(Locale.UK)
     }
 
-    val firstExercise = plan.exercises.first()
+    val firstExercise = active.exercises.first()
     val lastSet = remember(history, firstExercise.name) {
         HistoryEngine.lastSetFor(history, firstExercise.name)
     }
@@ -109,7 +112,7 @@ fun TodayScreen(
                 when {
                     mode == 1 -> "Your log."
                     session != null -> "In progress."
-                    else -> "${plan.title}."
+                    else -> "${active.title}."
                 },
                 fontSize = 30.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -119,7 +122,7 @@ fun TodayScreen(
             ModePills(mode) { mode = it }
             Spacer(Modifier.height(20.dp))
             if (mode == 0) {
-                PlanCard(plan, session, lastSet, now)
+                PlanCard(active, session, lastSet, now, onEditPlan)
 
             if (history.isEmpty() && session == null) {
                 Spacer(Modifier.height(12.dp))
@@ -190,7 +193,8 @@ private fun PlanCard(
     plan: uk.oli.fittrack.domain.Plan,
     session: SessionState?,
     lastSet: LoggedSet?,
-    now: Long
+    now: Long,
+    onEditPlan: () -> Unit
 ) {
     Column(
         Modifier
@@ -213,6 +217,18 @@ private fun PlanCard(
                     "${session.doneSets} OF ${plan.totalSets} SETS LOGGED"
                 }
             )
+            Spacer(Modifier.weight(1f))
+            if (session == null) {
+                Text(
+                    "Edit",
+                    fontSize = 13.sp,
+                    color = Tokens.Accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onEditPlan() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
+            }
         }
         Spacer(Modifier.height(10.dp))
 

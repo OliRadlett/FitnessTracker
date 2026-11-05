@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import uk.oli.fittrack.auth.GoogleSignIn
 import uk.oli.fittrack.auth.TokenStore
 import uk.oli.fittrack.data.HistoryStore
+import uk.oli.fittrack.data.PlanStore
 import uk.oli.fittrack.data.SeedPlan
 import uk.oli.fittrack.data.SessionStore
 import uk.oli.fittrack.data.emptySession
@@ -50,6 +51,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = SessionStore(app.filesDir)
     private val historyStore = HistoryStore(app.filesDir)
+    private val planStore = PlanStore(app.filesDir)
 
     // Keystore-backed storage can fail on a damaged keystore (or under a test
     // runner that has none). That must not stop the gym flow from working, so
@@ -185,9 +187,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ── session ──────────────────────────────────────────────────────────────
 
+    /**
+     * The plan the app prescribes: the one edited on the phone, or the seeded
+     * starter. Editable until the training-plan API is wired up, at which point
+     * this becomes the offline copy rather than the source.
+     */
+    private val _plan = MutableStateFlow(planStore.load() ?: SeedPlan.pushDay)
+    val plan: StateFlow<uk.oli.fittrack.domain.Plan> = _plan.asStateFlow()
+
+    fun updatePlan(newPlan: uk.oli.fittrack.domain.Plan) {
+        _plan.value = newPlan
+        planStore.save(newPlan)
+    }
+
     fun startSession() {
         if (_session.value != null) return
-        val fresh = emptySession(SeedPlan.pushDay)
+        val fresh = emptySession(_plan.value)
         _session.value = fresh
         store.save(fresh)
     }
