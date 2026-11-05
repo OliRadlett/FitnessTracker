@@ -25,6 +25,7 @@ from app.models.cycling import CyclingPowerRecord, CyclingProfile, FtpHistory
 from app.models.daily_metric import DailyMetric
 from app.models.event import Event
 from app.models.exercise import Exercise
+from app.models.gear import Gear
 from app.models.goal import Goal
 from app.models.health_alert import HealthAlert
 from app.models.lift_video_analysis import LiftVideoAnalysis
@@ -302,6 +303,9 @@ async def iter_full_export(
         ("sleep_logs", SleepLog, ()),
         ("health_alerts", HealthAlert, ()),
         ("weight_logs", WeightLog, ()),
+        # Equipment, so a `gear_id` on an exported activity resolves to something
+        # (migration 113).
+        ("gear", Gear, ()),
         ("personal_records", PersonalRecord, ()),
         ("cycling_power_records", CyclingPowerRecord, ()),
         ("events", Event, ()),
