@@ -136,10 +136,10 @@ export function PowerMode({
             <PanelHead title="Records" hint="One row per duration, one measurement" />
           </div>
           <table className="w-full text-[12px]">
-            <thead className="text-left text-[12px] uppercase tracking-[0.06em] text-muted">
+            <thead className="whitespace-nowrap text-left text-[12px] uppercase tracking-[0.06em] text-muted">
               <tr>
                 <th className="px-4 py-2 font-medium sm:px-5">Dur</th>
-                <th className="px-2 py-2 text-right font-medium">90 d</th>
+                <th className="px-2 py-2 text-right font-medium">90d</th>
                 <th className="px-2 py-2 text-right font-medium">W/kg</th>
                 <th className="px-2 py-2 text-right font-medium">%FTP</th>
                 <th className="px-4 py-2 text-right font-medium sm:px-5">vs 12mo</th>
@@ -148,7 +148,7 @@ export function PowerMode({
             <tbody className="divide-y divide-surface-light/30">
               {rows.map((r) => (
                 <tr key={r.label} className={r.seconds === 1200 ? 'bg-surface-light/20' : ''}>
-                  <td className="px-4 py-1.5 font-medium sm:px-5">
+                  <td className="whitespace-nowrap px-4 py-1.5 font-medium sm:px-5">
                     {r.label}
                     {r.achievedOn && (
                       <span className="ml-1.5 text-[12px] font-normal text-muted">{formatShortDate(r.achievedOn)}</span>
