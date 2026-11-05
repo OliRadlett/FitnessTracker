@@ -329,4 +329,21 @@ async def sync_withings_measurements(
 
         await sync_profile_reference_weight(db, user_id)
 
+        # Mirror it onto Wahoo, whose calorie and W/kg estimates read a weight
+        # nothing in this app has ever written. Best effort by contract: a failed
+        # profile write must not fail the weigh-in sync that triggered it.
+        try:
+            from app.services.wahoo import push_weight_to_wahoo
+
+            mirrored = await push_weight_to_wahoo(db, user_id)
+            if mirrored.get("pushed"):
+                logger.info(
+                    f"Withings sync for user {user_id}: mirrored "
+                    f"{mirrored['weight_kg']:.1f}kg to the Wahoo profile"
+                )
+        except Exception as exc:  # a profile write is never worth losing a weigh-in
+            logger.warning(
+                f"Withings sync for user {user_id}: Wahoo weight mirror failed: {exc}"
+            )
+
     return synced

@@ -157,6 +157,46 @@ class WahooClient:
             resp.raise_for_status()
             return resp.json()
 
+    async def update_user(
+        self,
+        access_token: str,
+        *,
+        weight_kg: float | None = None,
+        height_m: float | None = None,
+    ) -> dict:
+        """Update profile fields Wahoo uses for its own calculations.
+
+        Only weight and height are useful here: Wahoo estimates calories and W/kg
+        from the weight on the profile, so a number typed once when the account
+        was created stays wrong forever unless something writes it. Requires
+        ``user_write``.
+
+        Decimals are strings in this API in **both** directions — ``get_user``
+        returns ``"78.5000"`` and this sends ``"78.50"``.
+        """
+        data: dict[str, str] = {}
+        if weight_kg is not None:
+            data["weight"] = f"{weight_kg:.2f}"
+        if height_m is not None:
+            data["height"] = f"{height_m:.2f}"
+        if not data:
+            return {}
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.put(
+                    f"{WAHOO_API_BASE}/v1/user",
+                    headers={
+                        "Authorization": f"Bearer {access_token}",
+                        "Accept": "application/json",
+                    },
+                    data=data,
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+        return await retry_request(_fetch)
+
     async def get_routes(
         self,
         access_token: str,
