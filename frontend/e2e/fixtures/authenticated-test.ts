@@ -207,6 +207,17 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   ['api/v1/routes/collections', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteCollections) });
   }],
+  // Membership for one route (`/routes/{id}/collections`) — deeper than the
+  // list handler above, shallower than the general routes handler which would
+  // answer with the detail object.
+  ['/collections', (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (/\/api\/v1\/routes\/[^/]+\/collections$/.test(path)) {
+      route.fulfill({ status: 200, body: JSON.stringify([]) });
+      return;
+    }
+    route.continue();
+  }],
 
   // Route similarity graph (route merging overhaul) — empty until the weekly
   // recompute_route_similarity task has produced a graph. MUST precede the
