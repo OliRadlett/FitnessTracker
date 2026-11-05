@@ -429,6 +429,47 @@ class TestRouteIntelligenceRefresh:
         await db_session.refresh(activity)
         assert activity.route_id == test_route.id
 
+    async def test_refresh_links_a_reversed_ride(
+        self, client, db_session, test_user, test_route
+    ):
+        """Riding a route the other way is still riding it."""
+        from datetime import UTC, datetime
+
+        from app.models.activity import Activity
+        from app.services.polyline_utils import (
+            decode_polyline,
+            encode_polyline,
+            polyline_total_distance,
+        )
+
+        test_route.distance_meters = polyline_total_distance(
+            test_route.encoded_polyline
+        )
+        points = decode_polyline(test_route.encoded_polyline)
+        test_route.start_lat, test_route.start_lng = points[0]
+        test_route.end_lat, test_route.end_lng = points[-1]
+        reversed_polyline = encode_polyline(list(reversed(points)))
+
+        activity = Activity(
+            user_id=test_user.id,
+            source="strava",
+            sport_type="cycling",
+            name="Backwards Ride",
+            start_date=datetime.now(UTC),
+            duration_seconds=3600,
+            distance_meters=test_route.distance_meters,
+            raw_data={"map": {"summary_polyline": reversed_polyline}},
+        )
+        db_session.add(activity)
+        await db_session.flush()
+
+        resp = await client.post("/api/v1/routes/intelligence/refresh")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["rides_linked"] >= 1
+
+        await db_session.refresh(activity)
+        assert activity.route_id == test_route.id
+
 
 class TestRouteOrganising:
     async def test_collection_membership_round_trip(
