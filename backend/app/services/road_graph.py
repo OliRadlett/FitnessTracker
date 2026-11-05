@@ -402,6 +402,35 @@ def roads_from_geojson(
     return edges
 
 
+def edges_from_tuples(raw: list[tuple]) -> list[RoadEdge]:
+    """Build edges from ``(key, u, v, pts, name, highway, surface)`` tuples.
+
+    Shared by the Modal PBF path, so tuple arity cannot drift silently: adding
+    the surface field once left this conversion unpacking six and every match
+    failed with only a warning in the worker log.
+    """
+    edges: list[RoadEdge] = []
+    for key, u, v, pts, name, highway, surface in raw:
+        edges.append(
+            RoadEdge(
+                key=key,
+                u=u,
+                v=v,
+                polyline=pts,
+                length_m=sum(
+                    haversine_distance(
+                        pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1]
+                    )
+                    for i in range(1, len(pts))
+                ),
+                name=name,
+                highway=highway,
+                surface=surface,
+            )
+        )
+    return edges
+
+
 def _iter_features_from_dict(
     feature_collection: dict | None,
     bbox: tuple[float, float, float, float] | None = None,
