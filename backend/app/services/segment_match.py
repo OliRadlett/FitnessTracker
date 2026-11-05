@@ -161,6 +161,34 @@ async def _candidates(db: AsyncSession, user_id: uuid.UUID) -> list[SegmentGroup
     return [g for g in result.scalars().all() if g.geometry]
 
 
+def _best_line(
+    group: SegmentGroup, ride: list[list[float]]
+) -> tuple[Segment, dict] | None:
+    """Match the ride against every stored line, not just the canonical one.
+
+    A hill's lines can differ by >20 % in length (896 m vs 1,024 m in the real
+    set). The canonical line is the map shape; the ridden line is whichever
+    member's geometry actually matches.
+    """
+    best: tuple[float, Segment, dict] | None = None
+    for seg in group.segments:
+        geometry = seg.geometry
+        if not geometry:
+            continue
+        match = match_geometry(geometry, ride)
+        if match is None:
+            continue
+        ratio = match["span_m"] / seg.distance_m if seg.distance_m else 0.0
+        if not MIN_SPAN_FRACTION <= ratio <= MAX_SPAN_FRACTION:
+            continue
+        score = match["median_offset"] + abs(ratio - 1.0) * 50.0
+        if best is None or score < best[0]:
+            best = (score, seg, match)
+    if best is None:
+        return None
+    return best[1], best[2]
+
+
 async def match_activity(
     db: AsyncSession,
     group: SegmentGroup,
@@ -176,15 +204,10 @@ async def match_activity(
     if not latlng or len(latlng) < 2:
         return None
 
-    geom = match_geometry(group.geometry or [], latlng)
-    if geom is None:
+    chosen = _best_line(group, latlng)
+    if chosen is None:
         return None
-    if not (
-        group.distance_m * MIN_SPAN_FRACTION
-        <= geom["span_m"]
-        <= group.distance_m * MAX_SPAN_FRACTION
-    ):
-        return None
+    canonical, geom = chosen
 
     resolved = _resolve_cumulative_distance(streams)
     if resolved is None:
@@ -212,9 +235,6 @@ async def match_activity(
     if effort is None:
         return None
 
-    canonical = max(
-        group.segments, key=lambda s: (len(s.efforts or []), s.distance_m)
-    )
     started_at = (
         activity.start_date
         + timedelta(
@@ -238,7 +258,7 @@ async def match_activity(
             round(canonical.end_dist_m / 1000, 1),
         ],
         "span_m": geom["span_m"],
-        "climb_m": group.distance_m,
+        "climb_m": canonical.distance_m,
         "median_offset_m": geom["median_offset"],
         "p90_offset_m": geom["p90_offset"],
         "elapsed_seconds": effort["elapsed_seconds"],

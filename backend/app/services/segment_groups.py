@@ -446,6 +446,10 @@ async def rebuild_user_groups(
         existing.updated_at = datetime.now(UTC)
 
         for m in members:
+            if m.route is not None and m.route.encoded_polyline:
+                m.geometry = build_profile(
+                    m.route, m.start_dist_m, m.end_dist_m
+                )["geometry"]
             if m.group_id != existing.id:
                 m.group_id = existing.id
             segments_touched += 1

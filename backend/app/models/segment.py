@@ -125,6 +125,10 @@ class Segment(Base):
         nullable=True,
         index=True,
     )
+    # ~21 × [lat, lng] for THIS line's window. The group stores the canonical
+    # line's geometry for maps; matching needs every line, because a rider can
+    # take a 1,024 m line of a hill whose canonical detection is 896 m.
+    geometry: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     # Position along the route (meters from route start).
     start_dist_m: Mapped[float] = mapped_column(Float, nullable=False)
