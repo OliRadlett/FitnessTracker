@@ -340,7 +340,7 @@ export function PowerMode({
                           >
                             {r.value}
                           </span>
-                          <span className="ml-2 text-[11px] tabular-nums text-muted/80">{r.detail}</span>
+                          <span className="ml-2 text-[12px] tabular-nums text-muted/80">{r.detail}</span>
                         </span>
                       </li>
                     ))}
