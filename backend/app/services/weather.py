@@ -21,6 +21,22 @@ logger = logging.getLogger(__name__)
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
+# Air quality is its own host on Open-Meteo, not a parameter of /forecast.
+AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
+
+# The six CAMS Europe pollen species, in Open-Meteo's variable names. Pollen is
+# **Europe only** (0.1° CAMS Europe, 4-day forecast); outside that domain every
+# one of these comes back null, which is why the caller treats "no pollen" and
+# "not in Europe" the same way and falls back to AQI.
+_POLLEN_TYPES = (
+    "alder_pollen",
+    "birch_pollen",
+    "grass_pollen",
+    "mugwort_pollen",
+    "olive_pollen",
+    "ragweed_pollen",
+)
+_AIR_QUALITY_PARAMS = ",".join(("european_aqi", "pm2_5", "pm10", *_POLLEN_TYPES))
 
 # Archive data lags ~5 days — for dates within the last week use the
 # forecast endpoint's past_days window instead.
@@ -40,6 +56,11 @@ _CACHE_TTL = {
     "current": timedelta(hours=1),
     "forecast": timedelta(hours=6),
     "historical": None,  # never expires
+    # CAMS updates pollen daily and AQI hourly; three hours keeps the daily call
+    # meaningful without refetching on every page view. Keyed in the same cache
+    # table (`CachedWeather`) — a new type, not a new table: the row shape is
+    # identical and this is exactly what a generic response cache is for.
+    "air_quality": timedelta(hours=3),
 }
 
 
@@ -371,6 +392,64 @@ def _normalize_daily(payload: dict, lat: float, lng: float) -> dict:
             }
         )
     return {"latitude": lat, "longitude": lng, "days": days}
+
+
+async def get_air_quality(
+    db: AsyncSession, user_id, lat: float, lng: float
+) -> dict:
+    """Current air quality and pollen load for a coordinate (cached 3 hours).
+
+    Returns ``{"european_aqi", "pm2_5", "pm10", "pollen": {species: grains/m³}}``.
+    A species is absent when Open-Meteo has no value for it — which is also what
+    happens everywhere outside CAMS Europe's domain, so callers must treat "no
+    pollen" as "unknown here", never as "none in the air".
+    """
+    cached = await _get_cached(db, user_id, "air_quality", lat, lng)
+    if cached is not None:
+        return cached
+
+    payload = await _fetch(
+        AIR_QUALITY_URL,
+        {
+            "latitude": lat,
+            "longitude": lng,
+            "hourly": _AIR_QUALITY_PARAMS,
+            "forecast_days": 1,
+            "timezone": "auto",
+        },
+    )
+    data = _normalize_air_quality(payload)
+    await _store_cache(db, user_id, "air_quality", lat, lng, data)
+    return data
+
+
+def _normalize_air_quality(payload: dict) -> dict:
+    """First non-null value of each hourly variable.
+
+    ``forecast_days=1`` starts at the current hour, so the first non-null sample
+    is "now" — later samples are the rest of the day and would overstate the
+    pollen the athlete is actually about to breathe.
+    """
+    hourly = payload.get("hourly") or {}
+
+    def _first(key: str) -> float | None:
+        for value in hourly.get(key) or []:
+            if value is not None:
+                return float(value)
+        return None
+
+    pollen: dict[str, float] = {}
+    for name in _POLLEN_TYPES:
+        value = _first(name)
+        if value is not None:
+            pollen[name.removesuffix("_pollen")] = value
+
+    return {
+        "european_aqi": _first("european_aqi"),
+        "pm2_5": _first("pm2_5"),
+        "pm10": _first("pm10"),
+        "pollen": pollen,
+    }
 
 
 # ── Cached fetches ───────────────────────────────────────────────────────────
