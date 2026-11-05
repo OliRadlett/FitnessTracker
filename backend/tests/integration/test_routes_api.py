@@ -422,9 +422,10 @@ class TestRouteIntelligenceRefresh:
         db_session.add(activity)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/routes/intelligence/refresh")
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["rides_linked"] >= 1
+        from app.services.merge_service import backfill_activity_route_links
+
+        linked = await backfill_activity_route_links(db_session, test_user.id)
+        assert linked >= 1
 
         await db_session.refresh(activity)
         assert activity.route_id == test_route.id
@@ -463,9 +464,10 @@ class TestRouteIntelligenceRefresh:
         db_session.add(activity)
         await db_session.flush()
 
-        resp = await client.post("/api/v1/routes/intelligence/refresh")
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["rides_linked"] >= 1
+        from app.services.merge_service import backfill_activity_route_links
+
+        linked = await backfill_activity_route_links(db_session, test_user.id)
+        assert linked >= 1
 
         await db_session.refresh(activity)
         assert activity.route_id == test_route.id

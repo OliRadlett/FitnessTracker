@@ -34,17 +34,12 @@ def _has_usable_terrain(route: Route) -> bool:
 async def refresh_route_intelligence(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """Classify missing terrain and rescore quality. Best-effort per route."""
     from app.integrations.route_intelligence import classify_route_terrain
-    from app.services.merge_service import backfill_activity_route_links
     from app.services.polyline_utils import decode_polyline
     from app.services.route_elevation import backfill_route_elevations
     from app.services.route_quality_service import compute_and_store_quality
     from app.services.surface_types import surface_mix_to_profile
 
     elevation_backfilled = await backfill_route_elevations(db, user_id)
-    # Quality's popularity component and the "ridden" filter both read
-    # Activity.route_id; rides imported before a route existed stay unlinked
-    # forever unless something re-runs the matcher.
-    rides_linked = await backfill_activity_route_links(db, user_id)
 
     routes = (
         await db.execute(
@@ -100,7 +95,6 @@ async def refresh_route_intelligence(db: AsyncSession, user_id: uuid.UUID) -> di
     return {
         "routes": len(routes),
         "elevation_backfilled": elevation_backfilled,
-        "rides_linked": rides_linked,
         "surface_normalized": surface_normalized,
         "terrain_classified": terrain_classified,
         "quality_scored": quality_scored,

@@ -417,7 +417,7 @@ async def link_activity_to_route(
 
     threshold = settings.activity_route_link_threshold
     best_route = None
-    best_score = 0.0
+    best_score = -1.0
 
     for route in routes:
         # Quick pre-filter: skip if sport types are incompatible
@@ -460,28 +460,27 @@ async def link_activity_to_route(
             end_lng,
             route,
         )
-        if score < threshold:
-            # A route ridden the other way is still ridden. The dedupe scorer
-            # is direction-sensitive on purpose, so try the reversed track
-            # explicitly instead of losing the link.
-            from app.services.polyline_utils import encode_polyline
-
-            reversed_polyline = encode_polyline(list(reversed(points)))
-            reversed_score = _compute_match_score(
-                activity.distance_meters or 0,
-                reversed_polyline,
-                activity.name,
-                end_lat,
-                end_lng,
-                start_lat,
-                start_lng,
-                route,
-            )
-            score = max(score, reversed_score)
-
         if score > best_score:
             best_score = score
             best_route = route
+
+    # A route ridden the other way is still ridden. The dedupe scorer is
+    # direction-sensitive by design, so retry only the best candidate reversed
+    # — retrying every candidate doubled the cost of a backfill for no gain.
+    if best_score < threshold and best_route is not None:
+        from app.services.polyline_utils import encode_polyline
+
+        reversed_score = _compute_match_score(
+            activity.distance_meters or 0,
+            encode_polyline(list(reversed(points))),
+            activity.name,
+            end_lat,
+            end_lng,
+            start_lat,
+            start_lng,
+            best_route,
+        )
+        best_score = max(best_score, reversed_score)
 
     if best_score >= threshold and best_route is not None:
         activity.route_id = best_route.id

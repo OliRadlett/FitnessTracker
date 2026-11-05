@@ -152,6 +152,14 @@ test.describe('Routes Page', () => {
     expect(duplicateRequests).toBe(0);
   });
 
+  test('re-link rides reports how many were linked', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.getByRole('button', { name: /^maintain$/i }).click();
+    await page.getByRole('button', { name: /re-link rides/i }).click();
+    await expect(page.getByText(/linked 3 rides/i)).toBeVisible({ timeout: 8000 });
+  });
+
   test('a running scan is reported without mounting the queue', async ({
     authenticatedPage: page,
   }) => {

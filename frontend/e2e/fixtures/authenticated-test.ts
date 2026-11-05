@@ -96,6 +96,12 @@ const defaultApiHandlers: [string, ApiHandler][] = [
   }],
 
   // Activities
+  ['api/v1/activities/backfill-route-links', (route) => {
+    route.fulfill({
+      status: 200,
+      body: JSON.stringify({ linked_count: 3, detail: 'Linked 3 activities to routes' }),
+    });
+  }],
   ['api/v1/activities', (route) => {
     const url = route.request().url();
     if (url.includes('/api/v1/activities/')) {
