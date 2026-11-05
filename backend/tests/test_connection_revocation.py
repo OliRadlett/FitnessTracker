@@ -23,7 +23,7 @@ import pytest
 from app.integrations.strava_client import strava_client
 from app.integrations.wahoo_client import wahoo_client
 from app.integrations.whoop_client import whoop_client
-from app.services.connection_revocation import revoke_grant
+from app.services.connection_revocation import revoke_grant, revoke_guidance
 
 
 def _connection(provider: str, token: str = "token-123") -> SimpleNamespace:
@@ -78,3 +78,23 @@ class TestUnrevocableProviders:
     async def test_unknown_provider_is_not_an_error(self):
         """A future provider lands here rather than raising AttributeError."""
         assert await revoke_grant(_connection("garmin")) is False
+
+
+class TestRevokeGuidance:
+    """What the user is told when we cannot revoke for them."""
+
+    @pytest.mark.parametrize("provider", ["withings", "komoot"])
+    def test_unrevocable_providers_name_the_manual_step(self, provider):
+        note = revoke_guidance(provider)
+
+        assert note is not None
+        assert len(note) > 20
+
+    def test_a_failed_revocable_provider_gets_no_special_guidance(self):
+        """`grant_revoked: false` already says it; there is no manual path worth
+        printing for a provider we *can* revoke — the user should retry."""
+        assert revoke_guidance("strava") is None
+
+    def test_unknown_provider_says_nothing(self):
+        """Inventing instructions is worse than silence."""
+        assert revoke_guidance("garmin") is None

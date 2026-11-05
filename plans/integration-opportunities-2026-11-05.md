@@ -1,11 +1,34 @@
 # Integration opportunity review — 2026-11-05
 
-> **Status 2026-11-05:** #1, #2, #3 (backend), #5, #14 and #15 plus the storage half of #8 are
-> implemented on `feature/power-provenance-withings-payload` (migrations `110`–`113`, after
-> `main` claimed `107`, then `108`/`109`, mid-branch — twice). Two claims in the
-> first draft did not survive contact with the code and are corrected inline: #1's proposed
-> *exclusion* was aimed at a consumer that never sees an estimate (all stream-gated), and
-> #6's Wahoo zone push already shipped as migration `103` before this review ran.
+> **Status 2026-11-05 (shipped): #1, #2, #3 (backend), #4, #5, #6, #8 (storage half), #9, #14,
+> #15** — merged to `main` as PR #417 and deployed to `prod` (migrations `111`–`114`; the branch
+> was renumbered three times as `main` claimed `107`, `108`/`109`, then `110`).
+>
+> Two claims in the first draft did not survive contact with the code and are corrected
+> inline: #1's proposed *exclusion* was aimed at a consumer that never sees an estimate (all
+> stream-gated), and #6's Wahoo zone push already shipped as migration `103` before this
+> review ran.
+>
+> **Decisions taken (2026-11-05), so the remaining three are unblocked:**
+>
+> - **#7 webhooks — build one table, not three handlers.** `webhook_events(provider,
+>   event_type, payload JSONB, status, attempts, error, received_at)`, and a per-provider
+>   verifier returning `trusted` or `hint_only`. Whoop signs (`X-WHOOP-Signature`, HMAC over
+>   timestamp+body, dedupe `trace_id`); Wahoo sends a shared `webhook_token` with no
+>   signature; **Withings signs nothing**, so its verifier must return `hint_only` and the
+>   handler re-fetches before acting. The Strava queue is the shape to generalise: verify +
+>   enqueue only, Celery drains. Do **not** port `StravaWebhookEvent` onto it in the same
+>   change — two live queues is how event ordering bugs start.
+> - **#10 Strava laps — the replacement ships with the data.** `activities.laps` (JSONB) plus
+>   `pacing_analysis` using real laps when present, falling back to the ten equal-time slices
+>   only for rides without them. A lap-less column would be the stored-never-read defect this
+>   review exists to remove. One `GET /activities/{id}/laps` per *new* ride; no backfill (the
+>   read bucket is 1,000/day and old rides are not what anyone is looking at).
+> - **Withings revoke — do not guess the endpoint.** Their `oauth2` revoke parameter shape is
+>   unverified, so we keep it out of `connection_revocation.py` and instead return
+>   `grant_note` on disconnect with the exact path in the Withings app. A request that fails
+>   silently forever is worse than a documented manual step. Revisit if the shape is confirmed
+>   against their OpenAPI spec.
 
 > Analysis only. No code changed by the review itself (follow-ups are separate commits).
 > Question asked: *what do the third-party APIs expose that we don't take advantage of,
