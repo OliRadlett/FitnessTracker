@@ -1009,6 +1009,11 @@ export default function LiftingPage() {
                 </div>
               )}
 
+              {/* Quick-add: next set for an existing exercise, sticky in view */}
+              <div className="mb-4">
+                <QuickAddSetBar session={sessionDetail} />
+              </div>
+
               {/* Set ladder — read-only review layer, separate from logging/editing */}
               {sessionDetail.sets && sessionDetail.sets.length > 0 && (
                 <div className="mb-4 rounded-lg border border-surface-light/50 p-3 sm:p-4">
@@ -1088,10 +1093,6 @@ export default function LiftingPage() {
               <SessionAiAnalysisCard sessionId={selectedSessionId} />
             </div>
 
-            {/* Quick-add: one-line set logging, sticky at the detail bottom */}
-            <div className="mt-6">
-              <QuickAddSetBar session={sessionDetail} />
-            </div>
             </div>
           ) : selectedSessionId && (sessionDetailLoading || !sessionDetailError) ? (
             <div className="space-y-3" aria-label="Loading session detail">
