@@ -81,6 +81,14 @@ class Activity(Base):
     # 'provider' = supplied by a sync provider payload, 'manual' = hand-entered.
     # NULL = unknown (rows predating this column; see migration 062 heuristic).
     tss_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Whether the watts above were recorded or inferred: 'measured' (a device
+    # produced them — Strava device_watts=true, or a FIT import), 'estimated'
+    # (Strava inferred them from HR/speed/bodyweight when device_watts=false).
+    # NULL = unknown, and every consumer must fail open on it — see
+    # services/power_provenance.py for why NULL is not "estimated".
+    # Deliberately a separate axis from tss_source: a power-derived TSS can
+    # still record 'power' while the power underneath was estimated.
+    power_provenance: Mapped[str | None] = mapped_column(String(10), nullable=True)
     calories: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe: Mapped[float | None] = mapped_column(
         Float, nullable=True

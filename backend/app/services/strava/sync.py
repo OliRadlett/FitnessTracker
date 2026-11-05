@@ -15,6 +15,7 @@ from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.lifting import LiftingSession
 from app.models.user import OAuthConnection
+from app.services.power_provenance import from_strava_payload
 from app.services.route_quarantine import active_routes_clause
 from app.services.sport_filter import is_allowed_sport
 
@@ -120,6 +121,7 @@ async def _create_activity_from_strava(
         average_heartrate=_safe_float(sa.get("average_heartrate")),
         max_heartrate=_safe_float(sa.get("max_heartrate")),
         average_power=_safe_float(sa.get("average_watts")),
+        power_provenance=from_strava_payload(sa),
         max_power=_safe_float(sa.get("max_watts")),
         normalized_power=_safe_float(sa.get("weighted_average_watts")),
         average_speed=_safe_float(sa.get("average_speed")),
@@ -307,6 +309,7 @@ async def sync_activities(
                     "average_heartrate": _safe_float(sa.get("average_heartrate")),
                     "max_heartrate": _safe_float(sa.get("max_heartrate")),
                     "average_power": _safe_float(sa.get("average_watts")),
+                    "power_provenance": from_strava_payload(sa),
                     "max_power": _safe_float(sa.get("max_watts")),
                     "normalized_power": _safe_float(sa.get("weighted_average_watts")),
                     "average_speed": _safe_float(sa.get("average_speed")),
@@ -617,6 +620,7 @@ async def backfill_all_activities_stream(
                         "average_heartrate": _safe_float(sa.get("average_heartrate")),
                         "max_heartrate": _safe_float(sa.get("max_heartrate")),
                         "average_power": _safe_float(sa.get("average_watts")),
+                        "power_provenance": from_strava_payload(sa),
                         "normalized_power": _safe_float(
                             sa.get("weighted_average_watts")
                         ),

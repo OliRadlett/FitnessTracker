@@ -268,6 +268,11 @@ _MERGE_FIELDS = [
     "average_heartrate",
     "max_heartrate",
     "average_power",
+    # Travels with average_power: whichever provider's watts win, its account of
+    # how those watts were produced wins with them. Without this a Strava
+    # estimate could overwrite a Wahoo measurement (or the reverse) and leave
+    # the provenance describing the wrong provider.
+    "power_provenance",
     "normalized_power",
     "average_speed",
     "average_cadence",

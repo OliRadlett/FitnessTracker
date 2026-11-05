@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.user import OAuthConnection
+from app.services.power_provenance import from_strava_payload
 from app.services.sport_filter import is_allowed_sport
 from app.services.strava.linking import link_activity_to_lifting_sessions
 from app.services.strava.sync import (
@@ -113,6 +114,7 @@ async def _handle_activity_create(
             "average_heartrate": _safe_float(sa.get("average_heartrate")),
             "max_heartrate": _safe_float(sa.get("max_heartrate")),
             "average_power": _safe_float(sa.get("average_watts")),
+            "power_provenance": from_strava_payload(sa),
             "normalized_power": _safe_float(sa.get("weighted_average_watts")),
             "average_speed": _safe_float(sa.get("average_speed")),
             "average_cadence": _safe_float(sa.get("average_cadence")),

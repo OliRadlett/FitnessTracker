@@ -17,6 +17,7 @@ from app.services.polyline_utils import (
     polyline_total_distance,
     wahoo_points_to_polyline,
 )
+from app.services.power_provenance import POWER_MEASURED
 from app.services.route_service import create_or_merge_route
 from app.services.sport_filter import is_allowed_sport
 
@@ -309,6 +310,10 @@ async def sync_wahoo_activities(
                 "average_heartrate": average_heartrate,
                 "max_heartrate": max_heartrate,
                 "average_power": average_power,
+                # Wahoo's summary power is recorded by the head unit (or the
+                # paired meter/trainer); Wahoo publishes no estimate, so a
+                # present value is measured. Absent → merge skips the field.
+                "power_provenance": POWER_MEASURED if average_power else None,
                 "normalized_power": normalized_power,
                 "average_speed": average_speed,
                 "calories": calories,
