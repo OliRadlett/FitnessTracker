@@ -120,6 +120,15 @@ class Activity(Base):
     )  # mean sea-level pressure hPa
     weather_precipitation_mm: Mapped[float | None] = mapped_column(Float, nullable=True)
     raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    #: Provider lap boundaries for this activity, normalized
+    #: (``[{index, elapsed_s, moving_s, distance_m, avg_power, avg_hr,
+    #: avg_speed, elevation_gain_m}]``). Strava's ``laps`` are exact session
+    #: structure — a 4x8 min set is four laps — where the only alternative is
+    #: inferring intervals from the power series. Stored as a document rather than
+    #: a table: laps are read whole, never queried or joined, and the provider's
+    #: schema drifts. Not ``none_as_null`` — this column is never used as a
+    #: predicate (contrast pitfall 28).
+    laps: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     # §1.3 — precomputed ride context (zones, decoupling, climbing, top speed,
     # TSS breakdown) written at sync time so expanded-card renders avoid the
     # full analyze_ride + stream recompute per request. See services/activity_context.py.

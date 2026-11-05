@@ -254,6 +254,48 @@ def _extract_stream_data(stream: ActivityStream | None) -> list[float]:
     return [float(v) for v in raw if v is not None]
 
 
+def pacing_segments_from_laps(laps: list[dict] | None) -> list[dict] | None:
+    """Turn provider laps into the pacing-segment shape the read path already uses.
+
+    Same keys as the slice-based fallback (``pct_start`` / ``pct_end`` /
+    ``avg_power``) so nothing downstream has to learn a second shape, but the
+    boundaries are the athlete's own — a 4x8 min session is four segments, not ten
+    arbitrary tenths, and ``power_variability`` then measures the session instead
+    of the slicing.
+
+    Returns ``None`` for fewer than two laps or no usable duration, which sends the
+    caller to the equal-time fallback: one lap is not structure, it is the whole
+    ride. Percentages are of elapsed time (the axis a rider thinks in), falling
+    back to distance only when a lap has no duration.
+    """
+    if not laps or len(laps) < 2:
+        return None
+
+    durations: list[float] = []
+    for lap in laps:
+        duration = lap.get("elapsed_s") or lap.get("moving_s")
+        if not duration:
+            duration = lap.get("distance_m")
+        durations.append(float(duration) if duration else 0.0)
+
+    total = sum(durations)
+    if total <= 0:
+        return None
+
+    segments: list[dict] = []
+    elapsed = 0.0
+    for lap, duration in zip(laps, durations, strict=True):
+        segments.append(
+            {
+                "pct_start": round(elapsed / total * 100, 1),
+                "pct_end": round((elapsed + duration) / total * 100, 1),
+                "avg_power": lap.get("avg_power"),
+            }
+        )
+        elapsed += duration
+    return segments
+
+
 async def analyze_ride(
     db: AsyncSession,
     user_id: uuid.UUID,
@@ -376,9 +418,10 @@ async def analyze_ride(
                 }
             )
 
-    # 3. Pacing analysis (10% segments)
+    # 3. Pacing analysis — the provider's own laps when it recorded any.
     pacing_analysis = None
-    if power_data and len(power_data) >= 10:
+    segments = pacing_segments_from_laps(getattr(activity, "laps", None))
+    if segments is None and power_data and len(power_data) >= 10:
         n = len(power_data)
         segments = []
         for i in range(10):
@@ -398,6 +441,7 @@ async def analyze_ride(
                 }
             )
 
+    if segments:
         # Power variability across segments
         seg_powers = [s["avg_power"] for s in segments if s["avg_power"] is not None]
         if len(seg_powers) >= 2:
