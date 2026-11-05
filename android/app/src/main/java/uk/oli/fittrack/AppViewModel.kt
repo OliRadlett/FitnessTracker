@@ -26,6 +26,7 @@ import uk.oli.fittrack.domain.REST_MILLIS
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.net.ApiException
 import uk.oli.fittrack.net.AuthApi
+import uk.oli.fittrack.net.LiftingApi
 
 data class AuthUiState(
     val token: String? = null,
@@ -55,6 +56,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // auth degrades to "signed out" and says why.
     private val tokenStore: TokenStore? = runCatching { TokenStore(app) }.getOrNull()
     private val authApi = AuthApi(BuildConfig.API_BASE_URL)
+    private val liftingApi = LiftingApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -74,7 +76,48 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _now = MutableStateFlow(System.currentTimeMillis())
     val now: StateFlow<Long> = _now.asStateFlow()
 
+    /** When history last came back from the server, and why it did not. */
+    private val _syncedAt = MutableStateFlow<Long?>(null)
+    val syncedAt: StateFlow<Long?> = _syncedAt.asStateFlow()
+
+    private val _syncError = MutableStateFlow<String?>(null)
+    val syncError: StateFlow<String?> = _syncError.asStateFlow()
+
     private var restJob: Job? = null
+    private var syncing = false
+
+    /**
+     * Pull lifting history so the log and "last time" start from real data
+     * instead of an empty phone.
+     *
+     * Fail-open on purpose: sync is an enhancement, and a phone with no signal
+     * must still be able to train. Failures surface in You, not as a blocker.
+     */
+    fun syncHistory() {
+        val token = _auth.value.token ?: return
+        if (syncing) return
+        syncing = true
+        viewModelScope.launch {
+            try {
+                val remote = liftingApi.sessions(token)
+                if (remote.isNotEmpty()) {
+                    // Server and phone ids differ for the same workout until push
+                    // exists, so dedupe on id and accept both.
+                    val merged = HistoryEngine
+                        .newestFirst((_history.value + remote).distinctBy { it.id })
+                        .take(HistoryStore.MAX)
+                    _history.value = merged
+                    historyStore.save(merged)
+                }
+                _syncError.value = null
+                _syncedAt.value = System.currentTimeMillis()
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Sync failed."
+            } finally {
+                syncing = false
+            }
+        }
+    }
 
     // ── auth ─────────────────────────────────────────────────────────────────
 

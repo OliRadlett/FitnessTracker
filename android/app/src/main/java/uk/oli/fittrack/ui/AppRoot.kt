@@ -42,6 +42,13 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val now by vm.now.collectAsStateWithLifecycle()
     val auth by vm.auth.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
+    val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
+    val syncError by vm.syncError.collectAsStateWithLifecycle()
+
+    // History is pulled once a token exists, and again whenever it changes.
+    LaunchedEffect(auth.token) {
+        if (auth.token != null) vm.syncHistory()
+    }
 
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
@@ -123,6 +130,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             if (name == "you") {
                 YouScreen(
                     auth = auth,
+                    syncedAt = syncedAt,
+                    syncError = syncError,
                     onSignIn = { nav.navigate(Routes.SIGNIN) },
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab
