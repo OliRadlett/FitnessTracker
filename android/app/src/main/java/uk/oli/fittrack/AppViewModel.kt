@@ -14,10 +14,13 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import uk.oli.fittrack.auth.GoogleSignIn
 import uk.oli.fittrack.auth.TokenStore
+import uk.oli.fittrack.data.HistoryStore
 import uk.oli.fittrack.data.SeedPlan
 import uk.oli.fittrack.data.SessionStore
 import uk.oli.fittrack.data.emptySession
 import uk.oli.fittrack.data.withSet
+import uk.oli.fittrack.domain.FinishedSession
+import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.LoggedSet
 import uk.oli.fittrack.domain.REST_MILLIS
 import uk.oli.fittrack.domain.SessionState
@@ -45,6 +48,7 @@ data class AuthUiState(
 class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val store = SessionStore(app.filesDir)
+    private val historyStore = HistoryStore(app.filesDir)
 
     // Keystore-backed storage can fail on a damaged keystore (or under a test
     // runner that has none). That must not stop the gym flow from working, so
@@ -59,6 +63,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _session = MutableStateFlow(store.load())
     val session: StateFlow<SessionState?> = _session.asStateFlow()
+
+    /** Finished sessions, newest first. Drives "last time" and the week strip. */
+    private val _history = MutableStateFlow(HistoryEngine.newestFirst(historyStore.load()))
+    val history: StateFlow<List<FinishedSession>> = _history.asStateFlow()
 
     private val _restUntil = MutableStateFlow<Long?>(null)
     val restUntil: StateFlow<Long?> = _restUntil.asStateFlow()
@@ -156,8 +164,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Ends the session and forgets it; the summary is read before this is called. */
+    /**
+     * Ends the session: what you logged becomes history (so the next session can
+     * prefill from it), then the in-progress state is cleared. A session with no
+     * sets is discarded rather than written as an empty entry.
+     */
     fun finishSession() {
+        val current = _session.value
+        if (current != null && current.sets.isNotEmpty()) {
+            val entry = FinishedSession(
+                id = current.id,
+                planTitle = current.plan.title,
+                startedAt = current.startedAt,
+                endedAt = current.sets.maxOf { it.at },
+                sets = current.sets
+            )
+            val updated = HistoryEngine.newestFirst(_history.value + entry).take(HistoryStore.MAX)
+            _history.value = updated
+            historyStore.save(updated)
+        }
         restJob?.cancel()
         _restUntil.value = null
         _session.value = null

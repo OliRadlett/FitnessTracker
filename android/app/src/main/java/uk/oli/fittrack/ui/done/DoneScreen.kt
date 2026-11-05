@@ -22,6 +22,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.ui.BottomAction
@@ -30,13 +31,17 @@ import uk.oli.fittrack.ui.PrimaryButton
 import uk.oli.fittrack.ui.formatDuration
 import uk.oli.fittrack.ui.formatWeight
 import uk.oli.fittrack.ui.theme.Tokens
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * The summary, computed from what was actually logged — not from the plan and
  * not from a constant. If the numbers here are wrong, the session was wrong.
  */
 @Composable
-fun DoneScreen(session: SessionState, onDone: () -> Unit) {
+fun DoneScreen(session: SessionState, previous: FinishedSession?, onDone: () -> Unit) {
     val volume = SessionEngine.volumeKg(session.sets)
     val lastAt = session.sets.maxOfOrNull { it.at } ?: session.startedAt
     val duration = lastAt - session.startedAt
@@ -84,6 +89,22 @@ fun DoneScreen(session: SessionState, onDone: () -> Unit) {
             }
         }
 
+        if (previous != null) {
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Previous", fontSize = 13.sp, color = Tokens.Muted)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "${formatWeight(previous.volumeKg.toFloat())} kg",
+                    fontSize = 13.sp,
+                    color = Tokens.Fg,
+                    style = TextStyle(fontFeatureSettings = "tnum")
+                )
+                Spacer(Modifier.weight(1f))
+                Text(shortDate(previous.endedAt), fontSize = 13.sp, color = Tokens.Muted)
+            }
+        }
+
         Spacer(Modifier.height(24.dp))
         Label("BY EXERCISE")
         Spacer(Modifier.height(8.dp))
@@ -120,3 +141,8 @@ private fun MiniStat(label: String, value: String) {
         Text(value, fontSize = 17.sp, color = Tokens.Fg, style = TextStyle(fontFeatureSettings = "tnum"))
     }
 }
+
+private fun shortDate(at: Long): String =
+    Instant.ofEpochMilli(at)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("d MMM", Locale.UK))
