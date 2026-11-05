@@ -1,6 +1,7 @@
 """Cycling API — Power curve, power zones, HR zones, power vs HR, metrics summary, suggested cycle."""
 
 import math
+import uuid
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -31,6 +32,7 @@ from app.services.cycling import (
     CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
     compute_power_curve_from_streams,
+compute_power_curve_with_source,
     compute_power_zones_from_streams,
     compute_training_load,
     estimate_ftp_from_power_curve,
@@ -57,7 +59,18 @@ async def get_power_curve(
     using a rolling average over power streams. Includes personalized
     model overlay (CP/W') if available.
     """
-    best_power = await compute_power_curve_from_streams(db, current_user.id, days)
+    best_power, best_source = await compute_power_curve_with_source(db, current_user.id, days)
+
+    # Dates for the winning rides: one query, only for the ids that actually won
+    # a bucket. A best without a date is a number the reader cannot place.
+    achieved: dict[uuid.UUID, date] = {}
+    if best_source:
+        rows = await db.execute(
+            select(Activity.id, Activity.start_date).where(
+                Activity.id.in_(set(best_source.values()))
+            )
+        )
+        achieved = {row[0]: row[1].date() for row in rows.all()}
 
     profile = await get_or_create_cycling_profile(db, current_user.id)
     ftp = profile.ftp_watts
@@ -78,11 +91,13 @@ async def get_power_curve(
 
     data = []
     for duration_sec, label in POWER_DURATION_BUCKETS:
+        winner = best_source.get(duration_sec)
         data.append(
             PowerDurationPoint(
                 duration_label=label,
                 duration_seconds=duration_sec,
                 best_power_watts=best_power.get(duration_sec),
+                date_achieved=achieved.get(winner) if winner else None,
             )
         )
 
