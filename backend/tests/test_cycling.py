@@ -16,7 +16,11 @@ from app.services.cycling import (
     estimate_ftp_from_power_curve,
     estimate_ftp_from_power_curve_detailed,
 )
-from app.services.cycling.vo2max import _friend_vo2max
+from app.services.cycling.vo2max import (
+    MIN_DECOUPLING_DURATION_SECONDS,
+    _decoupling_duration_seconds,
+    _friend_vo2max,
+)
 
 
 class TestCalculatePowerTSS:
@@ -200,6 +204,19 @@ class TestDecoupling:
         assert result is not None
         assert result["steady"] is False
         assert result["variability_index"] > 1.10
+
+
+class TestDecouplingDurationGate:
+    """Decoupling needs a sustained effort; the longer source wins."""
+
+    def test_minimum_is_twenty_minutes(self):
+        assert MIN_DECOUPLING_DURATION_SECONDS == 20 * 60
+
+    def test_prefers_activity_duration_or_stream_elapsed(self):
+        assert _decoupling_duration_seconds(1199, []) == 1199
+        assert _decoupling_duration_seconds(0, [0.0, 1199.0]) == 1199
+        assert _decoupling_duration_seconds(0, [0.0, 1200.0]) == 1200
+        assert _decoupling_duration_seconds(2400, [0.0, 600.0]) == 2400
 
 
 class TestEstimateFTPFromPowerCurve:
