@@ -4,22 +4,26 @@ import React, { useState } from 'react';
 import type { LiftingSet } from '@/lib/api';
 import { Badge } from '@/components/ui/Badge';
 import { glossary } from '@/lib/metricGlossary';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
 
 export function ExerciseGroup({
   exerciseName,
   sets,
   onUpdateSet,
   onDeleteSet,
+  onAddSet,
   isUpdating,
   isDeleting,
+  isAdding,
 }: {
   exerciseName: string;
   sets: LiftingSet[];
   onUpdateSet: (setId: string, data: { weight_kg?: number; reps?: number; rpe?: number | null; is_warmup?: boolean; is_amrap?: boolean }) => void;
   onDeleteSet: (setId: string) => void;
+  onAddSet: (exerciseName: string, previous: LiftingSet | undefined) => void;
   isUpdating: boolean;
   isDeleting: boolean;
+  isAdding: boolean;
 }) {
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -58,10 +62,14 @@ export function ExerciseGroup({
     setEditingSetId(null);
   }
 
+  const lastSet = sets.length
+    ? sets.reduce((a, b) => (b.set_number > a.set_number ? b : a))
+    : undefined;
+
   return (
     <div className="border border-surface-light/30 rounded-lg overflow-hidden">
       {/* Exercise header */}
-      <div className="flex items-center justify-between px-4 py-3 bg-surface-light/20">
+      <div className="flex items-center justify-between gap-3 px-4 py-3 bg-surface-light/20">
         <div>
           <p className="text-sm font-semibold text-foreground">{exerciseName}</p>
           <p className="text-xs text-muted">
@@ -69,9 +77,21 @@ export function ExerciseGroup({
             {warmupSets.length > 0 && ` · ${warmupSets.length} warmup`}
           </p>
         </div>
-        {totalVolume > 0 && (
-          <p className="text-xs text-purple-400">{totalVolume.toLocaleString()} kg vol</p>
-        )}
+        <div className="flex items-center gap-3">
+          {totalVolume > 0 && (
+            <p className="text-xs text-purple-400">{totalVolume.toLocaleString()} kg vol</p>
+          )}
+          <button
+            type="button"
+            onClick={() => onAddSet(exerciseName, lastSet)}
+            disabled={isAdding}
+            aria-label={`Add set to ${exerciseName}`}
+            className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-accent/30 bg-accent/10 px-3 text-[12px] font-medium text-accent hover:bg-accent/20 disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" aria-hidden />
+            Add set
+          </button>
+        </div>
       </div>
 
       {/* Sets table */}
