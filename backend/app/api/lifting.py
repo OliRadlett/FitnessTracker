@@ -54,8 +54,10 @@ async def create_session(
     session = await lifting_service.create_session(db, current_user.id, data)
     response = LiftingSessionRead.model_validate(session)
     session_id = session.id
-    # No explicit commit: get_db commits at teardown, before BackgroundTasks
-    # run, so the Jev tagger sees the row. (BUG-015: one commit per request.)
+    # Commit before scheduling background writers: they update the same session
+    # row in their own transaction and would otherwise wait on this request's
+    # lock while the request waits for them.
+    await db.commit()
     background_tasks.add_task(
         jev_tagging.tag_lifting_session_by_id, session_id, current_user.id
     )
@@ -291,12 +293,14 @@ async def add_set(
     lifting_set = await lifting_service.add_set(db, session_id, current_user.id, data)
     if not lifting_set:
         raise HTTPException(status_code=404, detail="Session not found")
+    response = LiftingSetRead.model_validate(lifting_set)
+    await db.commit()
     background_tasks.add_task(
         jev_classification.classify_lifting_session_by_id,
         session_id,
         current_user.id,
     )
-    return LiftingSetRead.model_validate(lifting_set)
+    return response
 
 
 @router.patch("/sets/{set_id}", response_model=LiftingSetRead)
@@ -310,12 +314,14 @@ async def update_set(
     lifting_set = await lifting_service.update_set(db, set_id, current_user.id, data)
     if not lifting_set:
         raise HTTPException(status_code=404, detail="Set not found")
+    response = LiftingSetRead.model_validate(lifting_set)
+    await db.commit()
     background_tasks.add_task(
         jev_classification.classify_lifting_session_by_id,
         lifting_set.session_id,
         current_user.id,
     )
-    return LiftingSetRead.model_validate(lifting_set)
+    return response
 
 
 @router.delete("/sets/{set_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -340,6 +346,7 @@ async def delete_set(
     deleted = await lifting_service.delete_set(db, set_id, current_user.id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Set not found")
+    await db.commit()
     if session_id is not None:
         background_tasks.add_task(
             jev_classification.classify_lifting_session_by_id,

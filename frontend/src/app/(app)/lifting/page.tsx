@@ -145,6 +145,7 @@ export default function LiftingPage() {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showEditSession, setShowEditSession] = useState(false);
   const editFormRef = useRef<HTMLDivElement>(null);
+  const addExerciseRef = useRef<HTMLDivElement>(null);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
@@ -542,6 +543,15 @@ export default function LiftingPage() {
     );
     return () => window.clearTimeout(timer);
   }, [showEditSession]);
+
+  useEffect(() => {
+    if (!showAddExercise) return;
+    const timer = window.setTimeout(
+      () => addExerciseRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+      60,
+    );
+    return () => window.clearTimeout(timer);
+  }, [showAddExercise]);
 
   // Previous same-focus session — the delta basis for the set ladder.
   const previousSession = useMemo(
@@ -999,6 +1009,11 @@ export default function LiftingPage() {
                 </div>
               )}
 
+              {/* Quick-add: next set for an existing exercise, sticky in view */}
+              <div className="mb-4">
+                <QuickAddSetBar session={sessionDetail} />
+              </div>
+
               {/* Set ladder — read-only review layer, separate from logging/editing */}
               {sessionDetail.sets && sessionDetail.sets.length > 0 && (
                 <div className="mb-4 rounded-lg border border-surface-light/50 p-3 sm:p-4">
@@ -1027,7 +1042,7 @@ export default function LiftingPage() {
 
               {/* Add Exercise Form */}
               {showAddExercise && (
-                <div className="mb-4">
+                <div ref={addExerciseRef} className="mb-4">
                   <AddExerciseForm
                     sessionId={selectedSessionId}
                     onDone={() => setShowAddExercise(false)}
@@ -1037,8 +1052,10 @@ export default function LiftingPage() {
 
               {/* Exercise Groups — action surface, collapsed under the ladder */}
               <details className="mt-2">
-                <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] font-medium text-muted hover:text-foreground">
+                <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 rounded-lg border border-accent/30 bg-accent/[0.06] px-3 text-[13px] font-medium text-accent hover:bg-accent/[0.1]">
+                  <Pencil className="h-4 w-4" aria-hidden />
                   Edit sets
+                  <span className="text-[12px] font-normal text-muted">weights, reps, RPE — expand</span>
                 </summary>
                 <div className="mt-3">
               {exerciseGroups.size > 0 ? (
@@ -1076,10 +1093,6 @@ export default function LiftingPage() {
               <SessionAiAnalysisCard sessionId={selectedSessionId} />
             </div>
 
-            {/* Quick-add: one-line set logging, sticky at the detail bottom */}
-            <div className="mt-6">
-              <QuickAddSetBar session={sessionDetail} />
-            </div>
             </div>
           ) : selectedSessionId && (sessionDetailLoading || !sessionDetailError) ? (
             <div className="space-y-3" aria-label="Loading session detail">
