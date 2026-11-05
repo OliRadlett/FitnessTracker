@@ -59,6 +59,28 @@ class CourseDetail(CourseSummary):
     activities: list[CourseActivityRead] = []
 
 
+class CourseSuggestion(BaseModel):
+    """A review-tier pair from the cached similarity graph.
+
+    ``*_course_id`` is null when a route is uncoursed; the UI can still show
+    the pair, but cannot merge courses until both sides have a course.
+    """
+
+    route_a_id: uuid.UUID
+    route_a_name: str
+    route_a_course_id: uuid.UUID | None = None
+    route_a_distance_meters: float
+    route_a_preview_polyline: str | None = None
+    route_b_id: uuid.UUID
+    route_b_name: str
+    route_b_course_id: uuid.UUID | None = None
+    route_b_distance_meters: float
+    route_b_preview_polyline: str | None = None
+    score: float
+    tier: str
+    breakdown: dict | None = None
+
+
 class CourseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=500)
     sport_type: str = "cycling"

@@ -108,6 +108,81 @@ class TestCourseGrouping:
         assert resp.status_code == 404
 
 
+class TestCourseSuggestions:
+    async def test_suggestion_pair_and_disappears_after_merge(
+        self, client, db_session, test_user, test_route, test_route_with_surface
+    ):
+        from app.models.route import RouteSimilarity
+
+        a = await client.post(
+            "/api/v1/courses",
+            json={"name": "A", "route_ids": [str(test_route.id)]},
+        )
+        b = await client.post(
+            "/api/v1/courses",
+            json={"name": "B", "route_ids": [str(test_route_with_surface.id)]},
+        )
+        db_session.add(
+            RouteSimilarity(
+                user_id=test_user.id,
+                route_a_id=test_route.id,
+                route_b_id=test_route_with_surface.id,
+                score=0.7,
+                tier="review",
+                breakdown={"min_coverage": 0.9},
+            )
+        )
+        await db_session.flush()
+
+        resp = await client.get("/api/v1/courses/suggestions")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data) == 1
+        assert data[0]["route_a_course_id"] == a.json()["id"]
+        assert data[0]["route_b_course_id"] == b.json()["id"]
+
+        # Merging the two courses makes the pair a non-suggestion.
+        await client.post(f"/api/v1/courses/{a.json()['id']}/merge/{b.json()['id']}")
+        after = await client.get("/api/v1/courses/suggestions")
+        assert after.status_code == 200
+        assert after.json() == []
+
+    async def test_same_course_pair_is_not_a_suggestion(
+        self, client, db_session, test_user, test_route, test_route_with_surface
+    ):
+        from app.models.route import RouteSimilarity
+
+        created = await client.post(
+            "/api/v1/courses",
+            json={
+                "name": "Same",
+                "route_ids": [str(test_route.id), str(test_route_with_surface.id)],
+            },
+        )
+        assert created.status_code == 201
+        db_session.add(
+            RouteSimilarity(
+                user_id=test_user.id,
+                route_a_id=test_route.id,
+                route_b_id=test_route_with_surface.id,
+                score=0.7,
+                tier="review",
+                breakdown={},
+            )
+        )
+        await db_session.flush()
+
+        resp = await client.get("/api/v1/courses/suggestions")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    async def test_suggestions_static_path_is_not_a_course_id(self, client):
+        # `suggestions` must be registered before `/{course_id}` (pitfall 13).
+        resp = await client.get("/api/v1/courses/suggestions")
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+
 class TestCourseMerge:
     async def test_merge_moves_routes_and_deletes_empty_source(
         self, client, db_session, test_route, test_route_with_surface

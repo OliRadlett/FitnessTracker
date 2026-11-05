@@ -3,6 +3,7 @@ import type {
   CourseCreatePayload,
   CourseDetail,
   CourseRoute,
+  CourseSuggestion,
   CourseSummary,
   RideLinkResult,
 } from './types';
@@ -17,6 +18,17 @@ export async function getCourse(id: string, token?: string): Promise<CourseDetai
 
 export async function getUncoursedRoutes(token?: string): Promise<CourseRoute[]> {
   return apiFetch<CourseRoute[]>('/api/v1/courses/uncoursed', {}, token);
+}
+
+export async function getCourseSuggestions(
+  token?: string,
+  limit = 20,
+): Promise<CourseSuggestion[]> {
+  return apiFetch<CourseSuggestion[]>(
+    `/api/v1/courses/suggestions?limit=${limit}`,
+    {},
+    token,
+  );
 }
 
 export async function createCourse(

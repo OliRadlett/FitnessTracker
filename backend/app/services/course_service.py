@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models.activity import Activity
-from app.models.route import Course, CourseLinkLog, Route
+from app.models.route import Course, CourseLinkLog, Route, RouteSimilarity
 from app.services.polyline_utils import preview_polyline
 
 
@@ -237,6 +237,84 @@ async def list_uncoursed_routes(
         )
         for route in routes
     ]
+
+
+async def list_suggestions(
+    db: AsyncSession, user_id: uuid.UUID, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Review-tier course pair suggestions from the cached similarity graph.
+
+    The cache is already ordered by score; this only filters out pairs that are
+    already in one course (a successful merge) and dedupes two route pairs that
+    map to the same two courses. Nothing is auto-merged: the UI asks the user.
+    """
+    rows = (
+        (
+            await db.execute(
+                select(RouteSimilarity)
+                .where(RouteSimilarity.user_id == user_id)
+                .order_by(RouteSimilarity.score.desc())
+                .limit(max(limit * 3, limit))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    if not rows:
+        return []
+
+    route_ids = {r.route_a_id for r in rows} | {r.route_b_id for r in rows}
+    routes = (
+        (
+            await db.execute(
+                select(Route).where(
+                    Route.id.in_(route_ids),
+                    Route.user_id == user_id,
+                    Route.quarantined_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {route.id: route for route in routes}
+
+    out: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    for row in rows:
+        a = by_id.get(row.route_a_id)
+        b = by_id.get(row.route_b_id)
+        if a is None or b is None:
+            continue
+        if a.course_id is not None and a.course_id == b.course_id:
+            continue
+        if a.course_id is not None and b.course_id is not None:
+            key = ("course", *sorted((str(a.course_id), str(b.course_id))))
+        else:
+            key = ("route", *sorted((str(a.id), str(b.id))))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(
+            {
+                "route_a_id": a.id,
+                "route_a_name": a.name,
+                "route_a_course_id": a.course_id,
+                "route_a_distance_meters": a.distance_meters,
+                "route_a_preview_polyline": preview_polyline(a.encoded_polyline),
+                "route_b_id": b.id,
+                "route_b_name": b.name,
+                "route_b_course_id": b.course_id,
+                "route_b_distance_meters": b.distance_meters,
+                "route_b_preview_polyline": preview_polyline(b.encoded_polyline),
+                "score": row.score,
+                "tier": row.tier,
+                "breakdown": row.breakdown,
+            }
+        )
+        if len(out) >= limit:
+            break
+    return out
 
 
 async def _log_link(

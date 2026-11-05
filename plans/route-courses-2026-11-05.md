@@ -2,7 +2,8 @@
 
 > Status: **migrations 107 + 108, course service/API and the `/courses` surface
 > implemented on `feature/route-courses`; not deployed.** The API is
-> `GET/POST /api/v1/courses`, `GET /uncoursed`, group/ungroup under
+> `GET/POST /api/v1/courses`, `GET /uncoursed`, `GET /suggestions` (review-tier
+> pairs from `route_similarity`), group/ungroup under
 > `/{course_id}/routes/{route_id}`, merge `/{target_id}/merge/{source_id}`, and
 > confirm/reject at `/ride-links/{activity_id}/...`. The UI is `frontend/src/app/(app)/courses/`
 > (nav: More → Courses). This plan is the production hand-off for the

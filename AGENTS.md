@@ -268,7 +268,8 @@ ride→route link is backfilled **`suggested` + `legacy`** because those links
 came from the WIP matcher. Course history/PRs must read `confirmed` only.
 Grouping is an `UPDATE routes SET course_id`, not a merge; `merge_routes` stays
 for identical variants. The API is `/api/v1/courses` (`GET/POST /`, `GET
-/uncoursed`, group/ungroup under `/{course_id}/routes/{route_id}`, merge
+/uncoursed`, `GET /suggestions` (review-tier pairs from `route_similarity`),
+group/ungroup under `/{course_id}/routes/{route_id}`, merge
 `/{target_id}/merge/{source_id}`, confirm/reject at `/ride-links/{activity_id}/...`);
 the UI is `/courses` (More → Courses),
 built on `lib/api/courses.ts`. The 86-route investigation (11 cached pairs,

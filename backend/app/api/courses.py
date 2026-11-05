@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -19,6 +19,7 @@ from app.schemas.course import (
     CourseCreate,
     CourseDetail,
     CourseRouteRead,
+    CourseSuggestion,
     CourseSummary,
     RideLinkResult,
 )
@@ -70,6 +71,20 @@ async def list_uncoursed_routes(
     segment and would otherwise be claimed by the dynamic route (pitfall 13).
     """
     return await course_service.list_uncoursed_routes(db, current_user.id)
+
+
+@router.get("/suggestions", response_model=list[CourseSuggestion])
+async def list_course_suggestions(
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Review-tier course pairs from the cached similarity graph.
+
+    Registered before ``GET /{course_id}`` for the same reason as
+    ``/uncoursed`` (single static segment, pitfall 13). Nothing is auto-merged.
+    """
+    return await course_service.list_suggestions(db, current_user.id, limit)
 
 
 @router.get("/{course_id}", response_model=CourseDetail)

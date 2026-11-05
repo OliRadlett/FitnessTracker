@@ -17,6 +17,7 @@ import {
   confirmRideLink,
   createCourse,
   getCourse,
+  getCourseSuggestions,
   getCourses,
   getUncoursedRoutes,
   groupRoute,
@@ -24,7 +25,13 @@ import {
   rejectRideLink,
   ungroupRoute,
 } from '@/lib/api/courses';
-import type { CourseActivity, CourseDetail, CourseRoute, CourseSummary } from '@/lib/api/types';
+import type {
+  CourseActivity,
+  CourseDetail,
+  CourseRoute,
+  CourseSuggestion,
+  CourseSummary,
+} from '@/lib/api/types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -39,6 +46,80 @@ function statusBadge(status: CourseActivity['route_link_status']) {
   if (status === 'confirmed') return <Badge variant="positive">Confirmed</Badge>;
   if (status === 'suggested') return <Badge variant="warning">Suggested</Badge>;
   return <Badge variant="muted">Rejected</Badge>;
+}
+
+function SuggestionCard({
+  suggestion,
+  onMerge,
+  busy,
+}: {
+  suggestion: CourseSuggestion;
+  onMerge: () => void;
+  busy: boolean;
+}) {
+  const canMerge =
+    !!suggestion.route_a_course_id &&
+    !!suggestion.route_b_course_id &&
+    suggestion.route_a_course_id !== suggestion.route_b_course_id;
+
+  return (
+    <div className="rounded-xl border border-surface-light/60 bg-surface p-3">
+      <div className="flex items-center justify-between gap-2">
+        <Badge variant="warning">
+          {Math.round(suggestion.score * 100)}% pair
+        </Badge>
+        <span className="text-[11px] uppercase tracking-wide text-muted">
+          {suggestion.tier}
+        </span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {[
+          {
+            shape: suggestion.route_a_preview_polyline,
+            name: suggestion.route_a_name,
+            distance: suggestion.route_a_distance_meters,
+          },
+          {
+            shape: suggestion.route_b_preview_polyline,
+            name: suggestion.route_b_name,
+            distance: suggestion.route_b_distance_meters,
+          },
+        ].map((side, index) => (
+          <div key={index} className="flex min-w-0 items-center gap-2">
+            <RouteShape
+              encoded={side.shape}
+              width={52}
+              height={38}
+              className="shrink-0 text-muted"
+              strokeWidth={2}
+              showEndpoints={false}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-xs text-foreground">{side.name}</p>
+              <p className="text-[11px] text-muted">{formatKm(side.distance)}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-muted">
+          {canMerge
+            ? 'Review-tier suggestion — nothing is merged automatically.'
+            : 'Both routes need a course before they can be merged.'}
+        </span>
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!canMerge}
+          loading={busy}
+          onClick={onMerge}
+          title={canMerge ? 'Merge the two courses, keeping every route' : undefined}
+        >
+          Merge into one course
+        </Button>
+      </div>
+    </div>
+  );
 }
 
 function CourseCard({
@@ -290,8 +371,11 @@ export default function CoursesPage() {
   const [selectedRouteIds, setSelectedRouteIds] = useState<Set<string>>(new Set());
   const [mergeSourceId, setMergeSourceId] = useState('');
   const [newCourseName, setNewCourseName] = useState('');
+  const [courseFilter, setCourseFilter] = useState('');
+  const [showAllCourses, setShowAllCourses] = useState(false);
   const [uncoursedFilter, setUncoursedFilter] = useState('');
   const [showAllUncoursed, setShowAllUncoursed] = useState(false);
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const [busyRouteId, setBusyRouteId] = useState<string | null>(null);
   const [busyActivityId, setBusyActivityId] = useState<string | null>(null);
 
@@ -305,9 +389,16 @@ export default function CoursesPage() {
     queryFn: () => getUncoursedRoutes(token),
     enabled: !!token,
   });
+  const suggestionsQuery = useQuery({
+    queryKey: ['course-suggestions'],
+    queryFn: () => getCourseSuggestions(token),
+    enabled: !!token,
+  });
 
   const courses = coursesQuery.data ?? [];
   const uncoursed = uncoursedQuery.data ?? [];
+  const suggestions = suggestionsQuery.data ?? [];
+  const visibleSuggestions = showAllSuggestions ? suggestions : suggestions.slice(0, 6);
   const filteredUncoursed = useMemo(() => {
     const query = uncoursedFilter.trim().toLowerCase();
     if (!query) return uncoursed;
@@ -316,6 +407,14 @@ export default function CoursesPage() {
   const visibleUncoursed = showAllUncoursed
     ? filteredUncoursed
     : filteredUncoursed.slice(0, 18);
+  const filteredCourses = useMemo(() => {
+    const query = courseFilter.trim().toLowerCase();
+    if (!query) return courses;
+    return courses.filter((course) => course.name.toLowerCase().includes(query));
+  }, [courseFilter, courses]);
+  const visibleCourses = showAllCourses
+    ? filteredCourses
+    : filteredCourses.slice(0, 12);
   const activeCourse = useMemo(
     () => courses.find((c) => c.id === selectedCourseId) ?? courses[0] ?? null,
     [courses, selectedCourseId],
@@ -330,6 +429,7 @@ export default function CoursesPage() {
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['courses'] });
     queryClient.invalidateQueries({ queryKey: ['course'] });
+    queryClient.invalidateQueries({ queryKey: ['course-suggestions'] });
   };
 
   const createMutation = useMutation({
@@ -477,11 +577,94 @@ export default function CoursesPage() {
         message="Courses failed to load."
       />
 
+      <section aria-label="Suggested course groups" className="mb-5">
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              Suggested course groups
+            </h2>
+            <p className="text-xs text-muted">
+              Review-tier pairs from the cached similarity graph. Nothing is merged
+              automatically.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Badge variant="muted">{suggestions.length} suggestions</Badge>
+            {suggestions.length > 6 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowAllSuggestions((v) => !v)}
+              >
+                {showAllSuggestions ? 'Show fewer' : `Show all ${suggestions.length}`}
+              </Button>
+            )}
+          </div>
+        </div>
+        {suggestionsQuery.isLoading ? (
+          <Card className="p-4">
+            <p className="text-sm text-muted">Loading suggestions…</p>
+          </Card>
+        ) : suggestions.length === 0 ? (
+          <Card className="p-4">
+            <p className="text-sm text-muted">
+              No similarity pairs waiting for review. Run the duplicate scan on Routes
+              if the library has changed.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid gap-2 md:grid-cols-2">
+            {visibleSuggestions.map((suggestion) => (
+              <SuggestionCard
+                key={`${suggestion.route_a_id}-${suggestion.route_b_id}`}
+                suggestion={suggestion}
+                busy={
+                  mergeMutation.isPending &&
+                  mergeMutation.variables?.sourceId === suggestion.route_b_course_id
+                }
+                onMerge={() => {
+                  if (
+                    !suggestion.route_a_course_id ||
+                    !suggestion.route_b_course_id
+                  ) {
+                    return;
+                  }
+                  mergeMutation.mutate({
+                    targetId: suggestion.route_a_course_id,
+                    sourceId: suggestion.route_b_course_id,
+                  });
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <section aria-label="Courses">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
             <h2 className="text-sm font-semibold text-foreground">Your courses</h2>
-            <span className="text-xs text-muted">{courses.length}</span>
+            <div className="flex items-center gap-2">
+              <input
+                value={courseFilter}
+                onChange={(e) => setCourseFilter(e.target.value)}
+                placeholder="Filter courses…"
+                className="h-9 w-40 rounded-lg border border-surface-light/60 bg-background px-3 text-xs text-foreground outline-none focus:border-accent"
+                aria-label="Filter courses"
+              />
+              <span className="text-xs text-muted">
+                {filteredCourses.length} of {courses.length}
+              </span>
+              {filteredCourses.length > 12 && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowAllCourses((v) => !v)}
+                >
+                  {showAllCourses ? 'Show fewer' : `Show all ${filteredCourses.length}`}
+                </Button>
+              )}
+            </div>
           </div>
           {coursesQuery.isLoading ? (
             <Card className="p-4">
@@ -493,9 +676,15 @@ export default function CoursesPage() {
               title="No courses yet"
               description="Group routes from the uncoursed list below into your first course."
             />
+          ) : filteredCourses.length === 0 ? (
+            <Card className="p-4">
+              <p className="text-sm text-muted">
+                No courses match “{courseFilter}”.
+              </p>
+            </Card>
           ) : (
             <div className="space-y-2">
-              {courses.map((course) => (
+              {visibleCourses.map((course) => (
                 <CourseCard
                   key={course.id}
                   course={course}

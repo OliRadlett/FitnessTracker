@@ -47,6 +47,22 @@ export interface CourseDetail extends CourseSummary {
   activities: CourseActivity[];
 }
 
+export interface CourseSuggestion {
+  route_a_id: string;
+  route_a_name: string;
+  route_a_course_id: string | null;
+  route_a_distance_meters: number;
+  route_a_preview_polyline: string | null;
+  route_b_id: string;
+  route_b_name: string;
+  route_b_course_id: string | null;
+  route_b_distance_meters: number;
+  route_b_preview_polyline: string | null;
+  score: number;
+  tier: string;
+  breakdown: Record<string, unknown> | null;
+}
+
 export interface CourseCreatePayload {
   name: string;
   sport_type?: string;
