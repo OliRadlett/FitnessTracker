@@ -180,6 +180,7 @@ def _match_routes_road_modal(
         from road_graph import (  # type: ignore
             RoadEdge,
             RoadGraph,
+            edges_from_tuples,
             haversine_distance,
             snap_polyline,
         )
@@ -187,6 +188,7 @@ def _match_routes_road_modal(
         from app.services.road_graph import (  # type: ignore
             RoadEdge,
             RoadGraph,
+            edges_from_tuples,
             haversine_distance,
             snap_polyline,
         )
@@ -221,21 +223,7 @@ def _match_routes_road_modal(
     if pbf_path is not None:
         # bbox-filtered at parse time — much lighter than a whole-cache JSON load.
         raw = _build_edges_from_pbf(pbf_path, bbox)
-        edges = [
-            RoadEdge(
-                key=k,
-                u=u,
-                v=v,
-                polyline=pts,
-                length_m=sum(
-                    haversine_distance(pts[i - 1][0], pts[i - 1][1], pts[i][0], pts[i][1])
-                    for i in range(1, len(pts))
-                ),
-                name=nm,
-                highway=hw,
-            )
-            for (k, u, v, pts, nm, hw) in raw
-        ]
+        edges = edges_from_tuples(raw)
     elif os.path.exists(geojson_path):
         try:
             from road_graph import roads_from_geojson  # type: ignore
