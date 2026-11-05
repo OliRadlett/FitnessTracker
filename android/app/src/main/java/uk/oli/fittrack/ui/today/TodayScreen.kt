@@ -124,29 +124,30 @@ fun TodayScreen(
             if (mode == 0) {
                 PlanCard(active, session, lastSet, now, onEditPlan)
 
-            if (history.isEmpty() && session == null) {
-                Spacer(Modifier.height(12.dp))
-                Text("Nothing logged yet today.", fontSize = 13.sp, color = Tokens.Muted)
-            } else if (history.isNotEmpty()) {
-                Spacer(Modifier.height(22.dp))
-                WeekStrip(strip, weekVolume)
-            }
-
-            if (!signedIn) {
-                Spacer(Modifier.height(18.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onSignIn() }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Not signed in", fontSize = 13.sp, color = Tokens.Muted)
-                    Spacer(Modifier.weight(1f))
-                    Text("Sign in →", fontSize = 13.sp, color = Tokens.Accent)
+                // Above the week strip on purpose: at 360dp this row landed ~4dp
+                // below the fold, so the only prompt to sign in was invisible
+                // without scrolling. Found on a real OnePlus at 360x804dp.
+                if (!signedIn) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { onSignIn() }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Not signed in", fontSize = 13.sp, color = Tokens.Muted)
+                        Spacer(Modifier.weight(1f))
+                        Text("Sign in →", fontSize = 13.sp, color = Tokens.Accent)
+                    }
                 }
-            }
+
+                if (history.isEmpty() && session == null) {
+                    Text("Nothing logged yet today.", fontSize = 13.sp, color = Tokens.Muted)
+                } else if (history.isNotEmpty()) {
+                    Spacer(Modifier.height(18.dp))
+                    WeekStrip(strip, weekVolume)
+                }
             } else {
                 LogScreen(history, onOpenSession)
             }
