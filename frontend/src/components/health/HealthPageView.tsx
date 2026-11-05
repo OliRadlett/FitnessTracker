@@ -680,10 +680,10 @@ function WeightCard({ vm }: { vm: HealthViewModel }) {
               <p className="mt-1 text-xs text-muted">{avg ? `7-day avg ${avg.weight_kg.toFixed(1)} kg` : 'No rolling average yet'}</p>
             </>
           ) : (
-            <p className="mt-2 text-sm text-muted">No weigh-ins yet. Log one on the Cycling page.</p>
+            <p className="mt-2 text-sm text-muted">No weigh-ins yet. Log one in Settings.</p>
           )}
         </div>
-        <a href="/fittrack/cycling" className="inline-flex min-h-[44px] items-center gap-1 text-xs font-medium text-accent hover:text-accent-hover">
+        <a href="/fittrack/settings" className="inline-flex min-h-[44px] items-center gap-1 text-xs font-medium text-accent hover:text-accent-hover">
           Manage weigh-ins <ArrowRight className="h-3.5 w-3.5" />
         </a>
       </div>
