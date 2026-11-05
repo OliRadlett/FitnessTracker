@@ -21,6 +21,7 @@ from app.services.big3 import canonical_big3_bucket, canonical_big3_total
 from app.services.cycling import (
     CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
+    VO2_CLASS_SCOPE,
     _classify_decoupling,
     _classify_vo2max,
     compute_decoupling_history,
@@ -2124,9 +2125,9 @@ class ChartService:
 
         # Generate insights
         insights = []
-        # F6: classifications are general-population bands, not
-        # age/sex-adjusted — say so wherever the label is shown.
-        scope_note = "Bands are general-population references, not age/sex-adjusted."
+        # F6: use the single scope label, so the chart copy cannot drift from
+        # the classifier (it previously called these general-population bands).
+        scope_note = f"Bands: {VO2_CLASS_SCOPE}."
         if len(vo2_values) >= 2:
             first = vo2_values[0]
             latest = vo2_values[-1]
