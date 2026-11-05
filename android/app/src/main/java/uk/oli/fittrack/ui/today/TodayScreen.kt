@@ -2,6 +2,8 @@ package uk.oli.fittrack.ui.today
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +18,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -35,6 +41,7 @@ import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.NavKind
 import uk.oli.fittrack.ui.PrimaryButton
 import uk.oli.fittrack.ui.formatWeight
+import uk.oli.fittrack.ui.log.LogScreen
 import uk.oli.fittrack.ui.theme.Tokens
 import java.time.Instant
 import java.time.LocalDate
@@ -54,6 +61,7 @@ fun TodayScreen(
     session: SessionState?,
     signedIn: Boolean,
     history: List<FinishedSession>,
+    onOpenSession: (String) -> Unit,
     onSignIn: () -> Unit,
     onStart: () -> Unit,
     onResume: () -> Unit,
@@ -61,6 +69,9 @@ fun TodayScreen(
 ) {
     val plan = session?.plan ?: uk.oli.fittrack.data.SeedPlan.pushDay
     val now = remember { System.currentTimeMillis() }
+    // 0 = the session in front of you, 1 = the log. Log nests under Today
+    // because "what did I do" is a view of time, and Today owns time.
+    var mode by rememberSaveable { mutableIntStateOf(0) }
     val dateLabel = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.UK))
             .uppercase(Locale.UK)
@@ -79,7 +90,12 @@ fun TodayScreen(
             .background(Tokens.Bg)
             .statusBarsPadding()
     ) {
-        Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+        ) {
             Spacer(Modifier.height(18.dp))
             Text(
                 dateLabel,
@@ -90,13 +106,20 @@ fun TodayScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                if (session != null) "In progress." else "${plan.title}.",
+                when {
+                    mode == 1 -> "Your log."
+                    session != null -> "In progress."
+                    else -> "${plan.title}."
+                },
                 fontSize = 30.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Tokens.Fg
             )
-            Spacer(Modifier.height(22.dp))
-            PlanCard(plan, session, lastSet, now)
+            Spacer(Modifier.height(16.dp))
+            ModePills(mode) { mode = it }
+            Spacer(Modifier.height(20.dp))
+            if (mode == 0) {
+                PlanCard(plan, session, lastSet, now)
 
             if (history.isEmpty() && session == null) {
                 Spacer(Modifier.height(12.dp))
@@ -121,16 +144,44 @@ fun TodayScreen(
                     Text("Sign in →", fontSize = 13.sp, color = Tokens.Accent)
                 }
             }
-            Spacer(Modifier.weight(1f))
-        }
-        BottomAction {
-            if (session != null) {
-                PrimaryButton("Resume session", onResume)
             } else {
-                PrimaryButton("Start session", onStart)
+                LogScreen(history, onOpenSession)
+            }
+            Spacer(Modifier.height(20.dp))
+        }
+        if (mode == 0) {
+            BottomAction {
+                if (session != null) {
+                    PrimaryButton("Resume session", onResume)
+                } else {
+                    PrimaryButton("Start session", onStart)
+                }
             }
         }
         BottomNav(NavKind.Today, onTab)
+    }
+}
+
+@Composable
+private fun ModePills(mode: Int, onSelect: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("Today", "Log").forEachIndexed { index, label ->
+            val selected = index == mode
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (selected) Tokens.Accent.copy(alpha = 0.14f) else Tokens.Surface)
+                    .clickable { onSelect(index) }
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    label,
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) Tokens.Accent else Tokens.Muted
+                )
+            }
+        }
     }
 }
 
