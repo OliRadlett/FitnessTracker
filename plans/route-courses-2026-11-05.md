@@ -138,6 +138,23 @@ Non-destructive group/ungroup audit: `user_id`, `course_id`, `route_id`,
 6. **Follow-up (separate):** course API, grouping review UI, confirmed-link
    review, course history/PRs.
 
+## 6b. Matcher follow-up — start-invariant loops
+
+The course suggestions exposed the matcher ceiling from the investigation:
+discrete Fréchet is index-aligned, so a loop recorded from a different point
+lost its shape score. Fixed in `services/route_matching.py`:
+
+- `_align_loop_start()` rotates a loop candidate onto the reference loop's start
+  (nearest of three candidates) before Fréchet; point-to-point is untouched.
+- `_endpoint_similarity()` returns 1.0 for loop-vs-loop, because a loop's start
+  is arbitrary. Point-to-point still requires both ends to converge.
+
+The real 54.1 km loop now scores 0.960/auto at 5% and 10% offsets and 0.946/auto
+at 25%, versus 0.645/0.600/0.600. Reversed loops are still rejected. The 11
+cached pairs remain review-band because they are different variants sharing
+roads, not exact rotations; precision did not regress. This changes scores only
+after the similarity cache is rebuilt.
+
 ## 7. Quality gate
 
 - `alembic upgrade head` then `downgrade 106` then `upgrade head` on a
