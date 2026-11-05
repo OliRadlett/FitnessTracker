@@ -145,6 +145,7 @@ export default function LiftingPage() {
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showEditSession, setShowEditSession] = useState(false);
   const editFormRef = useRef<HTMLDivElement>(null);
+  const addExerciseRef = useRef<HTMLDivElement>(null);
   const [confirmDeleteSession, setConfirmDeleteSession] = useState(false);
   const [selectedPRId, setSelectedPRId] = useState<string | null>(null);
   const [linkModalSessionId, setLinkModalSessionId] = useState<string | null>(null);
@@ -542,6 +543,15 @@ export default function LiftingPage() {
     );
     return () => window.clearTimeout(timer);
   }, [showEditSession]);
+
+  useEffect(() => {
+    if (!showAddExercise) return;
+    const timer = window.setTimeout(
+      () => addExerciseRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' }),
+      60,
+    );
+    return () => window.clearTimeout(timer);
+  }, [showAddExercise]);
 
   // Previous same-focus session — the delta basis for the set ladder.
   const previousSession = useMemo(
@@ -1027,7 +1037,7 @@ export default function LiftingPage() {
 
               {/* Add Exercise Form */}
               {showAddExercise && (
-                <div className="mb-4">
+                <div ref={addExerciseRef} className="mb-4">
                   <AddExerciseForm
                     sessionId={selectedSessionId}
                     onDone={() => setShowAddExercise(false)}

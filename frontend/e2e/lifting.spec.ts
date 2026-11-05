@@ -112,6 +112,23 @@ test.describe('Lifting Page', () => {
     await expect(addExerciseBtn).toBeVisible();
   });
 
+  test('save exercise posts the set and closes the form', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForTimeout(1000);
+    await page.getByRole('button', { name: /Add Exercise/i }).click();
+    const form = page.locator('form').filter({ has: page.getByRole('button', { name: /Save Exercise/i }) });
+    await form.locator('input[type="text"]').first().fill('Back Squat');
+    const numbers = form.locator('input[type="number"]');
+    await numbers.nth(0).fill('100');
+    await numbers.nth(1).fill('5');
+    const post = page.waitForRequest(
+      (req) => req.method() === 'POST' && req.url().includes('/sets'),
+    );
+    await form.getByRole('button', { name: /Save Exercise/i }).click();
+    await post;
+    await expect(form).toHaveCount(0);
+  });
+
   test('edit panel opens at the top of the detail and saves on blur', async ({ authenticatedPage: page }) => {
     await page.goto('/fittrack/lifting?tab=sessions');
     await page.waitForLoadState('networkidle');
