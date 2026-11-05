@@ -27,6 +27,12 @@ SURFACE_ALIASES = {
     "cobblestone": "cobblestone",
     "cobbles": "cobblestone",
     "sett": "cobblestone",
+    "stone": "cobblestone",
+    "unhewn_cobblestone": "cobblestone",
+    "paving_stones": "paved",
+    "brick": "paved",
+    "brick_paving": "paved",
+    "flexipave": "paved",
     "sand": "sand",
 }
 

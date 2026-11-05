@@ -87,3 +87,13 @@ def test_surface_mix_maps_onto_the_app_vocabulary():
     }
     assert clean_surface_type("sb#asphalt") == "paved"
     assert clean_surface_type("wt#cycleway") is None
+
+
+def test_osm_paving_names_collapse_onto_the_vocabulary():
+    assert clean_surface_type("paving_stones") == "paved"
+    assert clean_surface_type("brick") == "paved"
+    assert clean_surface_type("flexipave") == "paved"
+    assert clean_surface_type("stone") == "cobblestone"
+    assert clean_surface_type("unhewn_cobblestone") == "cobblestone"
+    # Unknown-but-real names survive rather than being mislabelled.
+    assert clean_surface_type("wood") == "wood"
