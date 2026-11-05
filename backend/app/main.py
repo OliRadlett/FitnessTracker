@@ -230,6 +230,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.deficiency import router as deficiency_router
 from app.api.events import router as events_router
 from app.api.export import router as export_router
+from app.api.gear import router as gear_router
 from app.api.goals import router as goals_router
 from app.api.health_events import router as health_events_router
 from app.api.lifting import router as lifting_router
@@ -270,6 +271,7 @@ app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(cycling_router, prefix="/api/v1/cycling", tags=["cycling"])
 app.include_router(segments_router, prefix="/api/v1/segments", tags=["segments"])
 app.include_router(export_router, prefix="/api/v1/export", tags=["export"])
+app.include_router(gear_router, prefix="/api/v1/gear", tags=["gear"])
 app.include_router(metrics_router, prefix="/api/v1/metrics", tags=["metrics"])
 app.include_router(health_events_router, prefix="/api/v1", tags=["metrics"])
 app.include_router(

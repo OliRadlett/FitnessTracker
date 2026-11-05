@@ -14,7 +14,45 @@ settings = get_settings()
 
 STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
+STRAVA_REVOKE_URL = "https://www.strava.com/oauth/revoke"
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
+
+# Streams requested by default. ``keys`` is comma-separated, so adding a type
+# costs **no extra API call** — only payload bytes. That changes the usual
+# trade-off: the question is not "is this worth a request?" but "is this worth
+# storing?".
+#
+# ``latlng`` earns its place twice over. ``services/replay.py`` reads it: without
+# it every Strava ride falls back to interpolating the route polyline, which
+# resamples a *shape* — losing switchbacks, and any part of the ride that left the
+# matched route. And climb matching needs a sample-level trace: the summary
+# polyline is too coarse to recover a 1 km climb on a 100 km ride (an experiment
+# recovered only 9 of 38 known efforts from it).
+#
+# Deliberately absent: ``temp`` and ``grade_smooth``. Neither has a consumer in
+# this codebase (FIT imports store a ``temperature`` stream and nothing reads
+# it), so asking for them would add two more stored-but-never-read streams. The
+# order to do those in is: write the reader, then add the key.
+DEFAULT_STREAM_TYPES = (
+    "time",
+    "heartrate",
+    "watts",
+    "cadence",
+    "altitude",
+    "velocity_smooth",
+    "distance",
+    "latlng",
+)
+
+
+def stream_keys(stream_types: list[str] | None = None) -> str:
+    """Comma-separated ``keys`` for a streams request.
+
+    Falls back to :data:`DEFAULT_STREAM_TYPES`; an explicit list replaces it
+    entirely (the endpoint has no additive mode).
+    """
+    return ",".join(stream_types or DEFAULT_STREAM_TYPES)
+
 
 
 class StravaClient:
@@ -69,6 +107,24 @@ class StravaClient:
                 return resp.json()
 
         return await retry_request(_fetch)
+
+    async def revoke_token(self, access_token: str) -> None:
+        """Revoke this app's grant for the athlete.
+
+        Called when a user disconnects, so FitTrack disappears from their Strava
+        settings instead of lingering as an authorised app. The endpoint takes
+        the access token in the form body; no client secret is required.
+        """
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    STRAVA_REVOKE_URL,
+                    data={"access_token": access_token},
+                )
+                resp.raise_for_status()
+
+        await retry_request(_fetch)
 
     async def get_activities(
         self,
@@ -126,24 +182,12 @@ class StravaClient:
         the window can miss the alignment tolerance entirely. Older activities
         already synced don't have it — every consumer falls back to
         integrating velocity.
-        """
-        if stream_types is None:
-            stream_types = [
-                "time",
-                "heartrate",
-                "watts",
-                "cadence",
-                "altitude",
-                "velocity_smooth",
-                "distance",
-                # Full sample-level GPS. The summary polyline is too coarse to
-                # match a 1 km climb on a 100 km ride (the experiment recovered
-                # only 9/38 known efforts from it), so future rides must carry
-                # the trace itself. Existing rides need a backfill.
-                "latlng",
-            ]
 
-        keys = ",".join(stream_types)
+        ``latlng`` is included by default (see ``DEFAULT_STREAM_TYPES``) so
+        replay uses the recorded GPS instead of resampling the route shape, and
+        so segment matching has a sample-level trace to align against.
+        """
+        keys = stream_keys(stream_types)
 
         async def _fetch():
             async with httpx.AsyncClient(timeout=30) as client:
@@ -155,6 +199,28 @@ class StravaClient:
                 resp.raise_for_status()
                 streams = resp.json()
                 return {s["type"]: s for s in streams}
+
+        return await retry_request(_fetch)
+
+    async def get_gear(self, access_token: str, gear_id: str) -> dict:
+        """Fetch one gear item.
+
+        Returns ``id``, ``name`` (brand + model + nickname), ``brand_name``,
+        ``model_name``, ``frame_type`` (1 MTB, 2 CX, 3 road, 4 TT — bikes only),
+        ``primary`` and ``distance`` in **metres**, which is the provider's
+        lifetime total for that item and therefore the only wear signal Strava
+        exposes. There is no create/update/retire endpoint; gear is managed in the
+        Strava UI.
+        """
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.get(
+                    f"{STRAVA_API_BASE}/gear/{gear_id}",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+                return resp.json()
 
         return await retry_request(_fetch)
 

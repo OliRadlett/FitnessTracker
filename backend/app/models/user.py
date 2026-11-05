@@ -93,6 +93,9 @@ class User(Base):
     weight_logs: Mapped[list["WeightLog"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]
+    gear: Mapped[list["Gear"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )  # type: ignore[name-defined]
     goals: Mapped[list["Goal"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )  # type: ignore[name-defined]

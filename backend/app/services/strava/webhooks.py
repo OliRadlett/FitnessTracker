@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.strava_client import strava_client
 from app.models.activity import Activity, ActivitySource, ActivityStream
 from app.models.user import OAuthConnection
+from app.services.power_provenance import from_strava_payload
 from app.services.sport_filter import is_allowed_sport
 from app.services.strava.linking import link_activity_to_lifting_sessions
 from app.services.strava.sync import (
@@ -24,6 +25,29 @@ from app.services.strava.sync import (
 logger = logging.getLogger(__name__)
 
 
+def is_athlete_deauthorization(
+    object_type: str, aspect_type: str, updates: dict | None
+) -> bool:
+    """True when a Strava webhook reports that the athlete revoked our access.
+
+    Strava announces it as ``object_type=athlete`` with
+    ``updates={"authorized": "false"}`` — note the *string*, not a boolean — and
+    the reference also allows ``aspect_type=delete`` for the same event. Both
+    count. A plain athlete ``update`` (profile fields) does not, which is why this
+    is a predicate rather than a comment on the handler.
+    """
+    if object_type != "athlete":
+        return False
+    if aspect_type not in ("update", "delete"):
+        return False
+    authorized = (updates or {}).get("authorized")
+    if authorized is None:
+        # A delete carries no `updates`; there is no other meaning for lopping
+        # off an athlete object, so treat it as a revocation.
+        return aspect_type == "delete"
+    return str(authorized).strip().lower() == "false"
+
+
 async def handle_strava_event(
     db: AsyncSession,
     object_type: str,
@@ -33,6 +57,10 @@ async def handle_strava_event(
     updates: dict | None = None,
 ) -> None:
     """Handle incoming Strava webhook events."""
+    if object_type == "athlete":
+        await _handle_athlete_event(db, owner_id, aspect_type, updates or {})
+        return
+
     if object_type != "activity":
         return
 
@@ -42,6 +70,53 @@ async def handle_strava_event(
         await _handle_activity_update(db, owner_id, object_id, updates or {})
     elif aspect_type == "delete":
         await _handle_activity_delete(db, owner_id, object_id)
+
+
+async def _handle_athlete_event(
+    db: AsyncSession, strava_athlete_id: int, aspect_type: str, updates: dict
+) -> None:
+    """Mark the connection needs_reauth when the athlete deauthorises the app.
+
+    Without this, a revocation is discovered by the next sync's 401: up to half an
+    hour later, as a failed sync in the logs, while the UI still shows the
+    connection as healthy. The athlete object is the only signal Strava gives, and
+    it carries no data — just the fact.
+
+    The row is *marked*, not deleted: the historical activities are still the
+    user's, and reconnecting the same athlete should resume where it left off. A
+    successful reconnect clears the state (`reset_connection_health`).
+    """
+    if not is_athlete_deauthorization("athlete", aspect_type, updates):
+        return
+
+    result = await db.execute(
+        select(OAuthConnection).where(
+            OAuthConnection.provider == "strava",
+            OAuthConnection.provider_user_id == str(strava_athlete_id),
+        )
+    )
+    connection = result.scalar_one_or_none()
+    if connection is None:
+        # Already disconnected on our side — nothing to mark, and not an error.
+        logger.info(
+            "Strava deauthorisation for athlete %s: no local connection",
+            strava_athlete_id,
+        )
+        return
+
+    from app.services.connection_health import mark_connection_reauth
+
+    await mark_connection_reauth(
+        db,
+        connection,
+        "Strava access was revoked in Strava's settings — reconnect to resume "
+        "syncing.",
+    )
+    logger.warning(
+        "Strava athlete %s revoked access; connection %s marked needs_reauth",
+        strava_athlete_id,
+        connection.id,
+    )
 
 
 async def _handle_activity_create(
@@ -113,6 +188,7 @@ async def _handle_activity_create(
             "average_heartrate": _safe_float(sa.get("average_heartrate")),
             "max_heartrate": _safe_float(sa.get("max_heartrate")),
             "average_power": _safe_float(sa.get("average_watts")),
+            "power_provenance": from_strava_payload(sa),
             "normalized_power": _safe_float(sa.get("weighted_average_watts")),
             "average_speed": _safe_float(sa.get("average_speed")),
             "average_cadence": _safe_float(sa.get("average_cadence")),

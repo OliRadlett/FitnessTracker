@@ -44,6 +44,15 @@ class Activity(Base):
         nullable=True,
         index=True,
     )
+    #: The physical bike/shoes this activity was recorded on, resolved from the
+    #: provider's ``gear_id`` (which was always in ``raw_data`` and unread).
+    #: SET NULL rather than CASCADE: retiring a gear must not delete rides.
+    gear_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("gear.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     source: Mapped[str] = mapped_column(
         String(50), nullable=False
     )  # strava, wahoo, manual (primary source)
@@ -81,6 +90,14 @@ class Activity(Base):
     # 'provider' = supplied by a sync provider payload, 'manual' = hand-entered.
     # NULL = unknown (rows predating this column; see migration 062 heuristic).
     tss_source: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # Whether the watts above were recorded or inferred: 'measured' (a device
+    # produced them — Strava device_watts=true, or a FIT import), 'estimated'
+    # (Strava inferred them from HR/speed/bodyweight when device_watts=false).
+    # NULL = unknown, and every consumer must fail open on it — see
+    # services/power_provenance.py for why NULL is not "estimated".
+    # Deliberately a separate axis from tss_source: a power-derived TSS can
+    # still record 'power' while the power underneath was estimated.
+    power_provenance: Mapped[str | None] = mapped_column(String(10), nullable=True)
     calories: Mapped[float | None] = mapped_column(Float, nullable=True)
     rpe: Mapped[float | None] = mapped_column(
         Float, nullable=True
@@ -134,6 +151,7 @@ class Activity(Base):
     # Relationships
     user: Mapped["User"] = relationship(back_populates="activities")  # type: ignore[name-defined]
     route: Mapped["Route | None"] = relationship(back_populates="activities")  # type: ignore[name-defined]
+    gear: Mapped["Gear | None"] = relationship(back_populates="activities")  # type: ignore[name-defined]
     streams: Mapped[list["ActivityStream"]] = relationship(
         back_populates="activity", cascade="all, delete-orphan"
     )

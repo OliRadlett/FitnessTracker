@@ -37,6 +37,10 @@ ENGINES = {
     "cross_domain",
     "projection",
     "session_mix",
+    # Environmental context (air quality + pollen). It explains a hard day
+    # rather than voting to rest — confidence is pinned low — but it is an
+    # engine, so it must appear even when it has nothing to say.
+    "environment",
 }
 
 

@@ -169,6 +169,9 @@ async def export_activities_csv(
             "tss",
             "tss_source",
             "calories",
+            # Appended rather than inserted: the header row is written, but a
+            # positional consumer reading this CSV should not shift columns.
+            "power_provenance",
         ]
     )
 
@@ -189,6 +192,7 @@ async def export_activities_csv(
                 a.tss or "",
                 a.tss_source or "",
                 a.calories or "",
+                a.power_provenance or "",
             ]
         )
 

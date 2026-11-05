@@ -83,6 +83,12 @@ class ActivityRead(ActivityBase):
     route_id: uuid.UUID | None = None
     route_name: str | None = None
     provider_activity_id: str | None = None
+    #: Whether the watts above were recorded or inferred: "measured" (a device
+    #: produced them) or "estimated" (Strava inferred them from HR/speed/weight).
+    #: NULL means unknown and must be read as *trusted*: only watts we have
+    #: positively identified as estimates are withheld. See
+    #: `app/services/power_provenance.py`.
+    power_provenance: str | None = None
     linked_lifting_session: LinkedLiftingSessionSummary | None = None
     encoded_polyline: str | None = None
     sources: list[ActivitySourceRead] = []

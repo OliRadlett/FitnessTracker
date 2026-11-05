@@ -41,7 +41,15 @@ async def disconnect(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Remove an OAuth connection."""
+    """Remove an OAuth connection, revoking the grant at the provider.
+
+    Deleting the row only stops *us*; the provider would still list FitTrack as an
+    authorised app. The revoke is best-effort — see
+    :func:`app.services.connection_revocation.revoke_grant` — so an unreachable
+    provider cannot strand a user who asked to disconnect. ``grant_revoked``
+    reports whether the provider confirmed, so the UI can tell the user to remove
+    the app by hand when it did not.
+    """
     result = await db.execute(
         select(OAuthConnection).where(
             OAuthConnection.id == connection_id,
@@ -52,8 +60,16 @@ async def disconnect(
     if not connection:
         raise HTTPException(status_code=404, detail="Connection not found")
 
+    from app.services.connection_revocation import revoke_grant
+
+    provider = connection.provider
+    revoked = await revoke_grant(connection)
+
     await db.delete(connection)
-    return {"detail": f"Disconnected from {connection.provider}"}
+    return {
+        "detail": f"Disconnected from {provider}",
+        "grant_revoked": revoked,
+    }
 
 
 @router.post("/{connection_id}/sync")

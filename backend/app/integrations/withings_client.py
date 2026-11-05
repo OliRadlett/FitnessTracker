@@ -17,11 +17,34 @@ Measurement type IDs:
     5   Fat Free Mass (kg)     — Body+, Body Smart, Body Comp, Body Scan
     6   Fat Ratio (%)          — Body+, Body Smart, Body Comp, Body Scan
     8   Fat Mass (kg)          — Body+, Body Smart, Body Comp, Body Scan
-    11  Heart Pulse (bpm)      — Body Cardio, Body Smart, Body Scan
+    9   Diastolic BP (mmHg)    — BPM Connect / BPM Core
+    10  Systolic BP (mmHg)     — BPM Connect / BPM Core
+    11  Heart Pulse (bpm)      — Body Cardio, Body Smart, Body Comp, Body Scan
+    12  Temperature (°C)       — Thermo
+    54  SpO2 (%)               — ScanWatch, BPM Core
+    71  Body Temperature (°C)  — Thermo
+    73  Skin Temperature (°C)  — Thermo
     76  Muscle Mass (kg)       — Body+, Body Smart, Body Comp, Body Scan
     77  Hydration (%)          — Body+, Body Smart, Body Comp, Body Scan
     88  Bone Mass (kg)         — Body+, Body Smart, Body Comp, Body Scan
+    91  Pulse Wave Velocity    — Body Cardio, Body Comp, Body Scan
+    123 VO2 max (ml/min/kg)    — Body Cardio
+    130 AFib result (ECG)      — Body Scan, ScanWatch
+    155 Vascular age (years)   — Body Comp, Body Scan
+    167 Nerve Health Score     — Body Comp, Body Scan
+    168 Extracellular Water    — Body Scan
+    169 Intracellular Water    — Body Scan
     170 Visceral Fat Index (—) — Body Smart, Body Comp, Body Scan
+    173-175 Segmental FFM/fat/muscle — Body Scan
+    196 Nerve Response Score   — Body Comp, Body Scan
+    226 BMR (kcal)             — Body Comp, Body Scan
+    227 Metabolic Age (years)  — Body Comp, Body Scan
+
+Only the types in ``_MEASTYPE_TO_FIELD`` are decoded into ``WeightLog``
+columns. Everything else the device returns is kept verbatim in
+``WeightLog.raw_data`` (see ``services/withings.py``) so a reading is never
+lost to a missing column — which is why ``WITHINGS_MEASTYPES`` asks for the
+whole superset rather than the eight columns we currently map.
 """
 
 import logging
@@ -40,7 +63,19 @@ WITHINGS_AUTH_URL = "https://account.withings.com/oauth2_user/authorize2"
 WITHINGS_TOKEN_URL = f"{WITHINGS_API_BASE}/oauth2"
 
 # Measurement types we request from getmeas (category=1, real measurements).
-WITHINGS_MEASTYPES = "1,5,6,8,76,77,88,170"
+#
+# A superset of what the sync maps into WeightLog columns, deliberately.
+# ``getmeas`` returns only the types the connected device actually measured, so
+# asking for more costs one longer query string and nothing else — while a
+# reading from a scale whose extra fields we have not mapped yet lands in
+# ``WeightLog.raw_data`` instead of being dropped, and adding a device (a cuff,
+# a watch) becomes a no-op rather than a code change. Type 4 (height) is here
+# for the same reason: ``group_measurements`` derives BMI from it, but only when
+# the API is asked to send it.
+WITHINGS_MEASTYPES = (
+    "1,4,5,6,8,9,10,11,12,54,71,73,76,77,88,91,123,130,155,167,168,169,170,"
+    "173,174,175,196,226,227"
+)
 
 
 class WithingsClient:

@@ -1181,6 +1181,10 @@ async def _import_fit(
         average_heartrate=session.get("average_heartrate"),
         max_heartrate=session.get("max_heartrate"),
         average_power=session.get("average_power"),
+        # A FIT file cannot carry a Strava-style estimate: any power field in it
+        # was recorded by the device, so it is measured by construction. A file
+        # with no power (or a GPX import) stays None rather than claiming one.
+        power_provenance="measured" if session.get("average_power") else None,
         normalized_power=session.get("normalized_power"),
         average_speed=session.get("average_speed"),
         average_cadence=session.get("average_cadence"),
