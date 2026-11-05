@@ -406,6 +406,23 @@ async def sync_activities(
                             resolution=resolution,
                         )
                         db.add(stream)
+
+                # Laps cost one more request per ride, on this same pass — the
+                # only place they are ever fetched (no backfill: the read bucket
+                # is 1,000/day). Failure is non-fatal; the ride keeps its streams.
+                try:
+                    from app.services.strava.laps import normalize_laps
+
+                    raw_laps = await strava_client.get_activity_laps(
+                        connection.access_token, int(activity.provider_activity_id)
+                    )
+                    activity.laps = normalize_laps(raw_laps)
+                except Exception as lap_exc:
+                    logger.warning(
+                        "Strava lap fetch failed for activity %s: %s",
+                        activity.provider_activity_id,
+                        lap_exc,
+                    )
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 404:
                     # Activity genuinely has no streams (e.g. no HR/power) — expected.

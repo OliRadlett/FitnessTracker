@@ -271,12 +271,12 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `115`** — the head is `114` (`107` user demographics, `108`/`109`
+**New migrations continue from `116`** — the head is `115` (`107` user demographics, `108`/`109`
 segment groups + line geometry, `110` health events, `111` power provenance, `112`
-`weight_logs.raw_data`, `113` DailyMetric SpO2 + skin temp, `114` gear), `096` is `undo_logs`,
-and this branch was renumbered **three times** in one sitting because `main` kept claiming the
-numbers (pitfall 34). Check `git ls-tree origin/main backend/alembic/versions/` immediately
-before renumbering, and again before opening the PR.
+`weight_logs.raw_data`, `113` DailyMetric SpO2 + skin temp, `114` gear, `115` activity laps),
+`096` is `undo_logs`, and one branch was renumbered **three times** in one sitting because `main`
+kept claiming the numbers (pitfall 34). Check `git ls-tree origin/main backend/alembic/versions/`
+immediately before renumbering, and again before opening the PR.
 
 **Training page overhaul** — [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md)
 (IA + editor) with companion [`plans/training-strength-programming.md`](plans/training-strength-programming.md)
