@@ -28,7 +28,7 @@ function WeekGutter({
       className="flex flex-col justify-center gap-1 pr-1.5"
       title={`Week ${isoWeek(weekStart)} · ${weekLabel(weekStart, weekEnd)} · planned ${Math.round(planned)} TSS · actual ${Math.round(actual)} TSS`}
     >
-      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted/60">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
         W{isoWeek(weekStart)}
       </span>
       <div className="relative h-[3px] w-full overflow-hidden rounded-full bg-surface-light/60">
@@ -46,9 +46,9 @@ function WeekGutter({
       </div>
       <div className="flex items-baseline gap-1 text-[10px] leading-3">
         <span className="font-semibold text-foreground/85">{actual ? Math.round(actual) : '—'}</span>
-        <span className="text-muted/50">TSS</span>
+        <span className="text-muted">TSS</span>
       </div>
-      <div className="text-[9px] leading-3 text-muted/50">
+      <div className="text-[9px] leading-3 text-muted">
         {planned > 0 ? `P ${Math.round(planned)}` : 'P —'}
       </div>
     </div>
@@ -74,14 +74,14 @@ export function MonthGrid({
     <Card className="!p-0 overflow-hidden !border-surface-light/50">
       <div className="flex items-center justify-between gap-3 border-b border-surface-light/60 px-4 py-3">
         <div>
-          <p className="flex flex-wrap items-baseline gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted/60">
+          <p className="flex flex-wrap items-baseline gap-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
             {fixture.plan?.name ?? 'No active plan'}
           </p>
-          <p className="text-xs text-muted/70">
+          <p className="text-xs text-muted">
             Planned outline · completed solid · missed hatched
           </p>
         </div>
-        <div className="hidden items-center gap-3 text-[10px] text-muted/60 sm:flex">
+        <div className="hidden items-center gap-3 text-[10px] text-muted sm:flex">
           <span className="inline-flex items-center gap-1.5">
             <span className="h-2 w-2 rounded-full bg-positive" /> recovery
           </span>
@@ -100,7 +100,7 @@ export function MonthGrid({
           {WEEKDAYS.map((day) => (
             <div
               key={day}
-              className="pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-muted/55"
+              className="pb-1 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-muted"
             >
               {day}
             </div>
@@ -143,7 +143,7 @@ export function MonthGrid({
         <LegendItem swatch={<span className="h-3 w-5 rounded border border-dotted border-info/40 bg-info/[0.04]" />} label="Unplanned" />
         <LegendItem swatch={<span className="h-2 w-2 rounded-full bg-caution" />} label="Recovery" />
         <LegendItem swatch={<Flag className="h-3 w-3 text-caution" />} label="Event" />
-        <span className={cx('ml-auto hidden text-[10px] text-muted/50 lg:inline')}>
+        <span className={cx('ml-auto hidden text-[10px] text-muted lg:inline')}>
           Week bar: actual fill · planned tick
         </span>
       </div>
@@ -153,7 +153,7 @@ export function MonthGrid({
 
 function LegendItem({ swatch, label }: { swatch: React.ReactNode; label: string }) {
   return (
-    <span className="inline-flex items-center gap-1.5 text-[10px] text-muted/65">
+    <span className="inline-flex items-center gap-1.5 text-[10px] text-muted">
       {swatch}
       {label}
     </span>

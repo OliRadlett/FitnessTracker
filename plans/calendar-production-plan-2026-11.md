@@ -88,6 +88,48 @@ lab remains the visual artifact and is not merged.
 
 ---
 
+## 0c. Production gate — 2026-11-05
+
+Run against a **disposable seeded `fittrack_gate` database** (real Postgres, real
+router/service) and a **real JWT** for its user. The frontend dev server proxied
+`/api/v1/calendar` to the real backend; only the non-calendar app-shell calls
+were mocked.
+
+| Check | Result |
+|---|---|
+| 220-activity month | 30 days, **220 activities**, 30 lifts, 20 plan sessions, 10 with TSS targets, 1 event, 1 goal, `unavailable={}` |
+| Payload / latency | 136,634 B; p50 **110 ms**, p95 **238 ms** (target <300) |
+| 62-day range | 62 days, 220 activities, 42 plan days, 21 targets; 152,722 B; p50 115 ms, p95 **186 ms** |
+| Real frontend + real API | **5/5** e2e: 220 activities · 30 lifts · 12,500 TSS, day deep link without `?month`, light theme, 375/390/412 widths, axe |
+| Axe (WCAG A/AA) | **0 violations** after gate fixes |
+| Mocked page suite | **14/14**; unit **8/8** (incl. October DST grid); `tsc` clean |
+| Production build | `/calendar` 27.3 kB / 146 kB first load |
+| PWA | `public/sw.js` keeps `/api/v1/` **network-only** (verified in source); runtime SW is blocked in e2e by design |
+| Slow/loading | 1.2 s delayed API renders the shape-matched skeleton (e2e) |
+
+**Fixed by the gate**
+
+1. **Muted text contrast.** 9–11 px labels at `text-muted/35–70` failed 4.5:1
+   (2.7–4.1:1). All calendar secondary text now uses full `text-muted`.
+2. **Sport-colored chip labels.** `text-blue-500` / `text-purple-500` on tinted
+   backgrounds measured 4.11–4.34:1. Chip **labels** now use foreground; the
+   sport color stays on the icon, border and tint.
+3. **Outside-month cells.** Whole-cell `opacity-40` dropped text to 2.9:1;
+   `opacity-80` keeps the outside cue while passing.
+4. **Cold-dev race.** The real-API test now waits for the data-bearing week
+   header, not just the month label.
+
+**Caveat:** auth used a minted backend JWT for the gate user; the NextAuth
+session itself was mocked (the same `useAuthFetch` bearer path runs in prod).
+The 220-activity month is seeded for performance, not real prod activity volume;
+the prod-shaped 10-week fixture remains the visual artifact. One unrelated
+`bug-report.spec.ts` expects `https://localhost` (Caddy) and is not part of this
+gate.
+
+**Next:** push the branch and open the PR; deploy via `main` → `prod`.
+
+---
+
 ## 1. Scope
 
 Replace `/calendar` with a **read-first unified training calendar**:

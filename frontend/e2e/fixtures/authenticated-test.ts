@@ -27,7 +27,9 @@ const MOCK_SESSION = {
     image: null,
   },
   expires: '2099-12-31T23:59:59.999Z',
-  backendToken: 'test-jwt-token',
+  // Default is the dummy token used with fully mocked API specs. The real-API
+  // gate passes a JWT minted against its disposable seeded database.
+  backendToken: process.env.E2E_BACKEND_TOKEN || 'test-jwt-token',
 };
 
 // ─── API route handler map ──────────────────────────────────────────────────

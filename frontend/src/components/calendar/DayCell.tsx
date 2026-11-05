@@ -72,8 +72,8 @@ function PlannedChip({
 
   if (plan.sport === 'rest') {
     return (
-      <div className="flex min-w-0 items-center gap-1 rounded-md border border-surface-light/60 bg-transparent px-1.5 py-1 text-[11px] leading-4 text-muted/70">
-        <SportGlyph sport="rest" className="text-muted/60" />
+      <div className="flex min-w-0 items-center gap-1 rounded-md border border-surface-light/60 bg-transparent px-1.5 py-1 text-[11px] leading-4 text-muted">
+        <SportGlyph sport="rest" className="text-muted" />
         <span className="truncate">Rest</span>
       </div>
     );
@@ -84,9 +84,8 @@ function PlannedChip({
       className={cx(
         'planned-outline flex min-w-0 items-center gap-1 rounded-md border bg-transparent px-1.5 py-1 text-[11px] leading-4',
         style.border,
-        style.text,
-        state.status === 'missed' && 'calendar-missed-hatch border-warning/50 text-warning',
-        state.status === 'mismatch' && 'border-caution/60 text-caution',
+        state.status === 'missed' && 'calendar-missed-hatch border-warning/50',
+        state.status === 'mismatch' && 'border-caution/60',
       )}
       title={
         plan.sport === 'cycle' && plan.planned_tss != null
@@ -94,8 +93,21 @@ function PlannedChip({
           : `Planned: ${label}`
       }
     >
-      <SportGlyph sport={sport} />
-      <span className="truncate">{label}</span>
+      <span className={style.text}>
+        <SportGlyph sport={sport} />
+      </span>
+      <span
+        className={cx(
+          'truncate',
+          state.status === 'missed'
+            ? 'text-warning'
+            : state.status === 'mismatch'
+              ? 'text-caution'
+              : 'text-foreground/90',
+        )}
+      >
+        {label}
+      </span>
     </div>
   );
 }
@@ -125,15 +137,17 @@ function ActualChip({
     <div
       className={cx(
         'flex min-w-0 items-center gap-1 rounded-md border px-1.5 py-1 text-[11px] leading-4',
-        unplanned ? 'border-dotted border-info/40 bg-info/[0.04] text-info/90' : `${style.border} ${style.bg} ${style.text}`,
+        unplanned ? 'border-dotted border-info/40 bg-info/[0.04]' : `${style.border} ${style.bg}`,
       )}
       title={`${unplanned ? 'Unplanned: ' : 'Logged: '}${label}${tss != null ? ` · ${Math.round(tss)} TSS` : ''}`}
     >
-      <SportGlyph sport={sport} />
-      <span className="truncate">{label}</span>
+      <span className={unplanned ? 'text-info' : style.text}>
+        <SportGlyph sport={sport} />
+      </span>
+      <span className="truncate text-foreground/90">{label}</span>
       {unplanned && <Circle className="h-2 w-2 shrink-0 text-info/80" aria-hidden />}
       {tss != null && (
-        <span className="ml-auto shrink-0 text-[9px] text-muted/80">{Math.round(tss)}</span>
+        <span className="ml-auto shrink-0 text-[9px] text-muted">{Math.round(tss)}</span>
       )}
     </div>
   );
@@ -211,9 +225,9 @@ export function DayCell({
     chips.push(
       <div
         key="rest"
-        className="flex min-w-0 items-center gap-1 rounded-md border border-surface-light/60 px-1.5 py-1 text-[11px] leading-4 text-muted/70"
+        className="flex min-w-0 items-center gap-1 rounded-md border border-surface-light/60 px-1.5 py-1 text-[11px] leading-4 text-muted"
       >
-        <SportGlyph sport="rest" className="text-muted/60" />
+        <SportGlyph sport="rest" className="text-muted" />
         <span className="truncate">Rest</span>
       </div>,
     );
@@ -264,14 +278,14 @@ export function DayCell({
           : isToday
             ? 'ring-1 ring-accent/45'
             : '',
-        !inMonth && 'opacity-40',
+        !inMonth && 'opacity-80',
       )}
     >
       <div className="flex items-start justify-between gap-1">
         <span
           className={cx(
             'inline-flex items-center gap-1.5 text-xs font-semibold leading-5',
-            isToday ? 'text-accent' : inMonth ? 'text-foreground/85' : 'text-muted/60',
+            isToday ? 'text-accent' : inMonth ? 'text-foreground/85' : 'text-muted',
           )}
         >
           {date.getDate()}
@@ -302,7 +316,7 @@ export function DayCell({
       <div className="flex min-w-0 flex-col gap-1">
         {shown}
         {overflow > 0 && (
-          <span className="px-1 text-[9px] font-medium text-muted/70">+{overflow} more</span>
+          <span className="px-1 text-[9px] font-medium text-muted">+{overflow} more</span>
         )}
       </div>
 

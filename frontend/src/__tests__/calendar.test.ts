@@ -145,6 +145,14 @@ describe('calendar helpers', () => {
     expect(weeks[0].days.filter((entry) => entry.inMonth)).toHaveLength(6);
   });
 
+  it('spans the October DST change without duplicating or skipping a day', () => {
+    const weeks = monthWeeks(response([day()]), new Date(2026, 9, 1));
+    const dates = weeks.flatMap((week) => week.days.map((entry) => isoDate(entry.date)));
+    expect(weeks).toHaveLength(5);
+    expect(dates).toContain('2026-10-25');
+    expect(new Set(dates).size).toBe(dates.length);
+  });
+
   it('marks a completed plan day with a linked lift as done', () => {
     const dayWithLift = day({ plan: [plan({ actual_lifting_session_id: 'lift-1' })], lifts: [lift()] });
     const state = planState(dayWithLift.plan[0], dayWithLift, '2026-09-20');

@@ -93,12 +93,12 @@ function CalendarEmpty({ month }: { month: Date }) {
     <Card className="!p-8">
       <div className="mx-auto flex max-w-[460px] flex-col items-center text-center">
         <span className="flex h-12 w-12 items-center justify-center rounded-2xl border border-surface-light/70 bg-surface-light/30">
-          <CalendarDays className="h-5 w-5 text-muted/60" />
+          <CalendarDays className="h-5 w-5 text-muted" />
         </span>
         <h2 className="mt-4 text-lg font-semibold text-foreground">
           No training in {format(month, 'MMMM yyyy')}
         </h2>
-        <p className="mt-1.5 text-xs leading-5 text-muted/70">
+        <p className="mt-1.5 text-xs leading-5 text-muted">
           Build a plan to see planned sessions here, or log a session and it will appear as
           completed work. Empty days stay quiet, so the month reads at a glance.
         </p>
@@ -264,7 +264,7 @@ export default function CalendarPage() {
       />
 
       {unavailable.length > 0 && (
-        <p className="text-[10px] text-muted/60" role="status">
+        <p className="text-[10px] text-muted" role="status">
           Some context is temporarily unavailable: {unavailable.join(', ')}.
         </p>
       )}

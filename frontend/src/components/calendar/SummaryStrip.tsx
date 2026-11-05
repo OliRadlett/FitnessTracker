@@ -23,14 +23,14 @@ function MetricCard({
 }) {
   return (
     <div className="rounded-xl border border-surface-light/50 bg-surface px-4 py-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted/60">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
         {label}
       </p>
       <p className={cx('mt-1 flex items-baseline gap-1.5 text-2xl font-semibold leading-none', tone ? toneText(tone) : 'text-foreground')}>
         {value}
-        {unit && <span className="text-xs font-medium text-muted/70">{unit}</span>}
+        {unit && <span className="text-xs font-medium text-muted">{unit}</span>}
       </p>
-      <div className="mt-2 min-h-[16px] text-[11px] leading-4 text-muted/70">{children}</div>
+      <div className="mt-2 min-h-[16px] text-[11px] leading-4 text-muted">{children}</div>
     </div>
   );
 }
@@ -64,13 +64,13 @@ export function SummaryStrip({
         <div className="rounded-xl border border-surface-light/50 bg-surface px-4 py-3">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted/55">
+              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
                 {monthName} · {fixture.plan?.name ?? 'No active plan'}
               </p>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 <span className="text-lg font-semibold leading-none text-foreground">
                   {summary.plannedSessions}
-                  <span className="ml-1 text-[10px] font-medium text-muted/60">planned</span>
+                  <span className="ml-1 text-[10px] font-medium text-muted">planned</span>
                 </span>
                 <span
                   className={cx(
@@ -88,7 +88,7 @@ export function SummaryStrip({
                 </span>
                 <span className="text-sm font-semibold text-foreground/80">
                   {fmtLoad(summary.actualTss)}
-                  <span className="ml-1 text-[10px] font-medium text-muted/60">TSS</span>
+                  <span className="ml-1 text-[10px] font-medium text-muted">TSS</span>
                 </span>
                 {summary.unplannedActuals > 0 && (
                   <span className="text-[11px] font-medium text-info">
@@ -96,7 +96,7 @@ export function SummaryStrip({
                   </span>
                 )}
               </div>
-              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted/55">
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted">
                 <span className={coverage != null && coverage < 0.5 ? 'text-caution' : undefined}>
                   {summary.targetSessions} of {summary.plannedSessions} with targets
                 </span>
@@ -113,7 +113,7 @@ export function SummaryStrip({
             </Link>
           </div>
         </div>
-        <p className="px-1 text-[9px] leading-3 text-muted/40">
+        <p className="px-1 text-[9px] leading-3 text-muted">
           Planned load is cycling-only; strength days carry no TSS target. Missed and unconfirmed
           days appear in the agenda.
         </p>
@@ -209,9 +209,9 @@ export function SummaryStrip({
         </MetricCard>
       </div>
 
-      <div className="flex flex-col gap-1.5 rounded-xl border border-surface-light/50 bg-surface-light/20 px-3 py-2 text-[11px] leading-4 text-muted/65 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-1.5 rounded-xl border border-surface-light/50 bg-surface-light/20 px-3 py-2 text-[11px] leading-4 text-muted sm:flex-row sm:items-center sm:justify-between">
         <span className="inline-flex items-start gap-1.5">
-          <Info className="mt-0.5 h-3 w-3 shrink-0 text-muted/50" aria-hidden />
+          <Info className="mt-0.5 h-3 w-3 shrink-0 text-muted" aria-hidden />
           <span>
             Planned load covers {summary.targetSessions} of {summary.plannedSessions} sessions
             {coverage != null && coverage < 1

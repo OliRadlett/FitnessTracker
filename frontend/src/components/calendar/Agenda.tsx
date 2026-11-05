@@ -46,13 +46,13 @@ function MiniPlan({
       className={cx(
         'inline-flex max-w-full items-center gap-1 rounded-md border border-dashed px-1.5 py-0.5 text-[10px] leading-4',
         plan.sport === 'rest'
-          ? 'border-surface-light/60 text-muted/55'
+          ? 'border-surface-light/60 text-muted'
           : 'border-surface-light text-foreground/70',
         state.status === 'missed' && 'calendar-missed-hatch border-warning/40 text-warning',
         state.status === 'mismatch' && 'border-caution/50 text-caution',
       )}
     >
-      <SportGlyph sport={plan.sport} className="text-muted/70" />
+      <SportGlyph sport={plan.sport} className="text-muted" />
       <span className="truncate">{label}</span>
     </span>
   );
@@ -106,7 +106,7 @@ function MiniActual({ day }: { day: Day }) {
           <SportGlyph sport={chip.sport} />
           <span className="truncate">{chip.label}</span>
           {chip.tss != null && (
-            <span className="ml-auto shrink-0 text-[9px] text-muted/50">
+            <span className="ml-auto shrink-0 text-[9px] text-muted">
               {Math.round(chip.tss)}
             </span>
           )}
@@ -127,7 +127,7 @@ function DayNumber({ date, today }: { date: Date; today: string }) {
       >
         {date.getDate()}
       </span>
-      <span className="mt-1 text-[9px] uppercase tracking-[0.1em] text-muted/50">
+      <span className="mt-1 text-[9px] uppercase tracking-[0.1em] text-muted">
         {date.toLocaleDateString('en-GB', { weekday: 'short' })}
       </span>
     </span>
@@ -156,10 +156,10 @@ function RestRow({
       className="flex w-full items-center gap-3 border-t border-surface-light/40 px-3 py-1.5 text-left transition-colors hover:bg-surface-light/25"
     >
       <DayNumber date={date} today={today} />
-      <span className="flex flex-1 items-center gap-1.5 text-[10px] text-muted/55">
+      <span className="flex flex-1 items-center gap-1.5 text-[10px] text-muted">
         <Moon className="h-3 w-3" /> Rest
       </span>
-      <span className="text-[9px] text-muted/35">no training</span>
+      <span className="text-[9px] text-muted">no training</span>
     </button>
   );
 }
@@ -215,7 +215,7 @@ function DayRow({
         <span className="flex items-center gap-1">
           <RecoveryDot score={day.metric?.recovery_score} />
           {loggedCount(day) > 0 ? (
-            <span className="text-[9px] text-muted/45">{loggedCount(day)}</span>
+            <span className="text-[9px] text-muted">{loggedCount(day)}</span>
           ) : null}
         </span>
       </span>
@@ -227,7 +227,7 @@ function QuietRun({ days }: { days: { date: Date }[] }) {
   const first = days[0].date;
   const last = days[days.length - 1].date;
   return (
-    <div className="flex items-center gap-2 border-t border-surface-light/40 px-3 py-1.5 text-[10px] text-muted/40">
+    <div className="flex items-center gap-2 border-t border-surface-light/40 px-3 py-1.5 text-[10px] text-muted">
       <Minus className="h-3 w-3" />
       {days.length === 1
         ? `Quiet day · ${first.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}`
@@ -254,16 +254,16 @@ function WeekHeader({
   return (
     <div className="flex items-center justify-between gap-2 bg-surface-light/[0.12] px-3 py-2">
       <div className="flex items-baseline gap-2">
-        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted/60">
+        <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
           W{isoWeek(weekStart)}
         </span>
-        <span className="text-[10px] text-muted/50">{weekLabel(weekStart, weekEnd)}</span>
+        <span className="text-[10px] text-muted">{weekLabel(weekStart, weekEnd)}</span>
       </div>
-      <div className="flex items-center gap-2 text-[10px] text-muted/60">
+      <div className="flex items-center gap-2 text-[10px] text-muted">
         <span>
           {done}/{planned} done
         </span>
-        <span className="text-muted/40">P {plannedTss ? Math.round(plannedTss) : '—'}</span>
+        <span className="text-muted">P {plannedTss ? Math.round(plannedTss) : '—'}</span>
         <span className="text-foreground/70">
           {actualTss ? Math.round(actualTss) : '—'} TSS
         </span>
@@ -283,7 +283,7 @@ function QuietWeeks({ weeks }: { weeks: { first: Date; last: Date }[] }) {
   const first = weeks[0].first;
   const last = weeks[weeks.length - 1].last;
   return (
-    <div className="flex items-center gap-2 rounded-2xl border border-surface-light/40 bg-surface px-3 py-3 text-[10px] text-muted/40">
+    <div className="flex items-center gap-2 rounded-2xl border border-surface-light/40 bg-surface px-3 py-3 text-[10px] text-muted">
       <Minus className="h-3 w-3" />
       No sessions planned · {rangeLabel(first, last)}
     </div>
@@ -424,7 +424,7 @@ export function Agenda({
           plannedTss={plannedTss}
           actualTss={actualTss}
         />
-        {items.length ? items : <p className="px-3 py-3 text-[10px] text-muted/50">No sessions planned.</p>}
+        {items.length ? items : <p className="px-3 py-3 text-[10px] text-muted">No sessions planned.</p>}
       </div>,
     );
   }

@@ -69,13 +69,13 @@ function Stat({
 }) {
   return (
     <div className="rounded-lg border border-surface-light/60 bg-surface/50 px-2.5 py-2">
-      <p className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted/55">
+      <p className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted">
         {icon}
         {label}
       </p>
       <p className="mt-1 text-sm font-semibold leading-none text-foreground">
         {value}
-        {unit && <span className="ml-1 text-[10px] font-medium text-muted/60">{unit}</span>}
+        {unit && <span className="ml-1 text-[10px] font-medium text-muted">{unit}</span>}
       </p>
     </div>
   );
@@ -116,7 +116,7 @@ function PlanRow({
           </span>
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold text-foreground">{title}</p>
-            <p className="mt-0.5 text-[10px] text-muted/65">
+            <p className="mt-0.5 text-[10px] text-muted">
               {details.length ? details.join(' · ') : 'No target set'}
             </p>
           </div>
@@ -125,7 +125,7 @@ function PlanRow({
       </div>
 
       {plan.workout_description && (
-        <p className="mt-2 text-[11px] leading-4 text-muted/75">{plan.workout_description}</p>
+        <p className="mt-2 text-[11px] leading-4 text-muted">{plan.workout_description}</p>
       )}
 
       {state.status === 'partial' && state.ratio != null && (
@@ -185,7 +185,7 @@ function ExerciseSets({ lift }: { lift: Lift }) {
     <div className="mt-2 space-y-1">
       {entries.map(([exercise, sets]) => (
         <div key={exercise} className="flex items-baseline justify-between gap-2 text-[10px]">
-          <span className="truncate text-muted/75">{exercise}</span>
+          <span className="truncate text-muted">{exercise}</span>
           <span className="shrink-0 text-foreground/75">
             {sets
               .sort((a, b) => a.set_number - b.set_number)
@@ -195,7 +195,7 @@ function ExerciseSets({ lift }: { lift: Lift }) {
         </div>
       ))}
       {byExercise.size > 3 && (
-        <p className="text-[10px] text-muted/50">+{byExercise.size - 3} more exercises</p>
+        <p className="text-[10px] text-muted">+{byExercise.size - 3} more exercises</p>
       )}
     </div>
   );
@@ -214,7 +214,7 @@ function ActivityRow({ activity, unplanned }: { activity: Activity; unplanned: b
             <p className="truncate text-xs font-semibold text-foreground">
               {activity.name || sportLabel(activity.sport_type)}
             </p>
-            <p className="mt-0.5 text-[10px] text-muted/65">
+            <p className="mt-0.5 text-[10px] text-muted">
               {sportLabel(activity.sport_type)}
               {activity.start_date && ` · ${fmtTime(activity.start_date)}`}
               {activity.distance_meters ? ` · ${fmtDistance(activity.distance_meters)}` : ''}
@@ -247,7 +247,7 @@ function ActivityRow({ activity, unplanned }: { activity: Activity; unplanned: b
       </div>
 
       {(activity.elevation_gain_meters || ctx?.intensity_factor || ctx?.decoupling_pct) && (
-        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted/65">
+        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted">
           {activity.elevation_gain_meters != null && activity.elevation_gain_meters > 0 && (
             <span className="inline-flex items-center gap-1">
               <Mountain className="h-3 w-3" /> {Math.round(activity.elevation_gain_meters)} m
@@ -293,7 +293,7 @@ function LiftRow({ lift, unplanned }: { lift: Lift; unplanned: boolean }) {
             <p className="truncate text-xs font-semibold text-foreground">
               {lift.focus ? focusLabel(lift.focus) : lift.program_name || 'Lifting session'}
             </p>
-            <p className="mt-0.5 text-[10px] text-muted/65">
+            <p className="mt-0.5 text-[10px] text-muted">
               {lift.set_count} sets · {fmtVolume(lift.total_volume_kg)} volume
               {lift.estimated_tss != null ? ` · ${Math.round(lift.estimated_tss)} TSS` : ''}
             </p>
@@ -357,9 +357,9 @@ export function DayInspector({
     return (
       <Card className={cx('!p-0 flex flex-col', variant === 'panel' ? 'h-full min-h-[420px]' : 'min-h-[280px]')}>
         <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center">
-          <CalendarDays className="h-6 w-6 text-muted/50" />
+          <CalendarDays className="h-6 w-6 text-muted" />
           <p className="text-sm font-semibold text-foreground/80">Pick a day</p>
-          <p className="max-w-[220px] text-[11px] leading-4 text-muted/60">
+          <p className="max-w-[220px] text-[11px] leading-4 text-muted">
             Planned sessions, logged work and health sit together here.
           </p>
         </div>
@@ -411,7 +411,7 @@ export function DayInspector({
             {isToday && <Pill tone="info">Today</Pill>}
             <StatusPill status={status} />
           </div>
-          <p className="mt-1 text-[10px] text-muted/55">
+          <p className="mt-1 text-[10px] text-muted">
             {hasPlan ? 'Plan entry exists' : 'No plan entry'} ·{' '}
             {hasActual ? `${logged} logged` : 'nothing logged'}
           </p>
@@ -433,7 +433,7 @@ export function DayInspector({
           <p className={cx('text-[11px] font-semibold leading-4', toneText(insight.tone))}>
             {insight.title}
           </p>
-          <p className="mt-0.5 text-[10px] leading-4 text-muted/70">{insight.detail}</p>
+          <p className="mt-0.5 text-[10px] leading-4 text-muted">{insight.detail}</p>
         </div>
 
         {(event || goal) && (
@@ -445,7 +445,7 @@ export function DayInspector({
                   <p className="text-[11px] font-semibold text-foreground/85">
                     {event.name}
                   </p>
-                  <p className="text-[10px] text-muted/60">
+                  <p className="text-[10px] text-muted">
                     {titleCase(event.event_type)}
                     {event.target_tss != null ? ` · ${Math.round(event.target_tss)} TSS target` : ''}
                   </p>
@@ -459,7 +459,7 @@ export function DayInspector({
                   <p className="text-[11px] font-semibold text-foreground/85">
                     Goal target date
                   </p>
-                  <p className="text-[10px] text-muted/60">
+                  <p className="text-[10px] text-muted">
                     {titleCase(goal.metric.replace(/_/g, ' '))} {goal.target_value}
                   </p>
                 </div>
@@ -476,7 +476,7 @@ export function DayInspector({
                 <PlanRow key={plan.id} plan={plan} day={day} today={today} fixture={fixture} />
               ))
             ) : (
-              <p className="rounded-xl border border-dashed border-surface-light/50 px-3 py-2 text-[10px] text-muted/60">
+              <p className="rounded-xl border border-dashed border-surface-light/50 px-3 py-2 text-[10px] text-muted">
                 No plan entry — this day is yours.
               </p>
             )}
@@ -501,7 +501,7 @@ export function DayInspector({
               />
             ))}
             {!hasActual && (
-              <p className="rounded-xl border border-dashed border-surface-light/50 px-3 py-2 text-[10px] text-muted/60">
+              <p className="rounded-xl border border-dashed border-surface-light/50 px-3 py-2 text-[10px] text-muted">
                 {day.date < today ? 'Nothing logged for this day.' : 'Not logged yet.'}
               </p>
             )}
@@ -529,7 +529,7 @@ export function DayInspector({
               <Stat label="Strain" value={metric?.strain != null ? metric.strain.toFixed(1) : '—'} unit={metric?.strain != null ? '/21' : undefined} />
             </div>
           ) : (
-            <p className="mt-1.5 rounded-xl border border-dashed border-surface-light/50 px-3 py-2 text-[10px] text-muted/60">
+            <p className="mt-1.5 rounded-xl border border-dashed border-surface-light/50 px-3 py-2 text-[10px] text-muted">
               No recovery or sleep data for this day.
             </p>
           )}
@@ -551,14 +551,14 @@ export function DayInspector({
             </Link>
           )}
           {hasPlan && planDay && (
-            <span className="inline-flex items-center gap-1 text-[10px] text-muted/45">
+            <span className="inline-flex items-center gap-1 text-[10px] text-muted">
               <Clock className="h-3 w-3" /> {fmtDuration((planDay.planned_duration_min ?? 0) * 60)}
             </span>
           )}
         </div>
 
         {!hasPlan && !hasActual && (
-          <div className="mt-3 flex items-center gap-2 rounded-xl border border-surface-light/60 bg-surface-light/20 px-3 py-2 text-[10px] text-muted/60">
+          <div className="mt-3 flex items-center gap-2 rounded-xl border border-surface-light/60 bg-surface-light/20 px-3 py-2 text-[10px] text-muted">
             <Moon className="h-3.5 w-3.5" />
             A quiet day. Nothing planned and nothing logged.
           </div>
