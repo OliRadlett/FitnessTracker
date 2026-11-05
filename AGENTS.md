@@ -212,9 +212,16 @@ polyline stays on `GET /routes/{id}` for GPX/3D/matching. Duplicate scanning is
 a **background job** (`services/route_similarity.py`): `POST
 /routes/duplicates/refresh` queues it, `GET /routes/duplicates/status` reports
 `never/queued/running/ready/failed`, and `GET /routes/duplicates` never scans on
-read. Quality/terrain/surface remain **0/86** for the real account; the page
-renders no controls for them. Evidence lives in
-[`prototype/routes/`](prototype/routes/README.md).
+read. Route intelligence: the Komoot surface parser now reads the real
+`summary.surfaces` list, so **surface 50/86** and **terrain 50/86** (Komoot
+routes; Strava writes no elevation profile) and **quality 86/86** on the real
+account. `services/route_intelligence_refresh.py` classifies missing terrain
+and rescores quality after sync/import (and `POST /routes/intelligence/refresh`);
+the composite is effort 40 / terrain 35 / completeness 25 with popularity and
+surface as zero-weight context. The detail shows terrain and surface; the page
+renders no quality controls. Audit:
+[`docs/route-intelligence-audit-2026-11-05.md`](docs/route-intelligence-audit-2026-11-05.md).
+Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
 
 **Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–4 landed;
 Waves 0–2 merged to `main` as PR #234, Waves 3–4 in review). Nine specs in

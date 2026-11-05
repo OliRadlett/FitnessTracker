@@ -1,15 +1,23 @@
-"""Route quality scoring — computes composite scores for each route.
+"""Route quality scoring — how well a route fits the rider.
 
-Called nightly by Celery task `compute_route_quality_scores`.
-Factors (weights sum to 1.0; see WEIGHTS — missing components are dropped
+Called by the weekly quality task and by `refresh_route_intelligence` after a
+route sync/import. Factors (weights sum to 1.0; missing components are dropped
 and the remainder renormalised):
-  - completeness_score  (25%): has elevation profile, surface profile, time estimate
-  - popularity_score    (15%): ride count (log-scaled), last ridden recency
-  - surface_quality     (20%): paved / packed surface fraction vs. technical
-  - effort_match_score  (25%): estimated effort vs. user's FTP profile
-  - terrain_quality     (15%): terrain classification richness + climb data
+  - effort_match_score  (40%): estimated effort vs. user's FTP/weight
+  - terrain_quality     (35%): terrain classification richness + climb data
+  - completeness_score  (25%): confidence — do we have the data to judge?
 
-The overall_score is a weighted average clamped to 0–100.
+`popularity_score` and `surface_quality_score` are still computed and stored as
+**context**, but carry no weight:
+
+- popularity measured usage, so an unridden route was capped at ~85 and a
+  ridden one outranked an equally good new one. That is not quality.
+- surface ranked paved above technical terrain, i.e. a rider preference
+  presented as a quality judgement. A gravel route is not a worse route.
+
+The 2026-11 audit measured the old weights: 60% metadata, and Komoot imports
+scored 70.6 vs 45.4 for ridden Strava routes. The composite now answers "does
+this route suit me / is it interesting", not "is it popular and paved".
 """
 
 import logging
@@ -30,10 +38,10 @@ logger = logging.getLogger(__name__)
 
 WEIGHTS = {
     "completeness": 0.25,
-    "popularity": 0.15,
-    "surface_quality": 0.20,
-    "effort_match": 0.25,
-    "terrain_quality": 0.15,
+    "popularity": 0.0,  # context only — usage is not quality
+    "surface_quality": 0.0,  # context only — surface is a characteristic
+    "effort_match": 0.40,
+    "terrain_quality": 0.35,
 }
 
 # Surface types ranked from best (paved) to worst (technical)

@@ -44,6 +44,12 @@ export interface RouteData {
     distance?: number[];
   };
   surface_profile?: Record<string, number>;
+  terrain_classification?: {
+    terrain_type?: string;
+    climb_count?: number;
+    total_climb_m?: number;
+    climb_rate_pct?: number;
+  } | null;
   start_lat: number;
   start_lng: number;
   end_lat: number;
@@ -340,6 +346,12 @@ export interface MergedRouteView {
     distance?: number[];
   };
   surface_profile?: Record<string, number>;
+  terrain_classification?: {
+    terrain_type?: string;
+    climb_count?: number;
+    total_climb_m?: number;
+    climb_rate_pct?: number;
+  } | null;
   start_lat: number;
   start_lng: number;
   end_lat: number;

@@ -165,6 +165,27 @@ The "best" routes are unnamed Komoot imports with complete metadata; the
 user's actually-ridden Strava routes score lower. That is the score working as
 designed, and the design measuring the wrong thing.
 
+### Quality after the redesign — 86/86
+
+Weights are now **effort match 40%, terrain 35%, completeness 25%**.
+Popularity and surface are still stored as context, with **zero weight**: usage
+is not quality, and paving is a preference. Same data, rescored:
+
+| Metric | Before | After |
+|---|---|---|
+| mean / median | 60.1 / 64.95 | **68.5 / 67.45** |
+| range | 42.1 – 81.3 | **51.0 – 91.7** |
+| top route | unnamed “Cycling” import | **Leschaux Circuit** (real named route) |
+
+| Group | n | before | after |
+|---|---|---|---|
+| Komoot-sourced | 50 | 70.6 | **77.3** |
+| Strava-only | 36 | 45.4 | **56.2** |
+
+The source gap narrowed (25.2 → 21.1 points) but did not close, because the 36
+Strava routes still have no terrain component and lower completeness. Coverage,
+not weighting, is the remaining cause — see the recommendations.
+
 ## OSM clarification
 
 - **Map tiles:** the atlas uses keyless OSM (`lib/mapTiles`), attributed and

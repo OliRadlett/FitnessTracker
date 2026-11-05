@@ -77,6 +77,13 @@ test.describe('Routes Page', () => {
     await expect(dialog.locator('[role="tablist"]')).toHaveCount(0);
   });
 
+  test('the detail shows terrain and surface as facts', async ({ authenticatedPage: page }) => {
+    await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
+    const dialog = page.getByRole('dialog', { name: /surrey hills loop details/i });
+    await expect(dialog.getByText(/terrain · rolling/i)).toBeVisible();
+    await expect(dialog.getByText(/surface · paved 78%/i)).toBeVisible();
+  });
+
   test('the detail exposes the deep tools on demand', async ({ authenticatedPage: page }) => {
     await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
     const dialog = page.getByRole('dialog', { name: /surrey hills loop details/i });

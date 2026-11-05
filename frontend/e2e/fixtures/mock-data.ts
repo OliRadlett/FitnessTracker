@@ -783,6 +783,13 @@ export const mockRouteDetail = {
     distance: [0, 5000, 12000, 20000, 30000, 42000, 52000, 65000],
     elevation: [100, 120, 150, 200, 250, 300, 280, 220],
   },
+  surface_profile: { paved: 0.78, compacted_gravel: 0.14, gravel: 0.08 },
+  terrain_classification: {
+    terrain_type: 'rolling',
+    climb_count: 2,
+    total_climb_m: 411,
+    climb_rate_pct: 0.79,
+  },
 };
 
 export const mockRouteHistory = {

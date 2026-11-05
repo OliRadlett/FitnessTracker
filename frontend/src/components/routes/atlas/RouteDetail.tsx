@@ -127,6 +127,22 @@ export function RouteDetail({
     return Array.from(seen.values());
   }, [route.sources]);
 
+  // Terrain and surface are characteristics, not a score: show the facts and
+  // leave the missing ones out (half the library has no Komoot payload).
+  const terrainType = route.terrain_classification?.terrain_type;
+  const terrainLabel = terrainType && terrainType !== 'unknown' ? terrainType.replace(/_/g, ' ') : null;
+  const surfaceSummary = useMemo(() => {
+    const entries = Object.entries(route.surface_profile ?? {})
+      .filter(([, value]) => value > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3);
+    const total = entries.reduce((sum, [, value]) => sum + value, 0);
+    if (!total) return [];
+    return entries.map(
+      ([name, value]) => `${name.replace(/_/g, ' ')} ${Math.round((value / total) * 100)}%`,
+    );
+  }, [route.surface_profile]);
+
   const download = () => {
     downloadRouteGpx(route.id, route.name, token);
   };
@@ -244,6 +260,21 @@ export function RouteDetail({
             </span>
           ))}
         </div>
+
+        {(terrainLabel || surfaceSummary.length > 0) && (
+          <div className="flex flex-wrap gap-1.5 text-[11px] text-muted">
+            {terrainLabel && (
+              <span className="rounded bg-surface-light/40 px-2 py-1 capitalize">
+                Terrain · {terrainLabel}
+              </span>
+            )}
+            {surfaceSummary.length > 0 && (
+              <span className="rounded bg-surface-light/40 px-2 py-1">
+                Surface · {surfaceSummary.join(' · ')}
+              </span>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-2">
           <button
