@@ -150,6 +150,19 @@ test.describe('Lifting Page', () => {
     await expect(panel.getByText('Saved')).toBeVisible();
   });
 
+  test('edit sets can append a set to an existing exercise', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/lifting?tab=sessions');
+    await page.waitForTimeout(1000);
+    await page.locator('summary').filter({ hasText: 'Edit sets' }).click();
+    const add = page.getByRole('button', { name: /Add set to/i }).first();
+    await expect(add).toBeVisible();
+    const post = page.waitForRequest(
+      (req) => req.method() === 'POST' && req.url().includes('/sets'),
+    );
+    await add.click();
+    await post;
+  });
+
   // ── Exercise Groups ─────────────────────────────────────────────────────
 
   test('exercise groups display correctly', async ({ authenticatedPage: page }) => {

@@ -16,7 +16,7 @@ interface SetRow {
   notes: string;
 }
 
-export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDone: () => void }) {
+export function AddExerciseForm({ sessionId, onDone, existingSets = [] }: { sessionId: string; onDone: () => void; existingSets?: LiftingSet[] }) {
   const { authFetch, token } = useAuthFetch();
   const queryClient = useQueryClient();
 
@@ -92,13 +92,19 @@ export function AddExerciseForm({ sessionId, onDone }: { sessionId: string; onDo
 
     setError('');
     setIsSubmitting(true);
+    const baseSetNumber = Math.max(
+      0,
+      ...existingSets
+        .filter((s) => s.exercise_name === exerciseName.trim())
+        .map((s) => s.set_number),
+    );
     try {
       // Submit all sets sequentially
       for (let i = 0; i < sets.length; i++) {
         const s = sets[i];
         const payload: AddSetPayload = {
           exercise_name: exerciseName.trim(),
-          set_number: i + 1,
+          set_number: baseSetNumber + i + 1,
           weight_kg: s.weight_kg,
           reps: s.reps,
           rpe: s.rpe,
