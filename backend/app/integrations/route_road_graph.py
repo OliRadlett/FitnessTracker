@@ -99,7 +99,9 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
             refs = [n.ref for n in w.nodes]
             if len(refs) < 2:
                 return
-            ways.append((w.id, w.tags.get("name"), highway, refs))
+            ways.append(
+                (w.id, w.tags.get("name"), highway, refs, w.tags.get("surface"))
+            )
             wanted_nodes.update(refs)
 
     _WayCollector().apply_file(pbf_path)
@@ -124,7 +126,7 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
     # ``key`` stays way-scoped (way_id:idx): edge_set/Jaccard/embedding keys
     # are unchanged.
     out: list[tuple] = []
-    for way_id, name, highway, refs in ways:
+    for way_id, name, highway, refs, surface in ways:
         prev = None
         prev_ref = None
         idx = 0
@@ -148,6 +150,7 @@ def _build_edges_from_pbf(pbf_path: str, bbox: tuple[float, float, float, float]
                         [prev, pt],
                         name,
                         highway,
+                        surface,
                     )
                 )
             prev = pt
@@ -307,7 +310,7 @@ def _build_road_graph_modal(
     )
 
     features = []
-    for (key, _u, _v, pts, name, highway) in edges:
+    for (key, _u, _v, pts, name, highway, surface) in edges:
         lat = (pts[0][0] + pts[1][0]) / 2.0
         lng = (pts[0][1] + pts[1][1]) / 2.0
         if not (min_lat <= lat <= max_lat and min_lng <= lng <= max_lng):
@@ -319,6 +322,7 @@ def _build_road_graph_modal(
                     "way_id": key.split(":")[0],
                     "name": name,
                     "highway": highway,
+                    "surface": surface,
                 },
                 "geometry": {
                     "type": "LineString",

@@ -25,6 +25,7 @@ from app.services.route_embedding import (
     train_metric,
 )
 from app.services.route_quarantine import active_routes_clause
+from app.services.surface_types import surface_mix_to_profile
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ def store_road_matches(db: AsyncSession, routes: list[Route], matches: dict) -> 
         match = {**match, "version": ROAD_MATCH_VERSION}
         route.road_match = match
         route.road_match_version = ROAD_MATCH_VERSION
+        # OSM is a surface fallback, not an override: Komoot payload data wins.
+        if not route.surface_profile:
+            profile = surface_mix_to_profile(match.get("surface_mix"))
+            if profile:
+                route.surface_profile = profile
         route.road_embedding = {
             "version": ROAD_MATCH_VERSION,
             "features": route_features(route),

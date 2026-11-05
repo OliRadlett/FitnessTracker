@@ -78,7 +78,11 @@ from app.services import segments as segment_service
 from app.services.auth import get_current_user
 from app.services.effort_estimator import INTENSITY_ZONES, estimate_effort
 from app.services.gpx import parse_gpx, route_to_gpx
-from app.services.polyline_utils import encode_polyline, polyline_total_distance
+from app.services.polyline_utils import (
+    encode_polyline,
+    polyline_total_distance,
+    preview_polyline,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +299,7 @@ async def list_routes(
         summary.ride_count = ride_count
         summary.is_ridden = ride_count > 0
         summary.last_ridden_date = last_ridden
+        summary.preview_polyline = preview_polyline(route.encoded_polyline)
         summaries.append(summary)
 
     return JSONResponse(
@@ -670,6 +675,21 @@ async def recompute_quality(
 
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
     return {"updated": updated, "total": len(routes)}
+
+
+@router.post("/intelligence/refresh")
+async def refresh_intelligence(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Classify missing terrain and rescore quality now.
+
+    Normally called by route sync and GPX import; exposed for the UI/ops and for
+    repairing accounts that missed the weekly jobs.
+    """
+    from app.services.route_intelligence_refresh import refresh_route_intelligence
+
+    return await refresh_route_intelligence(db, current_user.id)
 
 
 # ─── Effort Estimation ─────────────────────────────────────────────────────────
@@ -1335,6 +1355,15 @@ async def upload_gpx(
         elevation_profile=elevation_profile,
     )
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
+
+    # A new route should not wait for the weekly job to get terrain/quality.
+    try:
+        from app.services.route_intelligence_refresh import refresh_route_intelligence
+
+        await refresh_route_intelligence(db, current_user.id)
+    except Exception:
+        logger.warning("Route intelligence refresh failed after GPX upload", exc_info=True)
+
     return RouteRead.model_validate(route)
 
 
@@ -1343,14 +1372,22 @@ async def list_duplicates(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Find potential duplicate routes for manual review.
+    """Review-queue pairs from the cached similarity graph.
 
-    Prefers the cached similarity graph (weekly Modal task); falls back to a
-    synchronous local scan when no graph has been computed yet.
+    Never scans on read: the matcher runs full-resolution geometry over every
+    candidate pair (~15–20 min for 86 routes) and used to be a synchronous
+    fallback that could wedge the worker. An empty cache now returns an empty
+    list plus ``X-Scan-Status`` so the UI can distinguish "not scanned yet"
+    from "no duplicates".
     """
+    from fastapi.responses import JSONResponse
+
+    from app.services import route_similarity
+
     pairs = await route_service.find_cached_duplicates(db, current_user.id)
     if pairs is None:
-        pairs = await route_service.find_potential_duplicates(db, current_user.id)
+        pairs = []
+
     # Quarantined routes are excluded from matching, so offering them as
     # merge candidates is contradictory. Two such routes reached this list
     # with a stale road match describing geometry they no longer held, and
@@ -1361,7 +1398,13 @@ async def list_duplicates(
         if getattr(p["route_a"], "quarantined_at", None) is None
         and getattr(p["route_b"], "quarantined_at", None) is None
     ]
-    return [
+
+    state = await route_similarity.get_scan_state(db, current_user.id)
+    headers = {"X-Scan-Status": str(state.get("state") or "never")}
+    if state.get("finished_at"):
+        headers["X-Scan-Generated-At"] = str(state["finished_at"])
+
+    payload = [
         DuplicatePair(
             route_a=RouteRead.model_validate(p["route_a"]),
             route_b=RouteRead.model_validate(p["route_b"]),
@@ -1369,9 +1412,38 @@ async def list_duplicates(
             requires_confirmation=p.get("requires_confirmation", True),
             tier=p.get("tier", "review"),
             breakdown=p.get("breakdown"),
-        )
+        ).model_dump(mode="json")
         for p in pairs
     ]
+    return JSONResponse(content=payload, headers=headers)
+
+
+@router.get("/duplicates/status")
+async def duplicate_scan_status(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """State of the duplicate scan for this user: never / queued / running / ready / failed."""
+    from app.services import route_similarity
+
+    return await route_similarity.get_scan_state(db, current_user.id)
+
+
+@router.post("/duplicates/refresh", status_code=202)
+async def refresh_duplicate_scan(
+    current_user: User = Depends(get_current_user),
+):
+    """Queue a background duplicate scan. Returns ``queued`` or ``running``."""
+    from app.services import route_similarity
+
+    try:
+        status = await route_similarity.enqueue_user_similarity(current_user.id)
+    except Exception as exc:
+        logger.exception("Failed to queue duplicate scan for %s", current_user.id)
+        raise HTTPException(
+            status_code=503, detail="Duplicate scan could not be queued"
+        ) from exc
+    return {"status": status}
 
 
 @router.post("/duplicates/auto-merge")
@@ -1573,6 +1645,15 @@ async def sync_routes(
             )
 
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
+
+    # New/merged routes get terrain + quality now rather than on the weekly job.
+    try:
+        from app.services.route_intelligence_refresh import refresh_route_intelligence
+
+        await refresh_route_intelligence(db, current_user.id)
+    except Exception:
+        logger.warning("Route intelligence refresh failed after sync", exc_info=True)
+
     return sync_results
 
 

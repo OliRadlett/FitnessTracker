@@ -103,6 +103,7 @@ class RoadEdge:
     length_m: float
     name: str | None = None
     highway: str | None = None
+    surface: str | None = None
 
 
 @dataclass
@@ -113,6 +114,7 @@ class RoadMatch:
     names: list[str] = field(default_factory=list)
     snapped_points: int = 0
     total_points: int = 0
+    surface_mix: dict[str, float] = field(default_factory=dict)  # by matched length
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -126,6 +128,7 @@ class RoadMatch:
             names=list(data.get("names", [])),
             snapped_points=int(data.get("snapped_points", 0)),
             total_points=int(data.get("total_points", 0)),
+            surface_mix=dict(data.get("surface_mix") or {}),
         )
 
 
@@ -248,6 +251,24 @@ def snap_polyline(
         if nm and (not names or names[-1] != nm) and nm not in names:
             names.append(nm)
 
+    # Surface mix by matched length. Only edges whose OSM way carries a
+    # ``surface`` tag contribute; ``unknown`` is the remainder.
+    surface_lengths: dict[str, float] = {}
+    for i in ordered:
+        edge = graph.edges[i]
+        key = edge.surface.strip().lower() if edge.surface else "unknown"
+        surface_lengths[key] = surface_lengths.get(key, 0.0) + max(edge.length_m, 0.0)
+    surface_total = sum(surface_lengths.values())
+    surface_mix = (
+        {
+            name: round(length / surface_total, 4)
+            for name, length in surface_lengths.items()
+            if length > 0
+        }
+        if surface_total > 0
+        else {}
+    )
+
     return RoadMatch(
         edges=edge_keys,
         edge_set=sorted(set(edge_keys)),
@@ -255,6 +276,7 @@ def snap_polyline(
         names=names,
         snapped_points=snapped,
         total_points=len(filtered),
+        surface_mix=surface_mix,
     )
 
 
@@ -359,6 +381,7 @@ def roads_from_geojson(
         )
         name = props.get("name")
         highway = props.get("highway")
+        surface = props.get("surface")
         for i in range(1, len(coords)):
             lng0, lat0 = coords[i - 1][0], coords[i - 1][1]
             lng1, lat1 = coords[i][0], coords[i][1]
@@ -373,6 +396,7 @@ def roads_from_geojson(
                     length_m=haversine_distance(a[0], a[1], b[0], b[1]),
                     name=name,
                     highway=highway,
+                    surface=surface,
                 )
             )
     return edges

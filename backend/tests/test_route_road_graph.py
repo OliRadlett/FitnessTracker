@@ -172,7 +172,11 @@ def test_pbf_edges_carry_osm_node_ids_for_continuity(monkeypatch):
                 for wid, refs in ((10, [1, 2]), (11, [2, 3])):
                     w = types.SimpleNamespace(
                         id=wid,
-                        tags={"highway": "residential", "name": f"Way {wid}"},
+                        tags={
+                            "highway": "residential",
+                            "name": f"Way {wid}",
+                            "surface": "asphalt" if wid == 10 else "gravel",
+                        },
                     )
                     w.nodes = [types.SimpleNamespace(ref=r) for r in refs]
                     self.way(w)
@@ -198,9 +202,10 @@ def test_pbf_edges_carry_osm_node_ids_for_continuity(monkeypatch):
         ("10:1", "1", "2"),
         ("11:1", "2", "3"),
     ]
+    assert [e[6] for e in edges] == ["asphalt", "gravel"]
     built = [
         RoadEdge(key=k, u=u, v=v, polyline=pts, length_m=100.0)
-        for k, u, v, pts, _nm, _hw in edges
+        for k, u, v, pts, _nm, _hw, _surface in edges
     ]
     assert _shares_node(built[0], built[1])
 

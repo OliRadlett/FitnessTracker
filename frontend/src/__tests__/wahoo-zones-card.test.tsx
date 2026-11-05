@@ -26,7 +26,7 @@ vi.mock('@/lib/api', async (importOriginal) => {
   };
 });
 
-import { WahooZonesCard } from '@/components/cycling/WahooZonesCard';
+import { WahooZonesCard } from '@/components/settings/WahooZonesCard';
 
 const HR_NOTE =
   'Wahoo does not expose heart rate zones through its Cloud API — there is no heart_rate_zones endpoint.';

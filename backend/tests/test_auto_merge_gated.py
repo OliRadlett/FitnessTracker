@@ -14,9 +14,8 @@ So: gate it on a setting that defaults to **off**, matching the plan. The
 later turns it on deliberately, which is the useful knob. The default is
 the part that was wrong.
 
-Reviewed duplicates stay visible either way: the graph is still written to
-``route_similarity``, so pairs surface on the review page. Only the
-unreviewed merge stops.
+The flow now lives in ``services/route_similarity.py`` (shared by the weekly
+task and the on-demand endpoint), so the gate assertions moved with it.
 """
 
 from __future__ import annotations
@@ -26,6 +25,9 @@ from pathlib import Path
 
 CONFIG_PY = Path(__file__).resolve().parents[1] / "app" / "config.py"
 SCHEDULER_PY = Path(__file__).resolve().parents[1] / "app" / "tasks" / "scheduler.py"
+SERVICE_PY = (
+    Path(__file__).resolve().parents[1] / "app" / "services" / "route_similarity.py"
+)
 
 _FN = (ast.FunctionDef, ast.AsyncFunctionDef)
 
@@ -33,6 +35,10 @@ _FN = (ast.FunctionDef, ast.AsyncFunctionDef)
 def _find(tree, name, within=None):
     scope = ast.walk(within) if within is not None else ast.walk(tree)
     return next(n for n in scope if isinstance(n, _FN) and n.name == name)
+
+
+def _service_source() -> str:
+    return SERVICE_PY.read_text(encoding="utf-8")
 
 
 class TestAutoMergeIsOffByDefault:
@@ -44,15 +50,8 @@ class TestAutoMergeIsOffByDefault:
             "the decision lives only in prose and reverts silently"
         )
 
-    def test_task_auto_merge_is_gated_on_the_setting(self):
-        fn = _find(
-            ast.parse(SCHEDULER_PY.read_text(encoding="utf-8")),
-            "_run",
-            within=_find(
-                ast.parse(SCHEDULER_PY.read_text(encoding="utf-8")),
-                "recompute_route_similarity",
-            ),
-        )
+    def test_scan_auto_merge_is_gated_on_the_setting(self):
+        fn = _find(ast.parse(_service_source()), "recompute_user_similarity")
         unparsed = ast.unparse(fn)
         assert "route_auto_merge_enabled" in unparsed, (
             "the auto-merge loop must check the setting; an unconditional "
@@ -66,24 +65,26 @@ class TestAutoMergeIsOffByDefault:
         happened; it was that detection and merging were wired together so
         refusing one took the other with it.
         """
-        tree = ast.parse(SCHEDULER_PY.read_text(encoding="utf-8"))
-        outer = _find(tree, "recompute_route_similarity")
-        unparsed = ast.unparse(outer)
-        assert "RouteSimilarity" in unparsed, (
+        assert "RouteSimilarity" in _service_source(), (
             "pairs must still be cached for review when auto-merge is off"
         )
 
     def test_merge_loop_is_inside_the_gate(self):
         """A setting checked but not actually wrapping the merge is the worst
         outcome: it reads as compliant and behaves exactly as before."""
-        tree = ast.parse(SCHEDULER_PY.read_text(encoding="utf-8"))
-        fn = _find(tree, "_run", within=_find(tree, "recompute_route_similarity"))
+        fn = _find(ast.parse(_service_source()), "recompute_user_similarity")
         unparsed = ast.unparse(fn)
         gate = unparsed.index("route_auto_merge_enabled")
         merge = unparsed.index("merge_routes(")
         assert gate < merge, (
             "the setting is checked after the merge call, so it gates nothing"
         )
+
+    def test_weekly_task_delegates_to_the_shared_scan(self):
+        """One flow, two callers: the weekly task must not grow its own copy."""
+        tree = ast.parse(SCHEDULER_PY.read_text(encoding="utf-8"))
+        unparsed = ast.unparse(_find(tree, "recompute_route_similarity"))
+        assert "recompute_user_similarity(" in unparsed
 
     def test_auto_threshold_is_preserved_as_the_if_enabled_knob(self):
         """Keep the 0.82 threshold: it defines what auto-merge *would* do."""

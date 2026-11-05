@@ -10,6 +10,7 @@ Enriches each route with:
 - Route type (planned vs recorded) stored in raw_data
 """
 
+import json
 import logging
 import uuid
 
@@ -26,6 +27,7 @@ from app.services.polyline_utils import (
     polyline_total_distance,
 )
 from app.services.route_service import create_or_merge_route
+from app.services.surface_types import clean_surface_type
 
 logger = logging.getLogger(__name__)
 
@@ -88,53 +90,73 @@ def _build_polyline_from_trackpoints(trackpoints: list[dict]) -> str | None:
     return encode_polyline(points)
 
 
-def _extract_surface_profile(surface_data: dict) -> dict[str, float] | None:
-    """Normalize Komoot surface response into a clean {type: percentage} dict.
+def _surface_amount(item: dict) -> float | None:
+    """Komoot uses ``amount``; the API fallback has used percentage/share."""
+    for key in ("amount", "percentage", "share", "value", "fraction"):
+        value = item.get(key)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
 
-    Komoot surface data can come in various formats:
-    - {"surfaces": [{"type": "asphalt", "percentage": 60}, ...]}
-    - {"asphalt": 0.6, "gravel": 0.25, ...}
-    - {"data": {"asphalt": 60, "gravel": 25, ...}}
+
+def _extract_surface_profile(surface_data: dict | list | None) -> dict[str, float] | None:
+    """Normalize Komoot surface data into {type: fraction}.
+
+    Accepted shapes (all observed in the wild):
+
+    - ``{"summary": {"surfaces": [{"type": "sb#asphalt", "amount": 1.0}]}}``
+      (what the v007 tour payload actually stores — a **list**, not a dict)
+    - ``{"surfaces": [{"type": "asphalt", "percentage": 60}, ...]}``
+    - ``{"surfaces": {"asphalt": 0.6, ...}}`` / ``{"data": {...}}``
+    - ``{"asphalt": 0.6, "gravel": 0.4}``
+
+    Types are mapped onto the app's surface vocabulary (``paved``,
+    ``gravel``, ``compacted_gravel``, …) and values are normalised to
+    fractions summing to 1. Unknown way types (``wt#cycleway``) and
+    ``sf#unknown`` are skipped rather than polluting the mix.
     """
     if not surface_data:
         return None
 
-    # Try array format
-    surfaces = surface_data.get("surfaces") or surface_data.get("data")
-    if isinstance(surfaces, list):
-        result: dict[str, float] = {}
-        for item in surfaces:
-            if isinstance(item, dict):
-                name = item.get("type") or item.get("name", "unknown")
-                pct = (
-                    item.get("percentage") or item.get("share") or item.get("value", 0)
-                )
-                # Normalize to 0-1 range if it looks like a percentage (0-100)
-                if isinstance(pct, (int, float)) and pct > 1.0:
-                    pct = pct / 100.0
-                result[name] = float(pct)
-        return result if result else None
+    raw: object = surface_data
+    if isinstance(surface_data, dict):
+        summary = surface_data.get("summary")
+        if isinstance(summary, dict) and summary.get("surfaces"):
+            raw = summary["surfaces"]
+        else:
+            raw = surface_data.get("surfaces") or surface_data.get("data") or surface_data
 
-    # Try direct key-value format
-    if isinstance(surfaces, dict):
-        result = {}
-        for name, pct in surfaces.items():
-            if isinstance(pct, (int, float)):
-                if pct > 1.0:
-                    pct = pct / 100.0
-                result[name] = float(pct)
-        return result if result else None
+    pairs: list[tuple[str, float]] = []
+    if isinstance(raw, list):
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = clean_surface_type(item.get("type") or item.get("name") or "")
+            amount = _surface_amount(item)
+            if name and amount is not None and amount > 0:
+                pairs.append((name, amount))
+    elif isinstance(raw, dict):
+        for key, value in raw.items():
+            name = clean_surface_type(key)
+            if name and isinstance(value, (int, float)) and value > 0:
+                pairs.append((name, float(value)))
 
-    # Try top-level key-value (e.g. {"asphalt": 0.6, ...})
-    result = {}
-    for key, value in surface_data.items():
-        if key in ("_links", "_embedded", "id", "type"):
-            continue
-        if isinstance(value, (int, float)):
-            if value > 1.0:
-                value = value / 100.0
-            result[key] = float(value)
-    return result if result else None
+    if not pairs:
+        return None
+
+    # Some sources send 0–100 percentages; collapse to fractions.
+    total = sum(value for _, value in pairs)
+    if total > 1.5:
+        pairs = [(name, value / 100.0) for name, value in pairs]
+        total = sum(value for _, value in pairs)
+    if total <= 0:
+        return None
+
+    merged: dict[str, float] = {}
+    for name, value in pairs:
+        merged[name] = merged.get(name, 0.0) + value / total
+
+    return {name: round(value, 4) for name, value in merged.items() if value > 0}
 
 
 def _map_komoot_sport_type(sport_type: str) -> str:
@@ -213,23 +235,15 @@ async def _enrich_and_create_route(
         )
         return False, False
 
-    # Extract surface data from tour summary (available in list/detail response)
-    # Komoot uses keys like "sb#asphalt" (surface) and "wt#cycleway" (way type)
+    # Extract surface data from the tour payload. The v007 tour stores
+    # ``summary.surfaces`` as a LIST of {type: "sb#asphalt", amount: 1.0};
+    # the helper also accepts the older dict/API shapes.
     surface_profile = None
     summary = tour_data.get("summary", {})
     if isinstance(summary, dict):
-        surfaces_raw = summary.get("surfaces", {})
-        if surfaces_raw and isinstance(surfaces_raw, dict):
-            # Strip "sb#" prefix from surface keys
-            normalized = {}
-            for key, val in surfaces_raw.items():
-                clean_key = key.split("#", 1)[1] if "#" in str(key) else str(key)
-                if isinstance(val, (int, float)) and val > 0:
-                    normalized[clean_key] = val
-            if normalized:
-                surface_profile = _extract_surface_profile({"data": normalized})
-                if surface_profile:
-                    logger.info(f"Tour {tour_id}: surface data from payload = {surface_profile}")
+        surface_profile = _extract_surface_profile(summary)
+        if surface_profile:
+            logger.info(f"Tour {tour_id}: surface data from payload = {surface_profile}")
 
     # Fallback: call Komoot's dedicated surface endpoint if payload lacked data
     if not surface_profile:
@@ -456,29 +470,38 @@ async def sync_komoot_routes(
         routes_missing_surface = list(result.scalars().all())
 
         for route in routes_missing_surface:
-            # Extract Komoot tour ID from the source's provider_route_id
+            # Extract Komoot tour ID + the stored payload (surface lives in it)
             source_result = await db.execute(
-                select(RouteSource.provider_route_id).where(
+                select(RouteSource.provider_route_id, RouteSource.raw_data).where(
                     RouteSource.route_id == route.id,
                     RouteSource.provider == "komoot",
                 )
             )
-            provider_route_id = source_result.scalar_one_or_none()
-            if not provider_route_id:
+            source_row = source_result.one_or_none()
+            if source_row is None or not source_row.provider_route_id:
                 continue
-
-            # Strip "route_" prefix if present (planned routes)
+            provider_route_id, source_raw = source_row
             tour_id = provider_route_id.removeprefix("route_")
 
-            try:
-                raw_surface = await komoot_client.get_surface(tour_id=tour_id)
-                surface_profile = _extract_surface_profile(raw_surface)
-                if surface_profile:
-                    route.surface_profile = surface_profile
-                    backfill_count += 1
-                    logger.info(f"Backfilled surface for route {route.id}: {surface_profile}")
-            except Exception as e:
-                logger.debug(f"Surface backfill failed for route {route.id}: {e}")
+            surface_profile = None
+            if source_raw:
+                payload = json.loads(source_raw) if isinstance(source_raw, str) else source_raw
+                if isinstance(payload, dict):
+                    surface_profile = _extract_surface_profile(
+                        payload.get("summary") or payload
+                    )
+
+            if not surface_profile:
+                try:
+                    raw_surface = await komoot_client.get_surface(tour_id=tour_id)
+                    surface_profile = _extract_surface_profile(raw_surface)
+                except Exception as e:
+                    logger.debug(f"Surface backfill failed for route {route.id}: {e}")
+
+            if surface_profile:
+                route.surface_profile = surface_profile
+                backfill_count += 1
+                logger.info(f"Backfilled surface for route {route.id}: {surface_profile}")
 
         if backfill_count > 0:
             await db.flush()
