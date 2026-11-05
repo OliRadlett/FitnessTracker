@@ -361,7 +361,7 @@ one small feature attached, not a Medium-value item.
 | 12 | **Whoop-only workout fallback** — ingest a Whoop ride with no Strava twin instead of dropping it | S | Low-Medium — completeness of load, with no GPS | none | #2 |
 | 13 | **Strava write-back** — manual/FIT/lifting sessions → Strava; `PUT /activities` edits | M | Low-Medium — closes a one-way loop, needs re-consent | `activity:write` | §5.1 |
 | 14 | **Disconnect revokes the grant** — shipped for Strava/Whoop/Wahoo; returns `grant_revoked` and never blocks the delete. Withings revoke shape unverified, Komoot has no OAuth grant | XS | Medium — "Disconnected" was only true of our database | none | none |
-| 15 | **Proactive deauthorization** — Strava `athlete` webhook + Withings `appli=46 action=unlink`; today a revoked grant is discovered by a 401 | XS | Low-Medium — connection health stops being reactive | none | none |
+| 15 | **Proactive deauthorization** — shipped for Strava (`object_type=athlete` → `needs_reauth`). Withings `appli=46 action=unlink` still open | XS | Medium — a revoked grant is now known in seconds instead of at the next 401 | none | none |
 | 16 | **Komoot `difficulty` + `way_types`** — reuse the provider's own grading instead of elevating-per-km heuristics | XS | Low — a second opinion on route difficulty, already in `raw_data` | none | none |
 
 ### What #1 and #2 look like, concretely
