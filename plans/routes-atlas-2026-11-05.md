@@ -49,6 +49,11 @@ baseline frames and the lab that proved the replacement live in
     polls its state and only a finished scan mounts the review queue.
   - Header: mode, Compare, Collections drawer, Heatmap, GPX, Sync; mobile folds
     the secondary actions into a sheet.
+  - Every primary control is a **44 px** target (mode switch, search, facets,
+    header actions, sheet actions, detail actions) — the lab's 40 px controls
+    were bumped before landing.
+  - `e2e/routes-mobile.spec.ts` locks the phone contract at 390×844: first route
+    visible without scrolling, no page scroll, filters/detail/actions as sheets.
   - Maintain shows the scan state (queued / running / ready / failed), polls
     while it runs, and mounts the review queue only when a scan has finished.
     "Never scanned" and "no duplicates" are different states.
