@@ -677,6 +677,21 @@ async def recompute_quality(
     return {"updated": updated, "total": len(routes)}
 
 
+@router.post("/intelligence/refresh")
+async def refresh_intelligence(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Classify missing terrain and rescore quality now.
+
+    Normally called by route sync and GPX import; exposed for the UI/ops and for
+    repairing accounts that missed the weekly jobs.
+    """
+    from app.services.route_intelligence_refresh import refresh_route_intelligence
+
+    return await refresh_route_intelligence(db, current_user.id)
+
+
 # ─── Effort Estimation ─────────────────────────────────────────────────────────
 
 
@@ -1340,6 +1355,15 @@ async def upload_gpx(
         elevation_profile=elevation_profile,
     )
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
+
+    # A new route should not wait for the weekly job to get terrain/quality.
+    try:
+        from app.services.route_intelligence_refresh import refresh_route_intelligence
+
+        await refresh_route_intelligence(db, current_user.id)
+    except Exception:
+        logger.warning("Route intelligence refresh failed after GPX upload", exc_info=True)
+
     return RouteRead.model_validate(route)
 
 
@@ -1621,6 +1645,15 @@ async def sync_routes(
             )
 
     await db.flush()  # BUG-015: flush only (no commit); get_db commits at return.
+
+    # New/merged routes get terrain + quality now rather than on the weekly job.
+    try:
+        from app.services.route_intelligence_refresh import refresh_route_intelligence
+
+        await refresh_route_intelligence(db, current_user.id)
+    except Exception:
+        logger.warning("Route intelligence refresh failed after sync", exc_info=True)
+
     return sync_results
 
 

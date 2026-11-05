@@ -179,9 +179,12 @@ designed, and the design measuring the wrong thing.
 
 1. **Ship the surface parser fix + payload backfill** (in this branch). Verify
    on the next Komoot sync; the backfill pass fills every existing route.
-2. **Add an on-sync refresh.** After route sync/import/merge, enqueue one
-   `refresh_route_intelligence(user)` job that runs terrain → quality. Keep the
-   weekly jobs as a backstop. Today a new route can sit unclassified for a week.
+2. **On-sync refresh — implemented.** `services/route_intelligence_refresh.py`
+   classifies missing terrain and rescores quality; it runs after `POST
+   /routes/sync`, after a GPX import, and in the 2-hourly `sync_all_routes` task
+   for users whose sync produced work. `POST /routes/intelligence/refresh`
+   exposes the same pass for ops/UI and for repairing an account. The weekly
+   jobs remain the backstop.
 3. **Stop calling `quality_score` "quality".** Either:
    - rename it to **data completeness** and show it as such (it honestly is
      that), or

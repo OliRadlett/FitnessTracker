@@ -114,6 +114,7 @@ def sync_all_routes() -> dict:
 
             synced_total = 0
             merged_total = 0
+            users_synced: set = set()
 
             # Komoot uses global Basic Auth — sync once, not per-user
             from app.config import get_settings as _get_settings
@@ -128,6 +129,8 @@ def sync_all_routes() -> dict:
                     count, merged = await sync_komoot_routes(db, first_user)
                     synced_total += count
                     merged_total += merged
+                    if count or merged:
+                        users_synced.add(first_user)
                 except PermanentAuthError as e:
                     logger.warning(f"Komoot route sync auth failure: {e}")
                 except TransientSyncError as e:
@@ -140,12 +143,14 @@ def sync_all_routes() -> dict:
 
             for user_id, providers in user_providers.items():
                 try:
+                    user_synced = 0
                     if "strava" in providers:
                         from app.services.strava import sync_strava_routes
 
                         count, merged = await sync_strava_routes(db, user_id)
                         synced_total += count
                         merged_total += merged
+                        user_synced += count + merged
 
                     if "wahoo" in providers:
                         from app.services.wahoo import sync_wahoo_routes
@@ -153,8 +158,11 @@ def sync_all_routes() -> dict:
                         count, merged = await sync_wahoo_routes(db, user_id)
                         synced_total += count
                         merged_total += merged
+                        user_synced += count + merged
 
                     await db.commit()
+                    if user_synced:
+                        users_synced.add(user_id)
                 except PermanentAuthError as e:
                     logger.warning(f"Route sync auth failure for user {user_id}: {e}")
                     await db.rollback()
@@ -169,10 +177,29 @@ def sync_all_routes() -> dict:
                         exc_info=True,
                     )
                     await db.rollback()
+            # New routes should not wait for the weekly jobs. Only users whose
+            # sync produced work, so an idle beat tick stays cheap.
+            users_refreshed = 0
+            for uid in users_synced:
+                try:
+                    from app.services.route_intelligence_refresh import (
+                        refresh_route_intelligence,
+                    )
+
+                    await refresh_route_intelligence(db, uid)
+                    await db.commit()
+                    users_refreshed += 1
+                except Exception as e:
+                    logger.warning(
+                        f"Route intelligence refresh failed for user {uid}: {e}"
+                    )
+                    await db.rollback()
+
             return {
                 "routes_synced": synced_total,
                 "routes_merged": merged_total,
                 "users_processed": len(user_providers),
+                "users_refreshed": users_refreshed,
             }
 
     return asyncio.run(_run_task_guarded("sync_all_routes", _run))

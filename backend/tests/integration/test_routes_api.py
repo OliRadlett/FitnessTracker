@@ -247,3 +247,69 @@ class TestDuplicatesQueue:
         assert resp.json() == {"status": "queued"}
         assert len(queued) == 1
 
+
+class TestRouteIntelligenceRefresh:
+    """POST /api/v1/routes/intelligence/refresh — terrain + quality, now.
+
+    Both are weekly-only jobs, so a route synced/imported today used to wait up
+    to a week for terrain and a score. The refresh is also what sync and GPX
+    import call.
+    """
+
+    async def _hill_route(self, db_session, test_user):
+        from app.services.route_service import create_route
+
+        return await create_route(
+            db_session,
+            test_user.id,
+            "Hill Rep",
+            "cycling",
+            3_000.0,
+            "o}~mH~}xMz@z@z@z@z@z@",
+            elevation_profile={
+                "distance": [0, 500, 1000, 1500, 2000, 2500, 3000],
+                "elevation": [100, 130, 170, 220, 270, 320, 360],
+            },
+        )
+
+    async def test_refresh_classifies_terrain_and_scores_quality(
+        self, client, db_session, test_user
+    ):
+        from sqlalchemy import select
+
+        from app.models.route import Route
+        from app.models.route_organize import RouteQuality
+
+        route = await self._hill_route(db_session, test_user)
+        await db_session.flush()
+
+        resp = await client.post("/api/v1/routes/intelligence/refresh")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["terrain_classified"] >= 1
+        assert body["quality_scored"] >= 1
+
+        refreshed = (
+            await db_session.execute(select(Route).where(Route.id == route.id))
+        ).scalar_one()
+        assert refreshed.terrain_classification
+        assert refreshed.terrain_classification["terrain_type"] != "unknown"
+        assert refreshed.quality_score is not None
+
+        quality = (
+            await db_session.execute(
+                select(RouteQuality).where(RouteQuality.route_id == route.id)
+            )
+        ).scalar_one_or_none()
+        assert quality is not None
+        assert quality.overall_score is not None
+
+    async def test_refresh_is_idempotent(self, client, db_session, test_user):
+        await self._hill_route(db_session, test_user)
+        await db_session.flush()
+
+        await client.post("/api/v1/routes/intelligence/refresh")
+        second = await client.post("/api/v1/routes/intelligence/refresh")
+        assert second.status_code == 200, second.text
+        assert second.json()["terrain_classified"] == 0
+
