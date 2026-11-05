@@ -182,6 +182,25 @@ class TestDecoupling:
         assert compute_decoupling_from_streams([200.0] * 30, [100.0] * 30) is None
         assert compute_decoupling_from_streams([], []) is None
 
+    def test_time_aware_split_by_elapsed_time(self):
+        """A 2 s grid splits at 600 s and keeps NP honest."""
+        time_s = [float(i * 2) for i in range(600)]
+        power = [200.0] * 600
+        hr = [100.0] * 300 + [110.0] * 300
+        result = compute_decoupling_from_streams(power, hr, time_s)
+        assert result is not None
+        assert result["decoupling_pct"] == pytest.approx(9.1, abs=0.2)
+        assert result["steady"] is True
+        assert result["variability_index"] == pytest.approx(1.0, abs=0.01)
+
+    def test_variable_ride_is_not_steady(self):
+        time_s = [float(i * 2) for i in range(600)]
+        power = [100.0 if (i // 30) % 2 == 0 else 400.0 for i in range(600)]
+        result = compute_decoupling_from_streams(power, [100.0] * 600, time_s)
+        assert result is not None
+        assert result["steady"] is False
+        assert result["variability_index"] > 1.10
+
 
 class TestEstimateFTPFromPowerCurve:
     def test_20min_standard(self):
@@ -243,7 +262,7 @@ class TestEstimateFTPFromPowerCurve:
 class TestFriendVo2max:
     """FRIEND-ergometry: 1.74 × (W × 6.12/kg) + 3.5, i.e. 10.649 × W/kg + 3.5.
 
-    From Nes et al. (2018, PubMed 29692203), >4× lower error than ACSM.
+    From Kokkinos et al. (2018, PubMed 29692203), >30× lower error than ACSM.
     """
 
     def test_coefficient(self):

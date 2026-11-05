@@ -134,7 +134,7 @@ class TestNormScopes:
 
         lowered = VO2_CLASS_SCOPE.lower()
         assert "age" in lowered and "sex" in lowered
-        assert "general" in lowered
+        assert "fitness" in lowered and "population" in lowered
 
     def test_power_profile_scope_names_male_limitation(self):
         from app.services.cycling.power_profile import POWER_PROFILE_SCOPE

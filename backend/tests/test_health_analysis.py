@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass
 
+import pytest
+
 from app.services.health_analysis import (
     _hrv_trend_signal,
     _illness_composite,
@@ -154,6 +156,17 @@ class TestIllnessComposite:
 
     def test_all_quiet(self):
         assert _illness_composite(0.0, 0.0, 0.0, 0.0, 0.0, False) == 0.0
+
+    def test_missing_sleep_is_not_scored_as_perfect_sleep(self):
+        """One 40 signal, no RR and no sleep → 40×0.25/0.65, not 12.5."""
+        assert _illness_composite(40.0, 0.0, 0.0, 0.0, 0.0, False, False) == (
+            pytest.approx(40.0 * 0.25 / 0.65)
+        )
+
+    def test_missing_sleep_all_max_remains_100(self):
+        assert _illness_composite(
+            100.0, 0.0, 100.0, 0.0, 100.0, False, False
+        ) == pytest.approx(100.0)
 
 
 class TestRestDaySignal:

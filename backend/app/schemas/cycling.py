@@ -478,6 +478,8 @@ class DecouplingActivityPoint(BaseModel):
     second_half_ratio: float
     classification: str
     duration_seconds: int
+    steady: bool | None = None
+    variability_index: float | None = None
 
 
 class DecouplingHistoryResponse(BaseModel):
@@ -497,6 +499,8 @@ class DecouplingSingleResponse(BaseModel):
     classification: str
     duration_seconds: int
     activity_id: str | None = None
+    steady: bool | None = None
+    variability_index: float | None = None
 
 
 # ── Suggested Training Cycle ────────────────────────────────────────────────
