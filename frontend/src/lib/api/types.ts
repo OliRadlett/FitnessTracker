@@ -6,6 +6,7 @@ export * from './types/activity';
 export * from './types/calendar';
 export * from './types/lifting';
 export * from './types/routes';
+export * from './types/courses';
 export * from './types/cycling';
 export * from './types/health';
 export * from './types/dashboard';

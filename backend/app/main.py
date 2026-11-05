@@ -224,6 +224,7 @@ from app.api.auth import router as auth_router
 from app.api.calendar import router as calendar_router
 from app.api.charts import router as charts_router
 from app.api.connections import router as connections_router
+from app.api.courses import router as courses_router
 from app.api.cross_domain import router as cross_domain_router
 from app.api.cycling import router as cycling_router
 from app.api.dashboard import router as dashboard_router
@@ -267,6 +268,7 @@ app.include_router(charts_router, prefix="/api/v1/charts", tags=["charts"])
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(webhooks_router, prefix="/api/v1/webhooks", tags=["webhooks"])
 app.include_router(routes_router, prefix="/api/v1/routes", tags=["routes"])
+app.include_router(courses_router, prefix="/api/v1/courses", tags=["courses"])
 app.include_router(search_router, prefix="/api/v1/search", tags=["search"])
 app.include_router(cycling_router, prefix="/api/v1/cycling", tags=["cycling"])
 app.include_router(segments_router, prefix="/api/v1/segments", tags=["segments"])

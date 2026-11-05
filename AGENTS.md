@@ -257,6 +257,23 @@ shows terrain and surface; the page renders no quality controls. Audit:
 [`docs/route-intelligence-audit-2026-11-05.md`](docs/route-intelligence-audit-2026-11-05.md).
 Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
 
+**Route courses** — [`plans/route-courses-2026-11-05.md`](plans/route-courses-2026-11-05.md).
+The model is **Course → Route → Ride**: `Course` is the identity, `Route` is a
+concrete variant (geometry, direction, start/end, provider sources), `Activity`
+is the ride. Migration **107** adds `courses` + `routes.course_id` +
+`course_link_log` and backfills **one course per existing route** (1:1); it does
+not group variants or delete routes. Migration **108** adds
+`activities.route_link_status/source/confidence/confirmed_at`; every existing
+ride→route link is backfilled **`suggested` + `legacy`** because those links
+came from the WIP matcher. Course history/PRs must read `confirmed` only.
+Grouping is an `UPDATE routes SET course_id`, not a merge; `merge_routes` stays
+for identical variants. The API is `/api/v1/courses` (`GET/POST /`, `GET
+/uncoursed`, group/ungroup under `/{course_id}/routes/{route_id}`, confirm/reject
+at `/ride-links/{activity_id}/...`); the UI is `/courses` (More → Courses),
+built on `lib/api/courses.ts`. The 86-route investigation (11 cached pairs,
+start-offset collapse, 86 → 79 grouping) lives in `prototype/route-merging/` on
+the main worktree and is not merged.
+
 **Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–4 landed;
 Waves 0–2 merged to `main` as PR #234, Waves 3–4 in review). Nine specs in
 [`plans/`](plans/) from a re-baselined brainstorm, plus

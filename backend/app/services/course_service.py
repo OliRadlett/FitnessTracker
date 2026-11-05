@@ -1,0 +1,408 @@
+"""Course service — Course → Route → Ride.
+
+A course is the identity; a route is a concrete variant; an activity is a ride.
+Grouping a route under a course is a non-destructive ``UPDATE`` and is audited
+in ``course_link_log``. Strict duplicate merging remains in
+``route_service.merge_routes``.
+
+The existing ``activities.route_id`` links are WIP suggestions. Course history
+reads ``confirmed`` links only; ``suggested`` is shown as context, never as a
+completed ride.
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.models.activity import Activity
+from app.models.route import Course, CourseLinkLog, Route
+from app.services.polyline_utils import preview_polyline
+
+
+def _route_payload(
+    route: Route,
+    *,
+    canonical_route_id: uuid.UUID | None,
+    ride_count: int = 0,
+    confirmed_ride_count: int = 0,
+    suggested_ride_count: int = 0,
+) -> dict[str, Any]:
+    return {
+        "id": route.id,
+        "name": route.name,
+        "sport_type": route.sport_type,
+        "distance_meters": route.distance_meters,
+        "elevation_gain_meters": route.elevation_gain_meters,
+        "is_loop": route.is_loop,
+        "preview_polyline": preview_polyline(route.encoded_polyline),
+        "ride_count": ride_count,
+        "confirmed_ride_count": confirmed_ride_count,
+        "suggested_ride_count": suggested_ride_count,
+        "is_canonical": canonical_route_id == route.id,
+        "created_at": route.created_at,
+    }
+
+
+def _course_payload(
+    course: Course, rides_by_route: dict[uuid.UUID, dict[str, Any]]
+) -> dict[str, Any]:
+    routes = list(course.routes)
+    confirmed = sum(rides_by_route.get(r.id, {}).get("confirmed", 0) for r in routes)
+    suggested = sum(rides_by_route.get(r.id, {}).get("suggested", 0) for r in routes)
+    canonical = course.canonical_route or (routes[0] if routes else None)
+    preview = preview_polyline(canonical.encoded_polyline) if canonical else None
+    last_ridden = max(
+        (
+            rides_by_route[r.id]["last_confirmed"]
+            for r in routes
+            if rides_by_route.get(r.id, {}).get("last_confirmed") is not None
+        ),
+        default=None,
+    )
+    return {
+        "id": course.id,
+        "name": course.name,
+        "sport_type": course.sport_type,
+        "route_count": len(routes),
+        "confirmed_ride_count": confirmed,
+        "suggested_ride_count": suggested,
+        "canonical_route_id": course.canonical_route_id,
+        "canonical_name": canonical.name if canonical else None,
+        "preview_polyline": preview,
+        "identity_source": course.identity_source,
+        "identity_confidence": course.identity_confidence,
+        "last_ridden_date": last_ridden,
+        "created_at": course.created_at,
+        "updated_at": course.updated_at,
+    }
+
+
+def _course_routes(
+    course: Course, rides_by_route: dict[uuid.UUID, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    return [
+        _route_payload(
+            route,
+            canonical_route_id=course.canonical_route_id,
+            ride_count=rides_by_route.get(route.id, {}).get("total", 0),
+            confirmed_ride_count=rides_by_route.get(route.id, {}).get("confirmed", 0),
+            suggested_ride_count=rides_by_route.get(route.id, {}).get("suggested", 0),
+        )
+        for route in sorted(course.routes, key=lambda r: (r.distance_meters, r.name))
+    ]
+
+
+async def _rides_by_route(
+    db: AsyncSession, user_id: uuid.UUID
+) -> dict[uuid.UUID, dict[str, Any]]:
+    rows = (
+        await db.execute(
+            select(
+                Activity.route_id,
+                Activity.route_link_status,
+                Activity.start_date,
+            ).where(Activity.user_id == user_id, Activity.route_id.isnot(None))
+        )
+    ).all()
+    out: dict[uuid.UUID, dict[str, Any]] = {}
+    for route_id, status, start_date in rows:
+        bucket = out.setdefault(
+            route_id,
+            {
+                "total": 0,
+                "confirmed": 0,
+                "suggested": 0,
+                "rejected": 0,
+                "last_confirmed": None,
+            },
+        )
+        bucket["total"] += 1
+        if status == "confirmed":
+            bucket["confirmed"] += 1
+            if start_date is not None and (
+                bucket["last_confirmed"] is None
+                or start_date > bucket["last_confirmed"]
+            ):
+                bucket["last_confirmed"] = start_date
+        elif status == "suggested":
+            bucket["suggested"] += 1
+        elif status == "rejected":
+            bucket["rejected"] += 1
+    return out
+
+
+async def list_courses(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, Any]]:
+    courses = (
+        (
+            await db.execute(
+                select(Course)
+                .options(
+                    selectinload(Course.routes),
+                    selectinload(Course.canonical_route),
+                )
+                .where(Course.user_id == user_id)
+                .order_by(Course.name, Course.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rides = await _rides_by_route(db, user_id)
+    return [_course_payload(course, rides) for course in courses]
+
+
+async def get_course(
+    db: AsyncSession, user_id: uuid.UUID, course_id: uuid.UUID
+) -> dict[str, Any] | None:
+    course = (
+        await db.execute(
+            select(Course)
+            .options(
+                selectinload(Course.routes),
+                selectinload(Course.canonical_route),
+            )
+            .where(Course.id == course_id, Course.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if course is None:
+        return None
+
+    rides = await _rides_by_route(db, user_id)
+    route_ids = [r.id for r in course.routes]
+    activities = []
+    if route_ids:
+        rows = (
+            (
+                await db.execute(
+                    select(Activity)
+                    .where(
+                        Activity.user_id == user_id,
+                        Activity.route_id.in_(route_ids),
+                        Activity.route_link_status.in_(("confirmed", "suggested")),
+                    )
+                    .order_by(Activity.start_date.desc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_route = {r.id: r.name for r in course.routes}
+        activities = [
+            {
+                "id": a.id,
+                "name": a.name,
+                "start_date": a.start_date,
+                "distance_meters": a.distance_meters,
+                "route_id": a.route_id,
+                "route_name": by_route.get(a.route_id),
+                "route_link_status": a.route_link_status,
+            }
+            for a in rows
+        ]
+
+    payload = _course_payload(course, rides)
+    payload["routes"] = _course_routes(course, rides)
+    payload["activities"] = activities
+    return payload
+
+
+async def list_uncoursed_routes(
+    db: AsyncSession, user_id: uuid.UUID
+) -> list[dict[str, Any]]:
+    routes = (
+        (
+            await db.execute(
+                select(Route)
+                .where(Route.user_id == user_id, Route.course_id.is_(None))
+                .order_by(Route.name, Route.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rides = await _rides_by_route(db, user_id)
+    return [
+        _route_payload(
+            route,
+            canonical_route_id=None,
+            ride_count=rides.get(route.id, {}).get("total", 0),
+            confirmed_ride_count=rides.get(route.id, {}).get("confirmed", 0),
+            suggested_ride_count=rides.get(route.id, {}).get("suggested", 0),
+        )
+        for route in routes
+    ]
+
+
+async def _log_link(
+    db: AsyncSession,
+    *,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    route_id: uuid.UUID,
+    action: str,
+    previous_course_id: uuid.UUID | None,
+    score: float | None = None,
+    breakdown: dict | None = None,
+) -> None:
+    db.add(
+        CourseLinkLog(
+            user_id=user_id,
+            course_id=course_id,
+            route_id=route_id,
+            action=action,
+            previous_course_id=previous_course_id,
+            score=score,
+            breakdown=breakdown,
+        )
+    )
+
+
+async def create_course(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    name: str,
+    sport_type: str = "cycling",
+    route_ids: list[uuid.UUID] | None = None,
+) -> dict[str, Any]:
+    course = Course(
+        user_id=user_id,
+        name=name.strip(),
+        sport_type=sport_type or "cycling",
+        identity_source="manual",
+    )
+    db.add(course)
+    await db.flush()
+
+    for route_id in route_ids or []:
+        route = (
+            await db.execute(
+                select(Route).where(Route.id == route_id, Route.user_id == user_id)
+            )
+        ).scalar_one_or_none()
+        if route is None:
+            continue
+        previous = route.course_id
+        route.course_id = course.id
+        if course.canonical_route_id is None:
+            course.canonical_route_id = route.id
+        await _log_link(
+            db,
+            user_id=user_id,
+            course_id=course.id,
+            route_id=route.id,
+            action="group",
+            previous_course_id=previous,
+        )
+    await db.flush()
+    return await get_course(db, user_id, course.id)  # type: ignore[return-value]
+
+
+async def group_route(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    route_id: uuid.UUID,
+    *,
+    score: float | None = None,
+    breakdown: dict | None = None,
+) -> dict[str, Any] | None:
+    course = (
+        await db.execute(
+            select(Course).where(Course.id == course_id, Course.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    route = (
+        await db.execute(
+            select(Route).where(Route.id == route_id, Route.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if course is None or route is None:
+        return None
+
+    previous = route.course_id
+    route.course_id = course.id
+    if course.canonical_route_id is None:
+        course.canonical_route_id = route.id
+    await _log_link(
+        db,
+        user_id=user_id,
+        course_id=course.id,
+        route_id=route.id,
+        action="group",
+        previous_course_id=previous,
+        score=score,
+        breakdown=breakdown,
+    )
+    await db.flush()
+    return await get_course(db, user_id, course_id)
+
+
+async def ungroup_route(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    route_id: uuid.UUID,
+) -> dict[str, Any] | None:
+    course = (
+        await db.execute(
+            select(Course).where(Course.id == course_id, Course.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    route = (
+        await db.execute(
+            select(Route).where(Route.id == route_id, Route.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if course is None or route is None or route.course_id != course.id:
+        return None
+
+    route.course_id = None
+    if course.canonical_route_id == route.id:
+        course.canonical_route_id = None
+    await _log_link(
+        db,
+        user_id=user_id,
+        course_id=course.id,
+        route_id=route.id,
+        action="ungroup",
+        previous_course_id=course.id,
+    )
+    await db.flush()
+    return await get_course(db, user_id, course_id)
+
+
+async def set_route_link_status(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    activity_id: uuid.UUID,
+    status: str,
+) -> dict[str, Any] | None:
+    if status not in ("confirmed", "rejected"):
+        raise ValueError("status must be 'confirmed' or 'rejected'")
+    activity = (
+        await db.execute(
+            select(Activity).where(
+                Activity.id == activity_id, Activity.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if activity is None or activity.route_id is None:
+        return None
+    activity.route_link_status = status
+    activity.route_link_source = "manual"
+    activity.route_link_confirmed_at = (
+        datetime.now(UTC) if status == "confirmed" else None
+    )
+    await db.flush()
+    return {
+        "activity_id": activity.id,
+        "route_id": activity.route_id,
+        "status": activity.route_link_status,
+    }
