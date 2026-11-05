@@ -37,6 +37,7 @@ async def refresh_route_intelligence(db: AsyncSession, user_id: uuid.UUID) -> di
     from app.services.polyline_utils import decode_polyline
     from app.services.route_elevation import backfill_route_elevations
     from app.services.route_quality_service import compute_and_store_quality
+    from app.services.surface_types import surface_mix_to_profile
 
     elevation_backfilled = await backfill_route_elevations(db, user_id)
 
@@ -47,6 +48,18 @@ async def refresh_route_intelligence(db: AsyncSession, user_id: uuid.UUID) -> di
             .where(Route.user_id == user_id)
         )
     ).scalars().all()
+
+    # Existing profiles may predate a vocabulary addition (e.g. OSM's
+    # paving_stones); re-normalising here means a refresh fixes stored rows
+    # without a migration.
+    surface_normalized = 0
+    for route in routes:
+        if not route.surface_profile:
+            continue
+        normalized = surface_mix_to_profile(route.surface_profile)
+        if normalized and normalized != route.surface_profile:
+            route.surface_profile = normalized
+            surface_normalized += 1
 
     terrain_classified = 0
     for route in routes:
@@ -82,6 +95,7 @@ async def refresh_route_intelligence(db: AsyncSession, user_id: uuid.UUID) -> di
     return {
         "routes": len(routes),
         "elevation_backfilled": elevation_backfilled,
+        "surface_normalized": surface_normalized,
         "terrain_classified": terrain_classified,
         "quality_scored": quality_scored,
     }

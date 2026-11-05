@@ -373,3 +373,21 @@ class TestRouteIntelligenceRefresh:
         assert refreshed.terrain_classification
         assert refreshed.terrain_classification["terrain_type"] != "unknown"
 
+    async def test_refresh_normalises_stored_surface_keys(
+        self, client, db_session, test_route
+    ):
+        """A vocabulary addition must reach rows already stored."""
+        test_route.surface_profile = {
+            "paving_stones": 0.4,
+            "paved": 0.5,
+            "stone": 0.1,
+        }
+        await db_session.flush()
+
+        resp = await client.post("/api/v1/routes/intelligence/refresh")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["surface_normalized"] >= 1
+
+        await db_session.refresh(test_route)
+        assert test_route.surface_profile == {"paved": 0.9, "cobblestone": 0.1}
+
