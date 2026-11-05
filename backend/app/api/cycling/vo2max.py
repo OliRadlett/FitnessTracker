@@ -165,7 +165,10 @@ async def get_decoupling_for_activity(
     if not result:
         raise HTTPException(
             status_code=404,
-            detail="No power and heart rate stream data available for this activity",
+            detail=(
+                "Decoupling needs power and heart-rate streams and at least "
+                "20 minutes of riding"
+            ),
         )
 
     return DecouplingSingleResponse(

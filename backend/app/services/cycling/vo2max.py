@@ -443,6 +443,22 @@ class DecouplingResult:
     variability_index: float | None = None
 
 
+# A decoupling value needs a sustained aerobic effort. TrainingPeaks' guidance
+# is >=20-30 min; use 20 min as the floor, and prefer the stream's elapsed time
+# when the activity duration is missing or wrong.
+MIN_DECOUPLING_DURATION_SECONDS = 20 * 60
+
+
+def _decoupling_duration_seconds(
+    activity_duration_seconds: int | None, time_data: list[float]
+) -> float:
+    """Best available ride duration for the decoupling validity gate."""
+    stream_elapsed = (
+        max(time_data) - min(time_data) if len(time_data) >= 2 else 0.0
+    )
+    return max(float(activity_duration_seconds or 0.0), stream_elapsed)
+
+
 def _classify_decoupling(pct: float) -> str:
     """Classify decoupling percentage.
 
@@ -667,6 +683,12 @@ async def compute_decoupling_for_activity(
     power_data = [float(p) for p in power_data_raw if p is not None]
     hr_data = [float(h) for h in hr_data_raw if h is not None]
     time_data = [float(t) for t in time_data_raw if t is not None]
+
+    if (
+        _decoupling_duration_seconds(activity.duration_seconds, time_data)
+        < MIN_DECOUPLING_DURATION_SECONDS
+    ):
+        return None
 
     result = compute_decoupling_from_streams(
         power_data, hr_data, time_data or None
