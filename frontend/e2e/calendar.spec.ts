@@ -1,129 +1,163 @@
 /**
- * Calendar page E2E tests.
- * Tests the calendar grid, month navigation, day selection,
- * and activity/lifting display per day.
+ * Calendar page E2E tests — the production surface, with the API mocked by the
+ * shared authenticated fixture. The visual gate lives in the prototype lab;
+ * these assert the page's real behaviours: URL state, month navigation, the
+ * day inspector/sheet, and honest empty/error states.
  */
 
-import { test, expect } from './fixtures/authenticated-test';
+import { expect, test } from './fixtures/authenticated-test';
+import { mockCalendarResponse } from './fixtures/calendar-mock';
+
+const EMPTY_RESPONSE = {
+  ...mockCalendarResponse,
+  plan: null,
+  coverage: {
+    planned_sessions: 0,
+    target_sessions: 0,
+    planned_tss: 0,
+    strength_targets_missing: 0,
+  },
+  days: [],
+  weeks: [],
+  events: [],
+  goals: [],
+  current: null,
+};
 
 test.describe('Calendar Page', () => {
-  test.beforeEach(async ({ authenticatedPage: page }) => {
-    await page.goto('/fittrack/calendar');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
-  });
-
-  // ── Page Rendering ──────────────────────────────────────────────────────
-
   test('page heading renders', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/calendar');
     await expect(page.locator('main h1')).toContainText('Calendar');
   });
 
-  // ── Calendar Grid ───────────────────────────────────────────────────────
-
-  test('calendar grid renders for current month', async ({ authenticatedPage: page }) => {
-    // Should show day-of-week headers
-    await expect(page.getByText(/mon|tue|wed|thu|fri|sat|sun/i).first()).toBeVisible();
-  });
-
-  test('calendar shows current month and year', async ({ authenticatedPage: page }) => {
+  test('month label defaults to the current month', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/calendar');
     const now = new Date();
-    const monthName = now.toLocaleString('default', { month: 'long' });
-    const year = now.getFullYear();
-    await expect(page.getByText(new RegExp(`${monthName}|${year}`, 'i')).first()).toBeVisible();
+    const label = `${now.toLocaleString('en-GB', { month: 'long' })} ${now.getFullYear()}`;
+    await expect(page.getByText(new RegExp(label)).first()).toBeVisible();
   });
 
-  // ── Month Navigation ────────────────────────────────────────────────────
-
-  test('previous month button is present', async ({ authenticatedPage: page }) => {
-    const prevButton = page.getByRole('button', { name: /prev|previous|‹|<</i });
-    await expect(prevButton).toBeVisible();
+  test('month navigation changes the label', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/calendar?month=2026-09');
+    await expect(page.getByText('September 2026').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Next month' }).click();
+    await expect(page.getByText('October 2026').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Previous month' }).click();
+    await expect(page.getByText('September 2026').first()).toBeVisible();
   });
 
-  test('next month button is present', async ({ authenticatedPage: page }) => {
-    const nextButton = page.getByRole('button', { name: /next|›|>>/i });
-    await expect(nextButton).toBeVisible();
+  test('a day URL selects that day and shows the inspector', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/calendar?month=2026-09&day=2026-09-19');
+    await expect(page.getByText('Saturday 19 September').first()).toBeVisible();
+    await expect(page.getByText('Pull', { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: /View activity/ })).toBeVisible();
   });
 
-  test('clicking previous month changes display', async ({ authenticatedPage: page }) => {
-    const prevButton = page.getByRole('button', { name: /prev|previous|‹|<</i });
-    await prevButton.click();
-    await page.waitForTimeout(500);
-
-    // Month should have changed — page heading still visible
-    await expect(page.locator('main h1')).toContainText('Calendar');
+  test('clicking a day updates the URL and the inspector', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/calendar?month=2026-09&day=2026-09-19');
+    await page.getByRole('button', { name: /Friday.*18 September/ }).first().click();
+    await expect(page).toHaveURL(/day=2026-09-18/);
+    await expect(page.getByText('Friday 18 September').first()).toBeVisible();
   });
 
-  test('clicking next month changes display', async ({ authenticatedPage: page }) => {
-    const nextButton = page.getByRole('button', { name: /next|›|>>/i });
-    await nextButton.click();
-    await page.waitForTimeout(500);
-
-    await expect(page.locator('main h1')).toContainText('Calendar');
+  test('an empty month teaches the next action', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/v1/calendar**', (route) =>
+      route.fulfill({ status: 200, body: JSON.stringify(EMPTY_RESPONSE) }),
+    );
+    await page.goto('/fittrack/calendar?month=2026-09');
+    await expect(page.getByText('No training in September 2026')).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Open Training' })).toBeVisible();
   });
 
-  // ── Today Highlight ─────────────────────────────────────────────────────
-
-  test('today is highlighted in the calendar', async ({ authenticatedPage: page }) => {
-    // Today should have a distinctive style (ring, border, or background)
-    // Today highlight may use various CSS approaches — just verify page is still functional
-    await expect(page.locator('main h1')).toContainText('Calendar');
+  test('a failed read renders an error with retry, not an empty month', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.route('**/api/v1/calendar**', (route) =>
+      route.fulfill({ status: 500, body: JSON.stringify({ detail: 'Server error' }) }),
+    );
+    await page.goto('/fittrack/calendar?month=2026-09');
+    await expect(page.getByText("Couldn't load the calendar")).toBeVisible();
+    await expect(page.getByRole('button', { name: /Retry/ })).toBeVisible();
+    await expect(page.getByText('No training in September 2026')).toHaveCount(0);
   });
 
-  // ── Day Selection ───────────────────────────────────────────────────────
-
-  test('clicking a day shows detail panel', async ({ authenticatedPage: page }) => {
-    // Click on a day number in the calendar grid
-    const dayCell = page.locator('button, td, div').filter({ hasText: /^\d{1,2}$/ }).first();
-    if (await dayCell.isVisible()) {
-      await dayCell.click();
-      await page.waitForTimeout(1000);
-    }
-
-    await expect(page.locator('main h1')).toContainText('Calendar');
-  });
-
-  // ── Activity Display ────────────────────────────────────────────────────
-
-  test('calendar shows activity indicators for days with data', async ({ authenticatedPage: page }) => {
-    // Days with activities should show sport type indicators — verify page renders
-    await expect(page.locator('main h1')).toContainText('Calendar');
-  });
-
-  // ── Empty Days ──────────────────────────────────────────────────────────
-
-  test('empty days show appropriate state', async ({ authenticatedPage: page }) => {
-    // Click on a day that has no activities — verify page renders
-    await expect(page.locator('main h1')).toContainText('Calendar');
-  });
-
-  // ── Loading States ──────────────────────────────────────────────────────
-
-  test('shows loading state while calendar data loads', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/activities/calendar', async (route) => {
-      await new Promise((r) => setTimeout(r, 2000));
-      route.fulfill({ status: 200, body: JSON.stringify({}) });
+  test('loading uses a shape-matched skeleton', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/v1/calendar**', async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      route.fulfill({ status: 200, body: JSON.stringify(mockCalendarResponse) });
     });
+    await page.goto('/fittrack/calendar?month=2026-09');
+    await expect(page.locator('.animate-pulse').first()).toBeVisible();
+  });
+});
 
-    await page.goto('/fittrack/calendar');
-
-    const skeleton = page.locator('.animate-pulse').first();
-    await expect(skeleton).toBeVisible();
-
-    await page.waitForLoadState('networkidle');
+test.describe('Calendar Page — visual capture', () => {
+  test('desktop', async ({ authenticatedPage: page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/fittrack/calendar?month=2026-09&day=2026-09-19');
+    await expect(page.getByText('September 2026').first()).toBeVisible();
+    await expect(page.getByText('Saturday 19 September').first()).toBeVisible();
+    await page.waitForTimeout(250);
+    await page.screenshot({
+      path: 'e2e/screenshots/calendar-production-desktop.png',
+      fullPage: true,
+    });
   });
 
-  // ── Error States ────────────────────────────────────────────────────────
-
-  test('handles API errors gracefully', async ({ authenticatedPage: page }) => {
-    await page.route('**/api/v1/activities/calendar', (route) => {
-      route.fulfill({ status: 500, body: JSON.stringify({ detail: 'Server error' }) });
+  test('desktop light theme', async ({ authenticatedPage: page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/fittrack/calendar?month=2026-09&day=2026-09-19');
+    await expect(page.getByText('September 2026').first()).toBeVisible();
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
+    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+    await page.waitForTimeout(250);
+    await page.screenshot({
+      path: 'e2e/screenshots/calendar-production-desktop-light.png',
+      fullPage: true,
     });
+  });
 
-    await page.goto('/fittrack/calendar');
-    await page.waitForLoadState('networkidle');
-    await page.waitForTimeout(1000);
+  test('mobile agenda', async ({ authenticatedPage: page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/fittrack/calendar?month=2026-09');
+    await expect(page.getByText('W38').first()).toBeVisible();
+    await page.waitForTimeout(250);
+    await page.screenshot({
+      path: 'e2e/screenshots/calendar-production-mobile-agenda.png',
+      fullPage: true,
+    });
+  });
 
-    await expect(page.locator('main h1')).toContainText('Calendar');
+  test('mobile sheet', async ({ authenticatedPage: page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/fittrack/calendar?month=2026-09&day=2026-09-19');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await page.waitForTimeout(250);
+    await page.screenshot({
+      path: 'e2e/screenshots/calendar-production-mobile-sheet.png',
+    });
+  });
+});
+
+test.describe('Calendar Page — mobile', () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test('a day deep link opens the sheet and closes cleanly', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.goto('/fittrack/calendar?month=2026-09&day=2026-09-19');
+    await expect(page.getByRole('dialog')).toBeVisible();
+    await expect(page.getByText('Saturday 19 September').first()).toBeVisible();
+    await page.getByRole('button', { name: 'Close day detail' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  test('the agenda is visible without horizontal scroll', async ({ authenticatedPage: page }) => {
+    await page.goto('/fittrack/calendar?month=2026-09');
+    await expect(page.getByText('W38').first()).toBeVisible();
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(1);
   });
 });

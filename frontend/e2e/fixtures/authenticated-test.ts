@@ -27,7 +27,9 @@ const MOCK_SESSION = {
     image: null,
   },
   expires: '2099-12-31T23:59:59.999Z',
-  backendToken: 'test-jwt-token',
+  // Default is the dummy token used with fully mocked API specs. The real-API
+  // gate passes a JWT minted against its disposable seeded database.
+  backendToken: process.env.E2E_BACKEND_TOKEN || 'test-jwt-token',
 };
 
 // ─── API route handler map ──────────────────────────────────────────────────
@@ -71,7 +73,12 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockWhoopWeekly) });
   }],
 
-  // Calendar (MUST come before activities to avoid substring collision)
+  // Calendar view (new aggregate endpoint)
+  ['api/v1/calendar', (route) => {
+    route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCalendarResponse) });
+  }],
+
+  // Legacy calendar endpoint — still used by the activities TimelineView.
   ['api/v1/activities/calendar', (route) => {
     route.fulfill({ status: 200, body: JSON.stringify(mockData.mockCalendarData) });
   }],
