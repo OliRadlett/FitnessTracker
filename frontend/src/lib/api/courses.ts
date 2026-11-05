@@ -54,6 +54,18 @@ export async function ungroupRoute(
   );
 }
 
+export async function mergeCourse(
+  targetCourseId: string,
+  sourceCourseId: string,
+  token?: string,
+): Promise<CourseDetail> {
+  return apiFetch<CourseDetail>(
+    `/api/v1/courses/${targetCourseId}/merge/${sourceCourseId}`,
+    { method: 'POST' },
+    token,
+  );
+}
+
 export async function confirmRideLink(
   activityId: string,
   token?: string,

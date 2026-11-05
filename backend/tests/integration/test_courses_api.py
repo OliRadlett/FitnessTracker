@@ -108,6 +108,46 @@ class TestCourseGrouping:
         assert resp.status_code == 404
 
 
+class TestCourseMerge:
+    async def test_merge_moves_routes_and_deletes_empty_source(
+        self, client, db_session, test_route, test_route_with_surface
+    ):
+        target = await client.post(
+            "/api/v1/courses",
+            json={"name": "Target", "route_ids": [str(test_route.id)]},
+        )
+        source = await client.post(
+            "/api/v1/courses",
+            json={"name": "Source", "route_ids": [str(test_route_with_surface.id)]},
+        )
+        target_id = target.json()["id"]
+        source_id = source.json()["id"]
+
+        merged = await client.post(f"/api/v1/courses/{target_id}/merge/{source_id}")
+        assert merged.status_code == 200
+        assert merged.json()["route_count"] == 2
+        assert {r["id"] for r in merged.json()["routes"]} == {
+            str(test_route.id),
+            str(test_route_with_surface.id),
+        }
+
+        # The source course is gone; the routes and rides are not.
+        assert (await client.get(f"/api/v1/courses/{source_id}")).status_code == 404
+        from app.models.route import Route
+
+        for route_id in (test_route.id, test_route_with_surface.id):
+            assert await db_session.get(Route, route_id) is not None
+
+    async def test_merge_with_itself_is_404(self, client, test_route):
+        course = await client.post(
+            "/api/v1/courses",
+            json={"name": "Self", "route_ids": [str(test_route.id)]},
+        )
+        course_id = course.json()["id"]
+        resp = await client.post(f"/api/v1/courses/{course_id}/merge/{course_id}")
+        assert resp.status_code == 404
+
+
 class TestRideLinkTrust:
     async def test_confirm_and_reject_links(
         self, client, db_session, test_route, test_route_activities

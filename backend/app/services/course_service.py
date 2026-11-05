@@ -378,6 +378,73 @@ async def ungroup_route(
     return await get_course(db, user_id, course_id)
 
 
+async def merge_courses(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    target_course_id: uuid.UUID,
+    source_course_id: uuid.UUID,
+) -> dict[str, Any] | None:
+    """Move every route of ``source`` into ``target`` and delete the empty source.
+
+    Non-destructive for routes and rides: only ``routes.course_id`` changes.
+    The move is logged per route on the target; the source course row is
+    deleted because an empty course is noise after a consolidation. This is
+    how the 1:1 backfill (one course per route) is collapsed into real courses.
+    """
+    if target_course_id == source_course_id:
+        return None
+
+    courses = (
+        (
+            await db.execute(
+                select(Course).where(
+                    Course.id.in_([target_course_id, source_course_id]),
+                    Course.user_id == user_id,
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {course.id: course for course in courses}
+    target = by_id.get(target_course_id)
+    source = by_id.get(source_course_id)
+    if target is None or source is None:
+        return None
+
+    source_routes = (
+        (
+            await db.execute(
+                select(Route).where(
+                    Route.user_id == user_id, Route.course_id == source.id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    for route in source_routes:
+        route.course_id = target.id
+        await _log_link(
+            db,
+            user_id=user_id,
+            course_id=target.id,
+            route_id=route.id,
+            action="group",
+            previous_course_id=source.id,
+            breakdown={"merged_from": str(source.id), "source_name": source.name},
+        )
+    if target.canonical_route_id is None:
+        target.canonical_route_id = source.canonical_route_id or (
+            source_routes[0].id if source_routes else None
+        )
+
+    await db.flush()
+    await db.delete(source)
+    await db.flush()
+    return await get_course(db, user_id, target.id)
+
+
 async def set_route_link_status(
     db: AsyncSession,
     user_id: uuid.UUID,

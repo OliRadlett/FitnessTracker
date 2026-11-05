@@ -117,6 +117,28 @@ async def ungroup_route(
     return course
 
 
+@router.post(
+    "/{target_course_id}/merge/{source_course_id}", response_model=CourseDetail
+)
+async def merge_courses(
+    target_course_id: uuid.UUID,
+    source_course_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Move every route of ``source`` into ``target``; delete the empty source.
+
+    Routes and rides are preserved. This is the consolidation path for the
+    1:1 backfill (one course per route).
+    """
+    course = await course_service.merge_courses(
+        db, current_user.id, target_course_id, source_course_id
+    )
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    return course
+
+
 @router.post("/ride-links/{activity_id}/confirm", response_model=RideLinkResult)
 async def confirm_ride_link(
     activity_id: uuid.UUID,

@@ -20,6 +20,7 @@ import {
   getCourses,
   getUncoursedRoutes,
   groupRoute,
+  mergeCourse,
   rejectRideLink,
   ungroupRoute,
 } from '@/lib/api/courses';
@@ -287,6 +288,7 @@ export default function CoursesPage() {
 
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedRouteIds, setSelectedRouteIds] = useState<Set<string>>(new Set());
+  const [mergeSourceId, setMergeSourceId] = useState('');
   const [newCourseName, setNewCourseName] = useState('');
   const [uncoursedFilter, setUncoursedFilter] = useState('');
   const [showAllUncoursed, setShowAllUncoursed] = useState(false);
@@ -379,6 +381,21 @@ export default function CoursesPage() {
     onError: (err) =>
       toast.error(`Could not ungroup the route: ${(err as Error).message}`),
     onSettled: () => setBusyRouteId(null),
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: ({ targetId, sourceId }: { targetId: string; sourceId: string }) =>
+      mergeCourse(targetId, sourceId, token),
+    onSuccess: (course) => {
+      setSelectedCourseId(course.id);
+      setMergeSourceId('');
+      invalidate();
+      toast.success(
+        `Merged into “${course.name}” — ${course.route_count} variants, no routes deleted.`,
+      );
+    },
+    onError: (err) =>
+      toast.error(`Could not merge the courses: ${(err as Error).message}`),
   });
 
   const linkMutation = useMutation({
@@ -497,6 +514,40 @@ export default function CoursesPage() {
               <span className="text-xs text-muted">{activeCourse.name}</span>
             )}
           </div>
+          {activeCourse && courses.length > 1 && (
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <select
+                value={mergeSourceId}
+                onChange={(e) => setMergeSourceId(e.target.value)}
+                className="h-9 min-w-0 flex-1 rounded-lg border border-surface-light/60 bg-background px-3 text-xs text-foreground outline-none focus:border-accent"
+                aria-label="Course to merge into the selected course"
+              >
+                <option value="">Merge another course into this one…</option>
+                {courses
+                  .filter((c) => c.id !== activeCourse.id)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name} ({c.route_count} variants)
+                    </option>
+                  ))}
+              </select>
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={!mergeSourceId}
+                loading={mergeMutation.isPending}
+                onClick={() => {
+                  if (!mergeSourceId) return;
+                  mergeMutation.mutate({
+                    targetId: activeCourse.id,
+                    sourceId: mergeSourceId,
+                  });
+                }}
+              >
+                Merge
+              </Button>
+            </div>
+          )}
           <CourseDetailPanel
             detail={detailQuery.data}
             loading={detailQuery.isLoading && !!activeCourse}
