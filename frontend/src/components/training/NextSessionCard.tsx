@@ -1,14 +1,14 @@
 'use client';
 
-// Feature 6 / B-17 — next-session suggestion card. Presentational core +
-// self-fetching wrapper (shares React Query keys with /today, so no double
-// fetch when both render).
+// Feature 6 / B-17 — next-session suggestion card.
+//
+// The self-fetching `NextSessionCardAuto` variant was removed with the cycling
+// page rewrite: it was mounted only there, and it contradicted the page's own
+// numbers (it suggested "no maximal efforts" while the load data said the athlete
+// was detraining). `/today` renders the presentational `NextSessionCard` from
+// inputs it already holds.
 
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useAuthFetch } from '@/lib/api';
-import type { ForecastResponse, ReadinessResponse, SleepDebtResponse, TodaySummary } from '@/lib/api';
-import { getForecast } from '@/lib/api/weather';
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card';
 import { computeVerdict } from '@/lib/brief';
 import { nextSessionSuggestion } from '@/lib/prescription';
@@ -58,49 +58,5 @@ export function NextSessionCard({ inputs }: { inputs: SessionInputs }) {
         </details>
       )}
     </Card>
-  );
-}
-
-/** Self-fetching variant for pages that don't already hold the inputs. */
-export function NextSessionCardAuto({ plannedSport = null, plannedTss = null }: { plannedSport?: string | null; plannedTss?: number | null }) {
-  const { authFetch, token } = useAuthFetch();
-  const { data: readiness } = useQuery<ReadinessResponse>({
-    queryKey: ['readiness'],
-    queryFn: () => authFetch<ReadinessResponse>('/api/v1/metrics/readiness'),
-    staleTime: 60_000,
-    enabled: !!token,
-  });
-  const { data: today } = useQuery<TodaySummary>({
-    queryKey: ['dashboard', 'today'],
-    queryFn: () => authFetch<TodaySummary>('/api/v1/dashboard/today'),
-    staleTime: 60_000,
-    enabled: !!token,
-  });
-  const { data: debt } = useQuery<SleepDebtResponse>({
-    queryKey: ['metrics', 'sleep-debt'],
-    queryFn: () => authFetch<SleepDebtResponse>('/api/v1/metrics/sleep-debt?days=7'),
-    staleTime: 300_000,
-    enabled: !!token,
-  });
-  const { data: forecast } = useQuery<ForecastResponse | null>({
-    queryKey: ['weather', 'forecast-brief'],
-    queryFn: () => getForecast(token, 1),
-    staleTime: 30 * 60_000,
-    enabled: !!token,
-  });
-  const wx = forecast?.days?.[0];
-
-  return (
-    <NextSessionCard
-      inputs={{
-        recoveryScore: readiness?.recovery_score ?? null,
-        tsb: today?.current_tsb ?? null,
-        sleepDebtHours: debt?.debt_hours ?? null,
-        windKmh: wx?.wind_speed_max ?? null,
-        tempMax: wx?.temp_max ?? null,
-        plannedSport,
-        plannedTss,
-      }}
-    />
   );
 }

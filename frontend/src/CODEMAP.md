@@ -131,21 +131,21 @@
 | `AnimatedNumber` | rAF easeOutCubic numeric tween (`useAnimatedNumber` + component); jumps under reduced motion, magnitude-only |
 | `Reveal` | IntersectionObserver scroll reveal that degrades open (visible by default, fires once, no scroll listeners) |
 
-### `cycling/` — Cycling-specific
+### `cycling/` — Cycling page (three modes)
 | Component | Purpose |
 |-----------|---------|
-| `MetricCard` | Cycling metric with trend indicator |
-| `PowerCurveTable` | Power duration table |
-| `PowerZonesDisplay` | Power zone horizontal bars |
-| `HRZonesDisplay` | HR zone horizontal bars |
-| `ProfileEditor` | FTP/weight/LTHR + home lat/lng editor (feeds weather location) |
-| `RideAnalysisCard` | Post-ride analysis card |
-| `FuelPlanCard` | Ride fuel plan card (`['fuel-plan', activityId]` query) — target badges, fuelling timeline, pre/during/post actuals; rendered in activities expanded detail for cycling |
-| `LlmAnalysisCard` | Overall cycling Gemini LLM analysis display |
-| `WeightPanel` | **Body-weight management (Phase C §3.1)** + Withings composition — quick-add form (date + kg → `POST /metrics/weight`, optional body-fat %/muscle via +Composition toggle), 7-day rolling avg summary, source badges (Withings teal / Whoop purple / Manual gray; non-manual entries read-only), expandable per-entry composition grid, invalidates `['weight-history']` + weight/body-comp/W-kg chart queries. Rendered on `/cycling` (full) and dashboard Today strip (`compact` prop). Deletes go through `ConfirmDialog` + toast |
-| `PowerModelSection` | **Modal power models** — CP/W′/R² + personalized VO2max + adaptive CTL/ATL taus (`['power-model']` query, GET `/cycling/power-model`); empty state notes weekly Sunday fitting |
-| `WeatherAnalysisSection` | **Modal weather-performance** — power-vs-temp, wind penalties, decoupling threshold, HR drift, insight bullets (`['weather-analysis']` query, GET `/cycling/weather-analysis`); rendered on `/cycling` after the power model |
-| `WahooZonesCard` | **Wahoo zone sync** (plans/wahoo-zone-sync.md; `['wahoo-zones']` query, `enabled: !!token`) — opt-in toggle ("Keep my Wahoo zones in sync with FitTrack"; ON = PATCH then immediate push), manual push gated on `can_write` with the blocking reason shown, revert gated on `tracked[].has_prior`, per-set drift table (`delta` = wahoo − local, stated as "your device is N W behind/ahead"), skip reasons (`already_current`/`no_anchor`/`rejected`/`set_gone`) + foreign sets surfaced so a no-op push never reads as success, and an always-visible **read-only HR section** (local HR zones + Wahoo's own `hr_note`; no HR control exists). Rendered on `/cycling` under the Profile Settings card |
+| `FormMode` | Fitness hero (CTL + 90-day change), form/fatigue/ramp trio, fitted 91-day CTL/ATL chart, threshold rail, this week vs 4-week baselines, recent rides, 12-week rhythm |
+| `RidesMode` | The ride index — type filters, one open, speed/climbing/density vs the account's median; links out to `/activity/<id>` |
+| `PowerMode` | Log-spaced power curve (90 d vs 12 mo) + FTP line, one record table, shape vs norms, time-in-zone; durability / CP / VO₂max / weather behind a disclosure |
+| `CyclingUi` | Page-local primitives — `Hero`, `Metric`, `Delta`, `TypeChip`, `Bar`, `Panel`, ride-type colour map |
+
+Moved out in the same change: `ProfileEditor` → `settings/` (rendered by `CyclingProfileCard`,
+because FTP drives every chart on the page); `FuelPlanCard` + `RideAnalysisCard` → `activities/`;
+`WahooZonesCard` → `settings/`; `WeightPanel` → `athlete/` (rendered on Settings). Deleted with the
+rewrite: `FtpSection`, `PowerCurveSection`, `PowerCurveTable`, `PowerZonesDisplay`, `HRZonesDisplay`,
+`Vo2maxSection`, `DecouplingSection`, `TrainingLoadSection`, `PowerModelSection`,
+`WeatherAnalysisSection`, `LlmAnalysisCard`, `MetricCard` — 12 files, ~2.4k lines, all replaced by
+the three modes above.
 
 ### `lifting/` — Lifting-specific
 | Component | Purpose |
@@ -296,6 +296,10 @@
 | `WebPushCard` | **§3.8 Web Push settings card** — capability detection, Enable (subscribe → `/push/subscriptions`) / Disable (unsubscribe) buttons, device count, permission-denied notice. Rendered under the notifications card on `/settings` page |
 | `DataPortabilityCard` | **§3.9 data portability card** — JSON export (client-side blob download from `GET /export/json`) + account deletion (Modal with email confirmation, `DELETE /account/delete` → `signOut`). Rendered at the bottom of `/settings` page |
 | `IntelligenceStatusCard` | **Modal intelligence status** — per-feature fitted/not-fitted state: power/weather from `CyclingProfile` (`power_model_fitted_at`, `weather_analyzed_at`), cross-domain from `GET /cross-domain/status` (newest insight `created_at`), segments from `GET /segments/status` (max `intelligence_analyzed_at` + x/y counts). Status endpoints return 200-with-null when never fitted. Rendered on `/settings` before Export Data |
+| `CyclingProfileCard` | **Cycling thresholds** — wraps `ProfileEditor` with its own queries/mutations (PATCH profile, POST `estimate-ftp`, accept). Moved off `/cycling` with the page rewrite: FTP drives zones, TSS and W/kg, so it cannot live only on the page it feeds. Rendered on `/settings` under Body weight |
+| `ProfileEditor` | The form itself — FTP, weight, LTHR, home lat/lng (weather location), auto-estimate toggle, FTP-estimate preview + accept |
+| `WahooZonesCard` | **Wahoo zone sync** (`['wahoo-zones']` query) — opt-in toggle, manual push gated on `can_write` with the blocking reason, revert gated on `tracked[].has_prior`, per-set drift table ("your device is N W behind"), skip reasons surfaced, read-only HR section. Rendered on `/settings` next to Integrations |
+| `CyclingMaintenanceCard` | **Cycling data repair** — per-second streams backfill, TSS recompute, FTP-history backfill. Three rare POSTs that used to sit inline between charts on `/cycling`; same endpoints, result copy and cache invalidation. Rendered on `/settings` after Data Management |
 
 #### `onboarding/` — First-run wizard (§3.10)
 | Component | Purpose |
