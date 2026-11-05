@@ -26,7 +26,7 @@ import { seriesArea } from '@/lib/route-shape';
 import { formatDistance, formatDuration, getActiveLocale } from '@/lib/utils';
 import { RouteShape } from '@/components/activity/RouteShape';
 import { StreamChart } from '@/components/activity/StreamChart';
-import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
+import { FuelPlanCard } from '@/components/activities/FuelPlanCard';
 import { ErrorState } from '@/components/ui/ErrorState';
 
 function Metric({ label, value, sub }: { label: string; value: string; sub?: string }) {

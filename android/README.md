@@ -21,6 +21,9 @@ against those decisions.
   `history.json`, capped at 200. Today then shows "Last time 92.5 × 4 @7 · today"
   and a 7-day volume strip; the next session prefills from what you actually
   lifted, not from the plan.
+- **The log**: Today → **Log** lists finished sessions by week with sets and
+  volume; tapping one opens a read-only detail. Nothing on that screen can edit
+  history, deliberately.
 - Account: Google Sign-In through Credential Manager, verified server-side
   ([docs/ANDROID-AUTH.md](../docs/ANDROID-AUTH.md)). You → **Continue with Google**.
 
