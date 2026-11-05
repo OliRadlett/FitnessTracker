@@ -4,6 +4,7 @@ import math
 import uuid
 from dataclasses import dataclass
 from datetime import date, timedelta
+from itertools import pairwise
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -59,18 +60,78 @@ def _acsm_vo2max_legacy(power_watts: float, weight_kg: float) -> float:
 VO2_CLASS_SCOPE = (
     "cycling-fitness bands (not age/sex-adjusted; not a population percentile)"
 )
+VO2_CALIBRATED_SCOPE = (
+    "FRIEND cycle age/sex median-relative bands (not percentiles)"
+)
+
+# FRIEND cycle-ergometry 50th-percentile VO2max, anchored at the decade
+# midpoints. The published anchors are 41.9 (men 20-29) / 31.0 (women 20-29)
+# and 19.5 / 14.8 (70-79), with an approximately 10%-per-decade decline
+# (Kaminsky et al., Mayo Clin Proc 2017; PMID 27938891). Intermediate decades
+# are interpolated; this is a *median-relative* scale, not a percentile table.
+_FRIEND_CYCLE_MEDIANS: dict[str, tuple[tuple[int, float], ...]] = {
+    "male": ((25, 41.9), (35, 37.7), (45, 33.9), (55, 30.5), (65, 27.5), (75, 19.5)),
+    "female": ((25, 31.0), (35, 27.9), (45, 25.1), (55, 22.6), (65, 20.3), (75, 14.8)),
+}
 
 
-def _classify_vo2max(vo2max: float) -> str:
-    """Classify VO2max value into a fitness category.
+def vo2_age(birth_date: date | None) -> int | None:
+    """Age in whole years, or None outside the 20-79 FRIEND range."""
+    if birth_date is None:
+        return None
+    today = date.today()
+    age = today.year - birth_date.year - (
+        (today.month, today.day) < (birth_date.month, birth_date.day)
+    )
+    return age if 20 <= age <= 79 else None
 
-    Cycling-fitness classes (ml/kg/min), not a population percentile:
-    <35: Poor, 35-45: Below average, 45-55: Average, 55-65: Good, 65-75: Excellent, >75: Superior
 
-    F6 scope: these bands are NOT age/sex-adjusted. Consumers must label
-    them via ``VO2_CLASS_SCOPE`` (charts insights do; the API classification
-    string stays a bare label for backwards compatibility).
+def _friend_median(age: int | None, sex: str | None) -> float | None:
+    points = _FRIEND_CYCLE_MEDIANS.get(sex or "")
+    if points is None or age is None:
+        return None
+    if age <= points[0][0]:
+        return points[0][1]
+    if age >= points[-1][0]:
+        return points[-1][1]
+    for (age_a, median_a), (age_b, median_b) in pairwise(points):
+        if age_a <= age <= age_b:
+            fraction = (age - age_a) / (age_b - age_a)
+            return median_a + (median_b - median_a) * fraction
+    return None
+
+
+def _classify_vo2max(
+    vo2max: float, age: int | None = None, sex: str | None = None
+) -> str:
+    """Classify VO2max, age/sex-adjusted when demographics are available.
+
+    With age (20-79) and sex (male/female), bands are relative to the FRIEND
+    cycle-ergometry age/sex median:
+    <0.70 Poor · <0.85 Below Average · <1.05 Average · <1.20 Good ·
+    <1.35 Excellent · >=1.35 Superior.
+
+    Without demographics, fall back to the unadjusted cycling-fitness bands:
+    <35 Poor · <45 Below Average · <55 Average · <65 Good · <75 Excellent ·
+    >=75 Superior. Consumers must label which scale they used via
+    ``vo2_scope()``.
     """
+    median = _friend_median(age, sex)
+    if median:
+        ratio = vo2max / median
+        if ratio < 0.70:
+            return "Poor"
+        elif ratio < 0.85:
+            return "Below Average"
+        elif ratio < 1.05:
+            return "Average"
+        elif ratio < 1.20:
+            return "Good"
+        elif ratio < 1.35:
+            return "Excellent"
+        else:
+            return "Superior"
+
     if vo2max < 35:
         return "Poor"
     elif vo2max < 45:
@@ -83,6 +144,11 @@ def _classify_vo2max(vo2max: float) -> str:
         return "Excellent"
     else:
         return "Superior"
+
+
+def vo2_scope(age: int | None, sex: str | None) -> str:
+    """Label the scale actually used by ``_classify_vo2max``."""
+    return VO2_CALIBRATED_SCOPE if _friend_median(age, sex) else VO2_CLASS_SCOPE
 
 
 async def estimate_vo2max(
@@ -139,7 +205,7 @@ async def estimate_vo2max(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.7,
-                        f"FRIEND power-based (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
+                        f"FRIEND field estimate (5-min: {power_5min}W, {w_per_kg:.1f} W/kg)",
                     )
                 )
         else:
@@ -151,7 +217,7 @@ async def estimate_vo2max(
                     (
                         round(vo2_ml_kg_min, 1),
                         0.4,
-                        f"FRIEND power-based (5-min: {power_5min}W, no weight — estimated with 75kg)",
+                        f"FRIEND field estimate (5-min: {power_5min}W, no weight — estimated with 75kg)",
                     )
                 )
 
@@ -171,7 +237,7 @@ async def estimate_vo2max(
                 (
                     round(vo2_ml_kg_min, 1),
                     0.5,
-                    f"FRIEND power-based (8-min {power_8min}W scaled to 5-min equiv {power_5min_equiv}W via Riegel, {power_5min_equiv / weight_kg:.1f} W/kg)",
+                    f"FRIEND field estimate (8-min {power_8min}W scaled to 5-min equiv {power_5min_equiv}W via Riegel, {power_5min_equiv / weight_kg:.1f} W/kg)",
                 )
             )
 

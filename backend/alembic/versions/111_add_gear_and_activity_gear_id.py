@@ -17,8 +17,8 @@ depends on conditions and on the specific shoe or chain, and a default would be 
 number presented as knowledge. NULL means "not set", and the API reports no wear
 percentage rather than inventing one.
 
-Revision ID: 110
-Revises: 109
+Revision ID: 111
+Revises: 110
 Create Date: 2026-11-05
 """
 
@@ -26,8 +26,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "110"
-down_revision = "109"
+revision = "111"
+down_revision = "110"
 branch_labels = None
 depends_on = None
 

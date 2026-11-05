@@ -60,7 +60,30 @@ Delegate to specialized agents when the task clearly fits their domain:
 
 FitTrack: personal fitness tracker for **powerlifting + cycling**. Aggregates Strava, Komoot, Wahoo, Whoop into a dashboard with trends, correlations, routes, health alerts, training plans, goals, and events.
 
-**Stack**: Python 3.12/FastAPI/SQLAlchemy 2.0 (async) · Next.js 14/React 18/TypeScript/Tailwind/Recharts · PostgreSQL 16 · Redis 7 · Celery + Beat · NextAuth.js · Docker Compose + Caddy · Prometheus · ReportLab (PDF)
+**Stack**: Python 3.12/FastAPI/SQLAlchemy 2.0 (async) · Next.js 14/React 18/TypeScript/Tailwind/Recharts · PostgreSQL 16 · Redis 7 · Celery + Beat · NextAuth.js · Docker Compose + Caddy · Prometheus · ReportLab (PDF) · Kotlin/Compose Android client
+
+## Android app (`android/`)
+
+Native Kotlin + Compose client, v0.1 — the gym flow. It is **not** a port of the
+web UI: its decisions come from [`prototype/android/`](prototype/android/README.md)
+(frames, gate, parity matrix), and the code was written fresh against them.
+
+- **Build**: `cd android && gradle :app:assembleDebug`. Tests and screenshots:
+  `gradle :app:testDebugUnitTest` — JVM only, no emulator (Robolectric draws the
+  real `MainActivity`).
+- **Rules belong in [`SessionEngine`](android/app/src/main/java/uk/oli/fittrack/domain/Session.kt)**:
+  prefill, current exercise, volume, completion. Pure and unit-tested; screens
+  must not re-derive them.
+- **State**: one session at a time in [`AppViewModel`](android/app/src/main/java/uk/oli/fittrack/AppViewModel.kt),
+  persisted as JSON by [`SessionStore`](android/app/src/main/java/uk/oli/fittrack/data/SessionStore.kt)
+  after every set, so process death mid-workout costs nothing.
+- **Sign-in**: Google via Credential Manager → `POST /api/v1/auth/mobile/google`,
+  which verifies the ID token against Google's JWKS before minting a JWT
+  ([`services/google_id.py`](backend/app/services/google_id.py)). Setup and the
+  failure table live in [`docs/ANDROID-AUTH.md`](docs/ANDROID-AUTH.md). Sign-in is
+  **not** a gate: the gym flow works before you authenticate.
+- **Not built yet**: sync, and the Train/Ride/Body tabs — those render an explicit
+  "not built yet" screen rather than an empty shell.
 
 ## Architecture
 
@@ -242,9 +265,10 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `111`** — the head is `110` (`107` power provenance, `108`
-`weight_logs.raw_data`, `109` DailyMetric SpO2 + skin temp, `110` gear), `096` is `undo_logs`,
-and the branch was renumbered mid-flight once already (pitfall 34).
+**New migrations continue from `112`** — the head is `111` (`107` user demographics, `108`
+power provenance, `109` `weight_logs.raw_data`, `110` DailyMetric SpO2 + skin temp, `111`
+gear), `096` is `undo_logs`, and the branch was renumbered mid-flight once already
+(pitfall 34).
 
 **Training page overhaul** — [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md)
 (IA + editor) with companion [`plans/training-strength-programming.md`](plans/training-strength-programming.md)

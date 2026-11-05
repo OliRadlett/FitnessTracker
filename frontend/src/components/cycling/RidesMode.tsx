@@ -149,7 +149,7 @@ export function RidesMode({ rides, selectedId, onSelect }: RidesModeProps) {
                 <div className="mt-3 flex items-end justify-between">
                   <Metric label="Average power" value={`${num(selected.avgPower, 1)} W`} />
                   <Link
-                    href={`/fittrack/activity/${selected.id}`}
+                    href={`/activity/${selected.id}`}
                     className="inline-flex min-h-[44px] items-center gap-1 text-[12px] font-medium text-accent"
                   >
                     Full ride <ChevronRight className="h-3.5 w-3.5" aria-hidden />

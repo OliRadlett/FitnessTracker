@@ -19,6 +19,7 @@ import { WebPushCard } from '@/components/settings/WebPushCard';
 import { DataPortabilityCard } from '@/components/settings/DataPortabilityCard';
 import { CyclingMaintenanceCard } from '@/components/settings/CyclingMaintenanceCard';
 import { WahooZonesCard } from '@/components/settings/WahooZonesCard';
+import { AthleteProfileCard } from '@/components/settings/AthleteProfileCard';
 import { WeightPanel } from '@/components/athlete/WeightPanel';
 import { OnboardingToggle } from '@/components/onboarding/OnboardingWizard';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -356,6 +357,8 @@ export default function SettingsPage() {
           </div>
         </div>
       </Card>
+
+      <AthleteProfileCard />
 
       {/* Preferences */}
       <Card>

@@ -1,7 +1,8 @@
 # Integration opportunity review — 2026-11-05
 
-> **Status 2026-11-05:** #1, #2 and the storage half of #8 are implemented on
-> `feature/power-provenance-withings-payload` (migrations `107`, `108`, `109`). Two claims in the
+> **Status 2026-11-05:** #1, #2, #3 (backend), #5, #14 and #15 plus the storage half of #8 are
+> implemented on `feature/power-provenance-withings-payload` (migrations `108`–`111`, after
+> `main` claimed `107` mid-branch). Two claims in the
 > first draft did not survive contact with the code and are corrected inline: #1's proposed
 > *exclusion* was aimed at a consumer that never sees an estimate (all stream-gated), and
 > #6's Wahoo zone push already shipped as migration `103` before this review ran.
@@ -349,12 +350,12 @@ one small feature attached, not a Medium-value item.
 |---|---|---|---|---|---|
 | 1 | **Power provenance** — record `device_watts` as `activities.power_provenance`, expose it on the read contract. ~~Exclude it from CP/W′/PR fits~~ — **wrong, see §4 note** | XS | High — every power number becomes either measured or honestly labelled | already in `raw_data` | none |
 | 2 | **Whoop bulk recovery + SpO2 + skin temp** — replace the per-cycle N+1 with `/v2/recovery`; store both new signals; feed the illness composite | S | High — fewer calls *and* the two best early-illness signals we don't have | 2 columns on `DailyMetric` | migration |
-| 3 | **Gear & wear** — shipped (backend only, migration 110): `gear` table, `activities.gear_id`, resolution from `raw_data`, `GET/PATCH /gear`. **No page**, no alerts — explicitly out of scope for this pass | S | High — the app can finally answer "how far has this bike gone" | `gear_id` was already in `raw_data`; one call per gear | migration |
+| 3 | **Gear & wear** — shipped (backend only, migration 111): `gear` table, `activities.gear_id`, resolution from `raw_data`, `GET/PATCH /gear`. **No page**, no alerts — explicitly out of scope for this pass | S | High — the app can finally answer "how far has this bike gone" | `gear_id` was already in `raw_data`; one call per gear | migration |
 | 4 | **Whoop sleep-need decomposition** — shipped. ~~Store `sleep_needed.*`~~ **no storage needed**: the sync has always kept the whole sleep record in `SleepLog.raw_data`; the debt model now reads it | XS | Medium — replaces a flat 8-hour target with the athlete's per-night requirement, and explains it | already stored | none |
 | 5 | **Strava streams: `latlng` only** — shipped. ~~`temp`, `grade_smooth`~~ dropped: no consumer exists, so asking for them would add stored-never-read streams | XS | Medium — zero extra calls; replay uses recorded GPS instead of resampling the route shape | none (new rides only — no stream-backfill task exists) | none |
 | 6 | **Wahoo weight write-back** — push the scale's weight to Wahoo (and optionally Strava `PUT /athlete`). ~~FTP/zone push~~ **already shipped** as migration `103` (`/cycling/wahoo-zones`) | S | Medium — the head unit stops estimating calories and W/kg from a weight typed months ago | scopes already granted (`user_write`, `profile:write`) | none |
 | 7 | **Whoop + Wahoo webhooks** — mirror the Strava queue pattern; handle `.deleted` | M | Medium — 30 min → seconds, and deletions stop lingering | endpoint + queue table | #2 helps |
-| 8 | **Withings: store the payload, then ask for the scale superset** — ~~add `WeightLog.raw_data`~~ **shipped** (migration `108`, superset `meastypes`, observed-type log); remaining: map heart pulse (11) and BMR (226) into columns. **Do not** build BP/ECG/AFib (hardware-gated, §3.4) | S | Low-Medium — a standardised morning RHR and the app's only path to a measured BMR | `meastypes` + `raw_data` column | migration; store before requesting |
+| 8 | **Withings: store the payload, then ask for the scale superset** — ~~add `WeightLog.raw_data`~~ **shipped** (migration `109`, superset `meastypes`, observed-type log); remaining: map heart pulse (11) and BMR (226) into columns. **Do not** build BP/ECG/AFib (hardware-gated, §3.4) | S | Low-Medium — a standardised morning RHR and the app's only path to a measured BMR | `meastypes` + `raw_data` column | migration; store before requesting |
 | 9 | **Open-Meteo air quality/pollen** — daily pollen+AQI, activity-level attribution, "high pollen today" | S | Medium — a competing explanation for performance dips | new daily + activity columns | migration |
 | 10 | **Strava laps → real interval structure** — `start_index`/`end_index` per lap replaces the ten equal-time slices in `pacing_analysis` | M | Medium — a 4×8 session is currently indistinguishable from a steady ride with variable power | 1 call/ride (read budget) | none |
 | 11 | **Photo → structured session (Gemini)** — whiteboard/notebook/plan screenshot to sets | M | Medium-High — removes the slowest manual step | Gemini (already paid) | scope storage |
@@ -370,7 +371,7 @@ one small feature attached, not a Medium-value item.
 `activities.power_provenance` (`measured` / `estimated` / NULL), set from
 `device_watts` at the three Strava write paths (`sync` create, `sync` merge, webhook
 merge), from the FIT import, and from Wahoo's summary; backfilled from `raw_data` in
-migration 107 (no Strava calls); exposed on `ActivityRead`/`ActivityDetailRead` and the CSV
+migration 108 (no Strava calls); exposed on `ActivityRead`/`ActivityDetailRead` and the CSV
 export; `power_provenance` added to `_MERGE_FIELDS` so it travels with `average_power`
 across providers.
 
@@ -416,7 +417,7 @@ same data). `_recovery_fields()` is now the single projector for **three** call 
 scheduled sync, `backfill_whoop_data` and `_backfill_missing_recovery` — which had each
 hand-picked their own four of the score's seven fields; that divergence is why SpO2 and
 skin temperature were never collected. `spo2_percentage` + `skin_temp_celsius` land on
-`DailyMetric` (migration 109) and vote in `_illness_composite`.
+`DailyMetric` (migration 110) and vote in `_illness_composite`.
 
 Three decisions worth recording:
 
@@ -437,7 +438,7 @@ skin temp 10 when present. Adding a vote dilutes the others proportionally (full
 1.20) rather than rescaling them, and every signal still drops out of the denominator when
 absent — so a strap with no SpO2 scores exactly as it did before, which is asserted.
 
-Not done, deliberately: rows written before migration 109 have NULL SpO2/skin temp and will
+Not done, deliberately: rows written before migration 110 have NULL SpO2/skin temp and will
 not gain them — the gap filler only revisits rows missing `recovery_score`, and backfilling
 two optional fields would mean re-fetching every cycle ever recorded. The signal is about
 the last week, so the history is not worth it.

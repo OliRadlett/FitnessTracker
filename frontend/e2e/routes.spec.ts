@@ -84,6 +84,27 @@ test.describe('Routes Page', () => {
     await expect(dialog.getByText(/surface · paved 78%/i)).toBeVisible();
   });
 
+  test('a route can be tagged and collected from the detail', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
+    const detail = page.getByRole('dialog', { name: /surrey hills loop details/i });
+    await detail.getByRole('button', { name: /organise/i }).click();
+
+    const organise = page.getByRole('dialog', { name: /tags and collections/i });
+    await expect(organise).toBeVisible();
+
+    const hilly = organise.getByRole('button', { name: /hilly/i });
+    await expect(hilly).toHaveAttribute('aria-pressed', 'false');
+    await hilly.click();
+    await expect(hilly).toHaveAttribute('aria-pressed', 'true');
+
+    const weekend = organise.getByRole('button', { name: /weekend rides/i });
+    await expect(weekend).toHaveAttribute('aria-pressed', 'false');
+    await weekend.click();
+    await expect(weekend).toHaveAttribute('aria-pressed', 'true');
+  });
+
   test('the detail exposes the deep tools on demand', async ({ authenticatedPage: page }) => {
     await page.getByRole('button', { name: /surrey hills loop/i }).first().click();
     const dialog = page.getByRole('dialog', { name: /surrey hills loop details/i });

@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from app.services.cycling.power_curve import (
@@ -149,6 +151,30 @@ class TestNormScopes:
         assert _classify_vo2max(30.0) == "Poor"
         assert _classify_vo2max(50.0) == "Average"
         assert _classify_vo2max(80.0) == "Superior"
+
+    def test_age_sex_adjusted_vo2_bands(self):
+        """A 25-year-old man at the FRIEND cycle median is Average, not Below."""
+        from app.services.cycling.vo2max import _classify_vo2max, vo2_scope
+
+        assert _classify_vo2max(41.9, 25, "male") == "Average"
+        assert _classify_vo2max(45.4, 25, "male") == "Good"
+        assert _classify_vo2max(31.0, 25, "female") == "Average"
+        assert "median-relative" in vo2_scope(25, "male")
+
+    def test_missing_or_unsupported_demographics_fall_back(self):
+        from app.services.cycling.vo2max import _classify_vo2max, vo2_scope
+
+        assert _classify_vo2max(50.0, None, None) == "Average"
+        assert _classify_vo2max(50.0, 25, "prefer_not_to_say") == "Average"
+        assert "cycling-fitness" in vo2_scope(None, None)
+
+    def test_vo2_age_bounds(self):
+        from app.services.cycling.vo2max import vo2_age
+
+        today = date.today()
+        assert vo2_age(date(today.year - 30, 1, 1)) == 30
+        assert vo2_age(date(today.year - 15, 1, 1)) is None
+        assert vo2_age(None) is None
 
 
 class TestLogLinearInterp:

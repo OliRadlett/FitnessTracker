@@ -245,6 +245,9 @@ class PacingSegment(BaseModel):
 class RideAnalysisResponse(BaseModel):
     model_config = {"from_attributes": True}
     normalized_power: float | None = None
+    # "includes_coasting_zeros": the app's NP keeps zero-power samples, while
+    # provider summary NP (Strava) drops them. Never compare the two unlabelled.
+    normalized_power_convention: str | None = None
     power_zones: list[PowerZoneDistribution]
     power_distribution: list[PowerHistogramBucket]
     pacing_analysis: dict  # segments list + power_variability

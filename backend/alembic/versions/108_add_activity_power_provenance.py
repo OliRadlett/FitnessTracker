@@ -27,17 +27,23 @@ Rows are left NULL when the payload cannot answer — an older activity whose
 payload predates the field, or a manual/non-Strava row. Everything downstream
 fails open on NULL, so an unclassified row keeps whatever trust it had.
 
-Revision ID: 107
-Revises: 106
+Revision ID: 108
+Revises: 107
 Create Date: 2026-11-05
+
+Renumbered from 107 while the branch was open: ``main`` shipped
+``107_add_user_demographics`` in the same window, and two files claiming one
+revision make ``get_heads()`` raise, which breaks every alembic command rather
+than just this one (AGENTS.md pitfall 34). Renumbering an unreleased file is the
+safe fix; the alternative — editing the trunk's — is not.
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "107"
-down_revision = "106"
+revision = "108"
+down_revision = "107"
 branch_labels = None
 depends_on = None
 

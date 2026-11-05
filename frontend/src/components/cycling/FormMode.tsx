@@ -126,7 +126,7 @@ export function FormMode({ profile, metrics, load, ramp, rides, buckets, onOpenR
             <div className="h-px bg-surface-light/40" />
             <div className="flex min-h-[44px] items-center justify-between gap-2">
               <p className="text-[12px] text-muted">Plan your week in</p>
-              <Link href="/fittrack/training" className="inline-flex items-center gap-1 text-[12px] font-medium text-accent">
+              <Link href="/training" className="inline-flex min-h-[44px] items-center gap-1 text-[12px] font-medium text-accent">
                 Training <ChevronRight className="h-3.5 w-3.5" aria-hidden />
               </Link>
             </div>
@@ -156,7 +156,7 @@ export function FormMode({ profile, metrics, load, ramp, rides, buckets, onOpenR
                     {formatDuration(r.movingSeconds)}
                   </span>
                   <span className="w-[54px] shrink-0 text-[12px] tabular-nums text-muted">
-                    {num(r.tss)} <span className="text-[10px] uppercase">tss</span>
+                    {num(r.tss)} <span className="text-[12px] uppercase">tss</span>
                   </span>
                   <span className="ml-auto shrink-0">
                     <TypeChip type={r.rideType} />
@@ -171,9 +171,9 @@ export function FormMode({ profile, metrics, load, ramp, rides, buckets, onOpenR
         </Panel>
 
         <Panel className="p-4 sm:p-5">
-          <PanelHead title="12-week rhythm" hint="Rides per week, by type" />
+          <PanelHead title="12-week rhythm" hint={`Rides per week, to ${formatShortDate(buckets[buckets.length - 1]?.startISO ?? '')}`} />
           <div className="mt-4 flex h-[132px] items-end gap-1.5">
-            {buckets.map((b, i) => (
+            {buckets.map((b) => (
               <div key={b.startISO} className="flex h-full flex-1 flex-col justify-end gap-[2px]">
                 {b.total === 0 ? (
                   <div className="h-[3px] w-full rounded-sm bg-surface-light/40" />
@@ -192,7 +192,6 @@ export function FormMode({ profile, metrics, load, ramp, rides, buckets, onOpenR
                     )),
                   )
                 )}
-                <span className="mt-1 text-center text-[10px] text-muted">{i % 3 === 0 ? b.label : ''}</span>
               </div>
             ))}
           </div>

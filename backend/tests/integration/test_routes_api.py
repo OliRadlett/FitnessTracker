@@ -391,3 +391,69 @@ class TestRouteIntelligenceRefresh:
         await db_session.refresh(test_route)
         assert test_route.surface_profile == {"paved": 0.9, "cobblestone": 0.1}
 
+    async def test_refresh_links_unlinked_rides(
+        self, client, db_session, test_user, test_route
+    ):
+        """A ride imported before its route existed must become 'ridden'."""
+        from datetime import UTC, datetime
+
+        from app.models.activity import Activity
+        from app.services.polyline_utils import decode_polyline, polyline_total_distance
+
+        # The fixture's polyline is much shorter than its declared 15 km, so use
+        # the geometry's real length and endpoints for both sides — the matcher
+        # gates on length and on start proximity.
+        test_route.distance_meters = polyline_total_distance(
+            test_route.encoded_polyline
+        )
+        points = decode_polyline(test_route.encoded_polyline)
+        test_route.start_lat, test_route.start_lng = points[0]
+        test_route.end_lat, test_route.end_lng = points[-1]
+        activity = Activity(
+            user_id=test_user.id,
+            source="strava",
+            sport_type="cycling",
+            name="Unlinked Ride",
+            start_date=datetime.now(UTC),
+            duration_seconds=3600,
+            distance_meters=test_route.distance_meters,
+            raw_data={"map": {"summary_polyline": test_route.encoded_polyline}},
+        )
+        db_session.add(activity)
+        await db_session.flush()
+
+        resp = await client.post("/api/v1/routes/intelligence/refresh")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["rides_linked"] >= 1
+
+        await db_session.refresh(activity)
+        assert activity.route_id == test_route.id
+
+
+class TestRouteOrganising:
+    async def test_collection_membership_round_trip(
+        self, client, db_session, test_route
+    ):
+        created = await client.post(
+            "/api/v1/routes/collections", json={"name": "Weekenders"}
+        )
+        assert created.status_code == 200, created.text
+        collection_id = created.json()["id"]
+
+        added = await client.post(
+            f"/api/v1/routes/collections/{collection_id}/routes/{test_route.id}"
+        )
+        assert added.status_code == 200, added.text
+
+        listed = await client.get(f"/api/v1/routes/{test_route.id}/collections")
+        assert listed.status_code == 200, listed.text
+        assert collection_id in listed.json()
+
+        removed = await client.delete(
+            f"/api/v1/routes/collections/{collection_id}/routes/{test_route.id}"
+        )
+        assert removed.status_code == 200, removed.text
+
+        listed_after = await client.get(f"/api/v1/routes/{test_route.id}/collections")
+        assert listed_after.json() == []
+
