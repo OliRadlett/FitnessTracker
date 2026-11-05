@@ -14,6 +14,7 @@ settings = get_settings()
 
 STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
+STRAVA_REVOKE_URL = "https://www.strava.com/oauth/revoke"
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
 
 # Streams requested by default. ``keys`` is comma-separated, so adding a type
@@ -104,6 +105,24 @@ class StravaClient:
                 return resp.json()
 
         return await retry_request(_fetch)
+
+    async def revoke_token(self, access_token: str) -> None:
+        """Revoke this app's grant for the athlete.
+
+        Called when a user disconnects, so FitTrack disappears from their Strava
+        settings instead of lingering as an authorised app. The endpoint takes
+        the access token in the form body; no client secret is required.
+        """
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.post(
+                    STRAVA_REVOKE_URL,
+                    data={"access_token": access_token},
+                )
+                resp.raise_for_status()
+
+        await retry_request(_fetch)
 
     async def get_activities(
         self,

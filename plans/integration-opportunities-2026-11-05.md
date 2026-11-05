@@ -360,7 +360,7 @@ one small feature attached, not a Medium-value item.
 | 11 | **Photo → structured session (Gemini)** — whiteboard/notebook/plan screenshot to sets | M | Medium-High — removes the slowest manual step | Gemini (already paid) | scope storage |
 | 12 | **Whoop-only workout fallback** — ingest a Whoop ride with no Strava twin instead of dropping it | S | Low-Medium — completeness of load, with no GPS | none | #2 |
 | 13 | **Strava write-back** — manual/FIT/lifting sessions → Strava; `PUT /activities` edits | M | Low-Medium — closes a one-way loop, needs re-consent | `activity:write` | §5.1 |
-| 14 | **Disconnect revokes the grant** — `POST /oauth/revoke` (Strava), `DELETE /v2/user/access` (Whoop), `DELETE /v1/permissions` (Wahoo), `oauth2 action=revoke` (Withings) | XS | Low but cheap — a disconnect that actually disconnects | none | none |
+| 14 | **Disconnect revokes the grant** — shipped for Strava/Whoop/Wahoo; returns `grant_revoked` and never blocks the delete. Withings revoke shape unverified, Komoot has no OAuth grant | XS | Medium — "Disconnected" was only true of our database | none | none |
 | 15 | **Proactive deauthorization** — Strava `athlete` webhook + Withings `appli=46 action=unlink`; today a revoked grant is discovered by a 401 | XS | Low-Medium — connection health stops being reactive | none | none |
 | 16 | **Komoot `difficulty` + `way_types`** — reuse the provider's own grading instead of elevating-per-km heuristics | XS | Low — a second opinion on route difficulty, already in `raw_data` | none | none |
 

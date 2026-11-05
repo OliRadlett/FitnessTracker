@@ -439,6 +439,27 @@ class WhoopClient:
             resp.raise_for_status()
             return resp.json()
 
+    # ── Revocation ────────────────────────────────────────────────────────
+
+    async def revoke_access(self, access_token: str) -> None:
+        """Revoke this app's access for the user (``DELETE /v2/user/access``).
+
+        Called when a user disconnects, so the grant disappears from their Whoop
+        account instead of staying authorised. This is the only mutation Whoop's
+        public API offers.
+        """
+
+        async def _fetch():
+            async with httpx.AsyncClient() as client:
+                resp = await client.delete(
+                    f"{self.base_url}/developer/v2/user/access",
+                    headers=self._headers(access_token),
+                    timeout=30,
+                )
+                resp.raise_for_status()
+
+        await retry_request(_fetch)
+
 
 # Singleton
 whoop_client = WhoopClient()

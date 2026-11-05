@@ -128,6 +128,25 @@ class WahooClient:
 
         return await retry_request(_fetch)
 
+    async def revoke_access(self, access_token: str) -> None:
+        """Deauthorise this app for the user (``DELETE /v1/permissions``).
+
+        Called when a user disconnects, so Wahoo stops listing FitTrack as an
+        authorised app. Wahoo's registration has its own flags for deleting
+        future workouts or the plans we pushed; those live on the app, not on
+        this request.
+        """
+
+        async def _fetch():
+            async with httpx.AsyncClient(timeout=30) as client:
+                resp = await client.delete(
+                    f"{WAHOO_API_BASE}/v1/permissions",
+                    headers={"Authorization": f"Bearer {access_token}"},
+                )
+                resp.raise_for_status()
+
+        await retry_request(_fetch)
+
     async def get_user(self, access_token: str) -> dict:
         """Fetch the authenticated user profile."""
         async with httpx.AsyncClient(timeout=30) as client:
