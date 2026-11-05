@@ -21,9 +21,21 @@ baseline frames and the lab that proved the replacement live in
 - `polyline_utils.preview_polyline()` — uniform resample, endpoints preserved,
   never raises (one corrupt row cannot fail a list).
 - The list endpoint populates the field per row.
-- Tests: `tests/test_route_preview_polyline.py` (6 unit) and two integration
-  cases in `tests/integration/test_routes_api.py` (list carries it, detail keeps
-  the full polyline).
+- **Duplicate scanning moved off the request path.** The flow now lives in
+  `services/route_similarity.py` (shared by the weekly task and a new
+  on-demand Celery task):
+  - `POST /routes/duplicates/refresh` → queues `recompute_user_route_similarity`
+    (202; `running` if a scan holds the lock).
+  - `GET /routes/duplicates/status` → `never | queued | running | ready | failed`
+    plus `started_at`/`finished_at`/`pairs`, backed by Redis with a
+    `route_similarity` row-count fallback.
+  - `GET /routes/duplicates` **never scans**. It returns the cached pairs and
+    adds `X-Scan-Status` / `X-Scan-Generated-At`, so "not scanned" is
+    distinguishable from "no duplicates".
+  - A Redis lock prevents stacking scans; auto-merge stays gated off.
+- Tests: 7 unit (`preview_polyline`, scan-state hash decoding, auto-merge
+  gate) and 6 integration cases (list preview, detail full polyline, cached
+  queue, no-scan-on-read, status `never`, refresh queues).
 
 ### Frontend
 
@@ -32,11 +44,14 @@ baseline frames and the lab that proved the replacement live in
     compare amber; optional heatmap) + `RouteList` (shape, distance, climb,
     est. time, ridden, provider chain) + `RouteDetail` (one scroll, deep tools
     behind a disclosure) + `FacetBar` (desktop inline, mobile chip sheet).
-  - Maintain: duplicate review **on demand**, merged routes, unusable geometry,
-    sport mismatch, collections. `GET /routes/duplicates` is never auto-called:
-    the scan runs full geometry in the request and can take minutes.
+  - Maintain: duplicate review, merged routes, unusable geometry, sport
+    mismatch, collections. The scan is queued as a background task; the panel
+    polls its state and only a finished scan mounts the review queue.
   - Header: mode, Compare, Collections drawer, Heatmap, GPX, Sync; mobile folds
     the secondary actions into a sheet.
+  - Maintain shows the scan state (queued / running / ready / failed), polls
+    while it runs, and mounts the review queue only when a scan has finished.
+    "Never scanned" and "no duplicates" are different states.
 - `lib/routeAtlas.ts`: pure projection, elevation (both stored shapes), hub,
   nearest sort, facet→query mapping, formatting. 15 unit tests.
 - `RouteSummary`/`RouteData` types: `preview_polyline`, and
@@ -47,15 +62,15 @@ baseline frames and the lab that proved the replacement live in
   `QualityBadge` (only those files used it) and its unit test.
   `Route3D`, weather, effort, segments, merged view, similar routes and compare
   are kept and reachable.
-- E2E: `routes.spec.ts` rewritten for the atlas (16 tests), `routes-organize`
-  updated for the drawer (4), mocks gained real preview polylines and a route
-  history endpoint.
+- E2E: `routes.spec.ts` rewritten for the atlas (18 tests, including the scan
+  states), `routes-organize` updated for the drawer (4), mocks gained real
+  preview polylines, a route-history endpoint and scan-state responses.
 
 ## Known gaps (deliberate)
 
 | Gap | Why it is not in this change |
 |---|---|
-| Duplicate scan still runs in the request | Needs a Celery/Modal job writing `route_similarity` + a poll/202 API. Tracked below. |
+| Duplicate scan is still CPU-bound | It now runs in a worker (~15–20 min for 86 routes), not a request. Shortening it needs a validated decimated matcher; not worth changing thresholds blind. |
 | Quality / terrain / surface still absent | 0/86 rows; the new page does not render controls for them. Fix the producers or leave them hidden. |
 | List is capped at 200 routes | Above that, the map cannot draw the library. Pagination or a bbox-limited map is the next step. |
 | Facet/tag/collection state is not in the URL | Mode + route are; filters are session state. Worth adding when the URL-state pattern is settled. |
@@ -63,8 +78,8 @@ baseline frames and the lab that proved the replacement live in
 
 ## Follow-ups
 
-1. Async duplicate pipeline → `route_similarity` + `GET /routes/duplicates`
-   returns `generated_at` (or 202), with a bounded scan and a timeout.
+1. Duplicate scan: shorten the matcher (validate a decimated scoring path), then
+   reduce the 4 s poll interval if the run drops under a minute.
 2. Quality/terrain producers: run for every route on sync, expose
    `computed_at`, and only then reintroduce badges/filters (with a “not scored”
    state).
@@ -78,7 +93,7 @@ baseline frames and the lab that proved the replacement live in
 
 ```powershell
 cd backend
-python -m pytest tests/test_route_preview_polyline.py -q
+python -m pytest tests/test_route_preview_polyline.py tests/test_route_scan_state.py tests/test_auto_merge_gated.py -q
 python -m pytest tests/integration/test_routes_api.py -q
 cd ../frontend
 npx tsc --noEmit

@@ -815,6 +815,23 @@ export const mockRouteHistory = {
   ],
 };
 
+// The duplicate scan is a background job; these drive Maintain's scan states.
+export const mockRouteScanStatus = {
+  state: 'never',
+  started_at: null,
+  finished_at: null,
+  pairs: null,
+  error: null,
+};
+
+export const mockRouteScanRunning = {
+  state: 'running',
+  started_at: '2026-08-20T08:00:00Z',
+  finished_at: null,
+  pairs: null,
+  error: null,
+};
+
 // ─── Goals ───────────────────────────────────────────────────────────────────
 
 export const mockGoals = [

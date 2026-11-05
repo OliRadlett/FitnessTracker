@@ -212,6 +212,23 @@ const defaultApiHandlers: [string, ApiHandler][] = [
     route.continue();
   }],
 
+  // Duplicate scan state/refresh — before the general routes handler, which
+  // would otherwise answer /duplicates/status with the route list.
+  ['/duplicates/status', (route) => {
+    if (/\/api\/v1\/routes\/duplicates\/status/.test(route.request().url())) {
+      route.fulfill({ status: 200, body: JSON.stringify(mockData.mockRouteScanStatus) });
+      return;
+    }
+    route.continue();
+  }],
+  ['/duplicates/refresh', (route) => {
+    if (/\/api\/v1\/routes\/duplicates\/refresh/.test(route.request().url())) {
+      route.fulfill({ status: 202, body: JSON.stringify({ status: 'queued' }) });
+      return;
+    }
+    route.continue();
+  }],
+
   // Route history — one segment deeper than the detail handler, so it must be
   // matched before the general routes handler (which would return the list).
   ['/history', (route) => {

@@ -114,6 +114,46 @@ test.describe('Routes Page', () => {
     expect(duplicateRequests).toBe(0);
   });
 
+  test('a running scan is reported without mounting the queue', async ({
+    authenticatedPage: page,
+  }) => {
+    await page.route('**/api/v1/routes/duplicates/status', (route) => {
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          state: 'running',
+          started_at: new Date(Date.now() - 60_000).toISOString(),
+          finished_at: null,
+          pairs: null,
+          error: null,
+        }),
+      });
+    });
+
+    await page.getByRole('button', { name: /^maintain$/i }).click();
+    await expect(page.getByText(/scanning the library/i)).toBeVisible();
+    await expect(page.getByText(/duplicate routes/i)).toHaveCount(0);
+  });
+
+  test('a finished scan with no pairs says so', async ({ authenticatedPage: page }) => {
+    await page.route('**/api/v1/routes/duplicates/status', (route) => {
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          state: 'ready',
+          started_at: '2026-08-20T08:00:00Z',
+          finished_at: '2026-08-20T08:16:00Z',
+          pairs: 0,
+          error: null,
+        }),
+      });
+    });
+
+    await page.getByRole('button', { name: /^maintain$/i }).click();
+    await expect(page.getByText(/no duplicate candidates/i)).toBeVisible();
+    await expect(page.getByRole('button', { name: /re-scan/i })).toBeVisible();
+  });
+
   // ── Header actions ────────────────────────────────────────────────────
 
   test('GPX upload opens the file picker', async ({ authenticatedPage: page }) => {

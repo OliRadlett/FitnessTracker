@@ -204,9 +204,46 @@ class TestDuplicatesQueue:
         # RouteRead must serialise cleanly, including tags.
         assert "tags" in data[0]["route_a"]
 
-    async def test_duplicates_without_cache_returns_200(self, client, test_route):
-        """The local-scan fallback path must also not 500 (empty cache)."""
+    async def test_duplicates_without_cache_returns_empty_and_reports_never(
+        self, client, test_route
+    ):
+        """An empty cache must not trigger the 15-minute synchronous scan."""
         resp = await client.get("/api/v1/routes/duplicates")
         assert resp.status_code == 200, resp.text
-        assert isinstance(resp.json(), list)
+        assert resp.json() == []
+        assert resp.headers["x-scan-status"] == "never"
+
+    async def test_duplicates_never_scans_on_read(self, client, test_route, monkeypatch):
+        from app.services import route_service
+
+        async def _boom(*args, **kwargs):
+            raise AssertionError("the review queue must not scan on read")
+
+        monkeypatch.setattr(route_service, "find_potential_duplicates", _boom)
+
+        resp = await client.get("/api/v1/routes/duplicates")
+        assert resp.status_code == 200, resp.text
+
+    async def test_scan_status_is_never_before_the_first_scan(self, client):
+        resp = await client.get("/api/v1/routes/duplicates/status")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["state"] == "never"
+        assert body["pairs"] is None
+
+    async def test_refresh_queues_a_background_scan(self, client, monkeypatch):
+        from app.services import route_similarity
+
+        queued: list[str] = []
+
+        async def _fake_enqueue(user_id):
+            queued.append(str(user_id))
+            return "queued"
+
+        monkeypatch.setattr(route_similarity, "enqueue_user_similarity", _fake_enqueue)
+
+        resp = await client.post("/api/v1/routes/duplicates/refresh")
+        assert resp.status_code == 202, resp.text
+        assert resp.json() == {"status": "queued"}
+        assert len(queued) == 1
 

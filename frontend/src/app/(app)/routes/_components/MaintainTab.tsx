@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
-import { Copy, Layers, Route, Tags, TriangleAlert } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Copy, Layers, Loader2, Route, Tags, TriangleAlert } from 'lucide-react';
 import type { RouteSummary } from '@/lib/api/types';
+import { useAuthFetch } from '@/lib/api';
+import { getRouteScanStatus, refreshRouteScan } from '@/lib/api/routes';
 import {
   decodePolyline,
   formatClimb,
+  formatDate,
   formatKm,
   hasShape,
   providerChain,
@@ -83,8 +87,8 @@ function RouteLine({
 
 /**
  * Maintain mode: the library's health, not its browse surface. The duplicate
- * queue is on demand — the scan runs full geometry inside the request today,
- * so auto-loading it would wedge the page (and the backend worker).
+ * queue is a background scan: the button queues a Celery task, this panel
+ * polls the scan state, and only a finished scan shows the review queue.
  */
 export function MaintainTab({
   routes,
@@ -97,7 +101,44 @@ export function MaintainTab({
   onOpenRoute: (id: string) => void;
   onOpenCollections: () => void;
 }) {
-  const [scanOpen, setScanOpen] = useState(false);
+  const { token } = useAuthFetch();
+  const queryClient = useQueryClient();
+  const [scanError, setScanError] = useState<string | null>(null);
+  const previousState = useRef<string | undefined>(undefined);
+
+  const { data: scan, refetch: refetchScan } = useQuery({
+    queryKey: ['route-scan-status'],
+    queryFn: () => getRouteScanStatus(token),
+    enabled: !!token,
+    refetchInterval: (query) => {
+      const state = query.state.data?.state;
+      return state === 'queued' || state === 'running' ? 4000 : false;
+    },
+  });
+
+  const startScan = useMutation({
+    mutationFn: () => refreshRouteScan(token),
+    onSuccess: () => {
+      setScanError(null);
+      refetchScan();
+    },
+    onError: (err) =>
+      setScanError((err as Error)?.message || 'The scan could not be queued.'),
+  });
+
+  // A finished scan means the cached graph changed: refetch the queue once.
+  useEffect(() => {
+    const state = scan?.state;
+    if (state === 'ready' && previousState.current && previousState.current !== 'ready') {
+      queryClient.invalidateQueries({ queryKey: ['route-duplicates'] });
+      queryClient.invalidateQueries({ queryKey: ['route-orphans'] });
+    }
+    previousState.current = state;
+  }, [scan?.state, queryClient]);
+
+  const scanning = scan?.state === 'queued' || scan?.state === 'running';
+  const reviewCount = scan?.state === 'ready' ? (scan.pairs ?? 0) : null;
+
   const ridden = routes.filter((r) => r.is_ridden).length;
   const merged = routes.filter((r) => r.sources.length > 1);
   const noShape = routes.filter(
@@ -119,12 +160,66 @@ export function MaintainTab({
         <Section
           icon={<Copy className="h-4 w-4" />}
           title="Duplicate review"
-          count={scanOpen ? '—' : 'on demand'}
-          description="Find routes that are the same ride from different providers. The scan runs full-resolution geometry, so it can take minutes on a large library."
+          count={
+            scan?.state === 'ready'
+              ? (reviewCount ?? 0)
+              : scan?.state === 'running' || scan?.state === 'queued'
+                ? 'scanning'
+                : 'on demand'
+          }
+          description="Same ride, different provider. The scan is a background job — full-resolution geometry takes minutes, so it never runs inside a request."
         >
-          {scanOpen ? (
-            <div className="p-3">
-              <DuplicatesTab />
+          {scanning ? (
+            <div className="flex items-start gap-3 px-4 py-4">
+              <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-accent" />
+              <div>
+                <p className="text-xs font-medium text-foreground">Scanning the library…</p>
+                <p className="mt-1 text-xs text-muted">
+                  Started {scan?.started_at ? formatTime(scan.started_at) : 'just now'}. You can
+                  leave this page — the scan keeps running in the background.
+                </p>
+              </div>
+            </div>
+          ) : scan?.state === 'failed' ? (
+            <div className="space-y-2 px-4 py-3">
+              <p className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+                The last scan failed: {scan.error || 'unknown error'}
+              </p>
+              <button
+                type="button"
+                onClick={() => startScan.mutate()}
+                disabled={startScan.isPending}
+                className="h-9 rounded-lg bg-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                Retry scan
+              </button>
+            </div>
+          ) : reviewCount !== null ? (
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-xs text-muted">
+                <span>
+                  Last scanned {scan?.finished_at ? formatDate(scan.finished_at) : '—'} ·{' '}
+                  <span className="tabular-nums text-foreground">{reviewCount}</span>{' '}
+                  {reviewCount === 1 ? 'pair' : 'pairs'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => startScan.mutate()}
+                  disabled={startScan.isPending}
+                  className="h-8 rounded-lg border border-surface-light/70 px-3 text-[11px] font-medium text-foreground hover:bg-surface-light/30 disabled:opacity-50"
+                >
+                  Re-scan
+                </button>
+              </div>
+              {reviewCount > 0 ? (
+                <div className="p-3">
+                  <DuplicatesTab />
+                </div>
+              ) : (
+                <p className="px-4 pb-3 text-xs text-muted">
+                  No duplicate candidates. Nothing to review.
+                </p>
+              )}
             </div>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -133,13 +228,15 @@ export function MaintainTab({
               </p>
               <button
                 type="button"
-                onClick={() => setScanOpen(true)}
-                className="h-9 rounded-lg bg-accent px-4 text-xs font-semibold text-white"
+                onClick={() => startScan.mutate()}
+                disabled={startScan.isPending}
+                className="h-9 rounded-lg bg-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
               >
-                Run duplicate scan
+                {startScan.isPending ? 'Queueing…' : 'Run duplicate scan'}
               </button>
             </div>
           )}
+          {scanError && <p className="px-4 pb-3 text-xs text-warning">{scanError}</p>}
         </Section>
 
         <Section
@@ -229,4 +326,8 @@ function Summary({ label, value, hint }: { label: string; value: number; hint: s
       <p className="mt-0.5 truncate text-[11px] text-muted">{hint}</p>
     </div>
   );
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 }
