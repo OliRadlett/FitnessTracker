@@ -152,6 +152,21 @@ def match_geometry(
     }
 
 
+def _bbox_gap_m(climb: list[list[float]], ride: list[list[float]]) -> float:
+    """Cheap lower bound between two bounding boxes (metres)."""
+    if not climb or not ride:
+        return float("inf")
+    c_lat = [p[0] for p in climb]
+    c_lng = [p[1] for p in climb]
+    r_lat = [p[0] for p in ride]
+    r_lng = [p[1] for p in ride]
+    dlat = max(0.0, max(c_lat) - max(r_lat), min(r_lat) - min(c_lat))
+    dlng = max(0.0, max(c_lng) - max(r_lng), min(r_lng) - min(c_lng))
+    return math.hypot(
+        dlat * 110_540, dlng * 111_320 * math.cos(math.radians(r_lat[0]))
+    )
+
+
 async def _candidates(db: AsyncSession, user_id: uuid.UUID) -> list[SegmentGroup]:
     result = await db.execute(
         select(SegmentGroup)
@@ -310,10 +325,94 @@ async def dry_run_user(db: AsyncSession, user_id: uuid.UUID) -> list[dict]:
     reports: list[dict] = []
     for activity in activities:
         streams = _stream_map(activity.streams or [])
-        if not streams.get("latlng"):
+        ride = streams.get("latlng")
+        if not ride:
             continue
         for group in groups:
+            if _bbox_gap_m(group.geometry or [], ride) > 1000:
+                continue
             report = await match_activity(db, group, activity, dry_run=True)
             if report:
                 reports.append(report)
     return reports
+
+
+async def _refresh_segment_totals(db: AsyncSession, segment_ids: set[uuid.UUID]) -> None:
+    """Keep the legacy per-line PR columns in step with the new attempts.
+
+    The group API derives everything from efforts, but the route-scoped panel
+    still reads ``Segment.times_ridden``/``pr_seconds``/``has_pr`` and the PR
+    badge reads ``SegmentEffort.is_pr``. A matcher that only inserted rows would
+    leave those stale.
+    """
+    for segment_id in segment_ids:
+        segment = await db.get(Segment, segment_id)
+        if segment is None:
+            continue
+        efforts = list(
+            (
+                await db.execute(
+                    select(SegmentEffort).where(SegmentEffort.segment_id == segment_id)
+                )
+            ).scalars().all()
+        )
+        segment.times_ridden = len({e.activity_id for e in efforts})
+        segment.has_pr = bool(efforts)
+        if not efforts:
+            segment.pr_seconds = None
+            segment.best_avg_power_watts = None
+            continue
+        best = min(
+            efforts,
+            key=lambda e: e.moving_seconds
+            if e.moving_seconds is not None
+            else e.elapsed_seconds,
+        )
+        segment.pr_seconds = (
+            best.moving_seconds if best.moving_seconds is not None else best.elapsed_seconds
+        )
+        for effort in efforts:
+            effort.is_pr = effort.id == best.id
+        powered = [e.avg_power_watts for e in efforts if e.avg_power_watts is not None]
+        segment.best_avg_power_watts = max(powered) if powered else None
+
+
+async def apply_user_matches(db: AsyncSession, user_id: uuid.UUID) -> dict[str, int]:
+    """Write the dry-run matches, then refresh the touched lines' totals.
+
+    Idempotent: ``match_activity`` skips an activity/group that already has an
+    effort, so a nightly run only adds new rides. The caller owns the commit.
+    """
+    groups = await _candidates(db, user_id)
+    activities = (
+        await db.execute(
+            select(Activity)
+            .where(Activity.user_id == user_id, Activity.sport_type == "cycling")
+            .options(selectinload(Activity.streams))
+        )
+    ).scalars().all()
+
+    created = 0
+    skipped = 0
+    touched: set[uuid.UUID] = set()
+    for activity in activities:
+        streams = _stream_map(activity.streams or [])
+        ride = streams.get("latlng")
+        if not ride:
+            continue
+        for group in groups:
+            if _bbox_gap_m(group.geometry or [], ride) > 1000:
+                continue
+            report = await match_activity(db, group, activity, dry_run=False)
+            if report is None:
+                continue
+            if report.get("skipped"):
+                skipped += 1
+            else:
+                created += 1
+                touched.add(uuid.UUID(report["line_id"]))
+
+    await db.flush()
+    await _refresh_segment_totals(db, touched)
+    await db.flush()
+    return {"created": created, "skipped": skipped, "segments": len(touched)}
