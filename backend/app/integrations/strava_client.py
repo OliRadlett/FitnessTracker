@@ -16,6 +16,41 @@ STRAVA_AUTH_URL = "https://www.strava.com/oauth/authorize"
 STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token"
 STRAVA_API_BASE = "https://www.strava.com/api/v3"
 
+# Streams requested by default. ``keys`` is comma-separated, so adding a type
+# costs **no extra API call** — only payload bytes. That changes the usual
+# trade-off: the question is not "is this worth a request?" but "is this worth
+# storing?".
+#
+# ``latlng`` earns its place because ``services/replay.py`` reads it. Without it
+# every Strava ride falls back to interpolating the route polyline, which
+# resamples a *shape* — losing switchbacks, and any part of the ride that left
+# the matched route — instead of using the recorded GPS.
+#
+# Deliberately absent: ``temp`` and ``grade_smooth``. Neither has a consumer in
+# this codebase (FIT imports store a ``temperature`` stream and nothing reads
+# it), so asking for them would add two more stored-but-never-read streams. The
+# order to do those in is: write the reader, then add the key.
+DEFAULT_STREAM_TYPES = (
+    "time",
+    "heartrate",
+    "watts",
+    "cadence",
+    "altitude",
+    "velocity_smooth",
+    "distance",
+    "latlng",
+)
+
+
+def stream_keys(stream_types: list[str] | None = None) -> str:
+    """Comma-separated ``keys`` for a streams request.
+
+    Falls back to :data:`DEFAULT_STREAM_TYPES`; an explicit list replaces it
+    entirely (the endpoint has no additive mode).
+    """
+    return ",".join(stream_types or DEFAULT_STREAM_TYPES)
+
+
 
 class StravaClient:
     """HTTP client for the Strava API."""
@@ -126,19 +161,11 @@ class StravaClient:
         the window can miss the alignment tolerance entirely. Older activities
         already synced don't have it — every consumer falls back to
         integrating velocity.
-        """
-        if stream_types is None:
-            stream_types = [
-                "time",
-                "heartrate",
-                "watts",
-                "cadence",
-                "altitude",
-                "velocity_smooth",
-                "distance",
-            ]
 
-        keys = ",".join(stream_types)
+        ``latlng`` is included by default (see ``DEFAULT_STREAM_TYPES``) so
+        replay can use the recorded GPS instead of resampling the route shape.
+        """
+        keys = stream_keys(stream_types)
 
         async def _fetch():
             async with httpx.AsyncClient(timeout=30) as client:

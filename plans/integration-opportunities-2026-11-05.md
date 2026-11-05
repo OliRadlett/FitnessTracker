@@ -351,7 +351,7 @@ one small feature attached, not a Medium-value item.
 | 2 | **Whoop bulk recovery + SpO2 + skin temp** — replace the per-cycle N+1 with `/v2/recovery`; store both new signals; feed the illness composite | S | High — fewer calls *and* the two best early-illness signals we don't have | 2 columns on `DailyMetric` | migration |
 | 3 | **Gear & wear** — `gear_id` → gear table, `GET /gear/{id}` distance, wear thresholds, chain/shoe alerts | S | High — the only maintenance loop a cyclist actually wants | `raw_data` + 1 call per gear item | migration |
 | 4 | **Whoop sleep-need decomposition** — store `sleep_needed.*`, `sleep_performance`, `sleep_consistency`, `disturbances` | S | Medium-High — replaces a hand-rolled debt model with the provider's, and explains it | `SleepLog`/`DailyMetric` columns | migration |
-| 5 | **Strava streams: `latlng`, `temp`, `grade_smooth`** | XS | Medium-High — zero extra calls; fixes replay alignment and makes temperature real | none (backfill optional) | none |
+| 5 | **Strava streams: `latlng` only** — shipped. ~~`temp`, `grade_smooth`~~ dropped: no consumer exists, so asking for them would add stored-never-read streams | XS | Medium — zero extra calls; replay uses recorded GPS instead of resampling the route shape | none (new rides only — no stream-backfill task exists) | none |
 | 6 | **Wahoo weight write-back** — push the scale's weight to Wahoo (and optionally Strava `PUT /athlete`). ~~FTP/zone push~~ **already shipped** as migration `103` (`/cycling/wahoo-zones`) | S | Medium — the head unit stops estimating calories and W/kg from a weight typed months ago | scopes already granted (`user_write`, `profile:write`) | none |
 | 7 | **Whoop + Wahoo webhooks** — mirror the Strava queue pattern; handle `.deleted` | M | Medium — 30 min → seconds, and deletions stop lingering | endpoint + queue table | #2 helps |
 | 8 | **Withings: store the payload, then ask for the scale superset** — ~~add `WeightLog.raw_data`~~ **shipped** (migration `108`, superset `meastypes`, observed-type log); remaining: map heart pulse (11) and BMR (226) into columns. **Do not** build BP/ECG/AFib (hardware-gated, §3.4) | S | Low-Medium — a standardised morning RHR and the app's only path to a measured BMR | `meastypes` + `raw_data` column | migration; store before requesting |
@@ -432,6 +432,24 @@ the last week, so the history is not worth it.
 
 The pattern to keep: **every composite must degrade per-signal and say so** (pitfall 42's
 lesson, applied to inputs rather than engines).
+
+### What #5 turned out to be
+
+The first draft asked for three stream keys because `keys` is comma-separated and costs no
+extra request. Two of the three have no reader: nothing consumes a `temp` or `grade_smooth`
+stream anywhere in the codebase (FIT imports write a `temperature` stream and nothing reads
+it either). Adding them would have produced exactly the failure mode §2 is about, one layer
+down.
+
+So `latlng` shipped alone — it has a live consumer (`services/replay.py` prefers recorded GPS
+and otherwise interpolates the route polyline, which resamples a *shape* and loses
+switchbacks and any detour off the matched route) — and the absence of the other two is now
+asserted in `tests/test_strava_streams.py` with the reason. When a reader for temperature
+lands, deleting that assertion is the deliberate act of adding the key.
+
+Scope note: there is no stream-backfill task, so existing rides keep interpolated geometry.
+That is the right default — backfilling would cost one read-bucket call per ride against a
+1,000/day limit for a cosmetic gain.
 
 ### What #3 needs beyond the field
 
