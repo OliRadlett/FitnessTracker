@@ -148,7 +148,12 @@ export function PowerMode({
             <tbody className="divide-y divide-surface-light/30">
               {rows.map((r) => (
                 <tr key={r.label} className={r.seconds === 1200 ? 'bg-surface-light/20' : ''}>
-                  <td className="px-4 py-1.5 font-medium sm:px-5">{r.label}</td>
+                  <td className="px-4 py-1.5 font-medium sm:px-5">
+                    {r.label}
+                    {r.achievedOn && (
+                      <span className="ml-1.5 text-[12px] font-normal text-muted">{formatShortDate(r.achievedOn)}</span>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{num(r.bestWindow)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-muted">{num(r.wkg, 2)}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-muted">{num(r.pctFtp)}%</td>
@@ -160,8 +165,8 @@ export function PowerMode({
             </tbody>
           </table>
           <p className="px-4 py-2 text-[12px] text-muted sm:px-5">
-            Both columns come from the same stream computation at two windows. Best-effort dates are not exposed by
-            this endpoint yet — a production gap, not a design choice.
+            One computation at two windows: the date is the ride that set the 90-day best, taken in the same pass as
+            the number.
           </p>
         </Panel>
       </div>

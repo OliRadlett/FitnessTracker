@@ -218,6 +218,8 @@ export interface DurationRow {
   seconds: number;
   bestWindow: number | null;
   bestLong: number | null;
+  /** When the window best was set (from the same computation — see below). */
+  achievedOn: string | null;
   wkg: number | null;
   pctFtp: number | null;
   deltaPct: number | null;
@@ -248,6 +250,7 @@ export function durationRows(
       seconds: r.duration_seconds,
       bestWindow: best,
       bestLong: long,
+      achievedOn: r.date_achieved ?? null,
       wkg: best != null && weightKg ? best / weightKg : null,
       pctFtp: best != null && ftp ? (best / ftp) * 100 : null,
       deltaPct: best != null && long ? ((best - long) / long) * 100 : null,
