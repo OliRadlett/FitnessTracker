@@ -24,14 +24,19 @@ against those decisions.
 - **The log**: Today → **Log** lists finished sessions by week with sets and
   volume; tapping one opens a read-only detail. Nothing on that screen can edit
   history, deliberately.
+- **History sync (pull)**: once signed in, lifting history is fetched from
+  `GET /api/v1/lifting/sessions` and merged into the local log, so "last time"
+  reflects what you actually lifted. Fail-open: no signal means no sync, never a
+  blocked workout. Warm-up sets are dropped — prefill must not come from an
+  empty bar.
 - Account: Google Sign-In through Credential Manager, verified server-side
   ([docs/ANDROID-AUTH.md](../docs/ANDROID-AUTH.md)). You → **Continue with Google**.
 
 ## What does not work yet
 
-- No sync: history and the session log live on the phone only. Signing in stores
-  a verified token and nothing uses it yet. The plan is still a seeded constant
-  (`data/SessionStore.kt › SeedPlan`).
+- **No push**: the phone's own sessions are not sent to the server, and the
+  training plan is still a seeded constant (`data/SessionStore.kt › SeedPlan`).
+  Server and phone ids differ for the same workout until push exists.
 - No widgets, Health Connect, background sync or notifications.
 - Sign-in is not a gate — the gym flow works before you authenticate. Logging a
   set must never wait on a network round trip.

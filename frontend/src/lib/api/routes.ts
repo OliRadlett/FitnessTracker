@@ -132,6 +132,17 @@ export async function getRouteCollectionIds(
   return apiFetch<string[]>(`/api/v1/routes/${routeId}/collections`, {}, token);
 }
 
+/** Re-run activity→route linking for rides imported before their route. */
+export async function backfillRideLinks(
+  token?: string,
+): Promise<{ linked_count: number; detail: string }> {
+  return apiFetch<{ linked_count: number; detail: string }>(
+    '/api/v1/activities/backfill-route-links',
+    { method: 'POST' },
+    token,
+  );
+}
+
 export async function addRouteToCollection(
   collectionId: string,
   routeId: string,

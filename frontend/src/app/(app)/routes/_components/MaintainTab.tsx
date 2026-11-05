@@ -5,7 +5,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, Layers, Loader2, Route, Tags, TriangleAlert } from 'lucide-react';
 import type { RouteSummary } from '@/lib/api/types';
 import { useAuthFetch } from '@/lib/api';
-import { getRouteScanStatus, refreshRouteScan } from '@/lib/api/routes';
+import { getRouteScanStatus, refreshRouteScan, backfillRideLinks } from '@/lib/api/routes';
+import { useToast } from '@/components/ui/Toast';
 import {
   decodePolyline,
   formatClimb,
@@ -103,6 +104,7 @@ export function MaintainTab({
 }) {
   const { token } = useAuthFetch();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [scanError, setScanError] = useState<string | null>(null);
   const previousState = useRef<string | undefined>(undefined);
 
@@ -124,6 +126,20 @@ export function MaintainTab({
     },
     onError: (err) =>
       setScanError((err as Error)?.message || 'The scan could not be queued.'),
+  });
+
+  const relinkMutation = useMutation({
+    mutationFn: () => backfillRideLinks(token),
+    onSuccess: (data) => {
+      toast.success(
+        data.linked_count
+          ? `Linked ${data.linked_count} ride${data.linked_count === 1 ? '' : 's'}`
+          : 'No unlinked rides found',
+      );
+      queryClient.invalidateQueries({ queryKey: ['routes'] });
+    },
+    onError: (err) =>
+      toast.error(`Re-link failed: ${(err as Error)?.message || 'try again.'}`),
   });
 
   // A finished scan means the cached graph changed: refetch the queue once.
@@ -237,6 +253,27 @@ export function MaintainTab({
             </div>
           )}
           {scanError && <p className="px-4 pb-3 text-xs text-warning">{scanError}</p>}
+        </Section>
+
+        <Section
+          icon={<Route className="h-4 w-4" />}
+          title="Ridden links"
+          count="on demand"
+          description="“Ridden”, ride history and popularity all read the activity→route link. Rides imported before their route existed stay unlinked until the matcher is re-run."
+        >
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <p className="text-xs text-muted">
+              Only unlinked rides are scored. A large library may take a minute.
+            </p>
+            <button
+              type="button"
+              onClick={() => relinkMutation.mutate()}
+              disabled={relinkMutation.isPending}
+              className="h-11 rounded-lg bg-accent px-4 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              {relinkMutation.isPending ? 'Re-linking…' : 'Re-link rides'}
+            </button>
+          </div>
         </Section>
 
         <Section
