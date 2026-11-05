@@ -455,6 +455,8 @@ async def analyze_ride(
                 "second_half_ratio": dec_result.second_half_ratio,
                 "classification": dec_result.classification,
                 "duration_seconds": dec_result.duration_seconds,
+                "steady": dec_result.steady,
+                "variability_index": dec_result.variability_index,
             }
 
     # 7. Efficiency factor (NP / avg HR)

@@ -11,8 +11,9 @@ Targets by duration × intensity:
     | 180-300   | 60      | 80        | 90    |
     | >300      | 80      | 90        | 90*   |
 
-    * Capped at 90 g/h. Rates above 90 g/h require gut training and
-    multiple transportable carbohydrates (fructose:glucose ≈ 1:2).
+    * Capped at 90 g/h. Up to 90 g/h, a 2:1 glucose:fructose blend
+    (fructose:glucose ≈ 1:2) is the best-studied mix; above 90 g/h
+    (gut-trained) shift toward 1:0.8 glucose:fructose, i.e. more fructose.
 
 Hydration: 500-800 ml/hr. Sodium: 300-900 mg/hr.
 Pre-ride (2h before): ~1.5 g carbs/kg. Post-ride (<30 min): ~1.2 g carbs/kg + 0.3 g protein/kg.
@@ -43,10 +44,11 @@ MAX_CARBS_PER_HOUR = 90.0
 #: Caveat surfaced whenever a plan sits at the cap, so athletes chasing
 #: >90 g/h know it requires gut training plus the right carb blend.
 GUT_TRAINING_NOTE = (
-    "Capped at 90 g/h. Intakes above 90 g/h require gut training and "
-    "multiple transportable carbohydrates with a fructose:glucose ratio "
-    "of about 1:2 (e.g. ~30 g fructose + ~60 g glucose/maltodextrin per "
-    "hour); build up gradually to avoid GI distress."
+    "Capped at 90 g/h. Up to 90 g/h, a 2:1 glucose:fructose blend "
+    "(fructose:glucose ≈ 1:2, e.g. ~60 g glucose + ~30 g fructose per hour) "
+    "is the best-studied mix; above 90 g/h (requires gut training) shift toward "
+    "1:0.8 glucose:fructose, i.e. more fructose. Build up gradually to avoid "
+    "GI distress."
 )
 
 

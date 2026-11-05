@@ -120,6 +120,8 @@ async def get_decoupling_history(
             second_half_ratio=h["second_half_ratio"],
             classification=h["classification"],
             duration_seconds=h["duration_seconds"],
+            steady=h.get("steady"),
+            variability_index=h.get("variability_index"),
         )
         for h in history
     ]
@@ -167,4 +169,6 @@ async def get_decoupling_for_activity(
         classification=result.classification,
         duration_seconds=result.duration_seconds,
         activity_id=str(result.activity_id) if result.activity_id else None,
+        steady=result.steady,
+        variability_index=result.variability_index,
     )

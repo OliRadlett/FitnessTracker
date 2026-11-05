@@ -32,7 +32,10 @@ def _tsb_signal(tsb_values: list[float]) -> float:
     """Score 0-100 based on consecutive negative TSB days.
 
     TSB < -35 for multiple days indicates heavy fatigue.
-    -35 is more clearly maladaptive overreaching for powerlifters.
+    -35 is the *health alert* threshold (clearly maladaptive overreaching for
+    powerlifters). ``adaptive.TSB_FATIGUE_THRESHOLD`` is -20 on purpose: that is
+    an earlier, precautionary load cut, not the same decision. Do not collapse
+    the two without revisiting the alert copy and the adaptive tests.
     """
     if not tsb_values:
         return 0.0
@@ -292,24 +295,30 @@ def _illness_composite(
     sleep_s: float,
     fatigue_s: float,
     has_rr_data: bool,
+    has_sleep_data: bool = True,
 ) -> float:
-    """Weighted illness composite (0-100).
+    """Weighted illness composite (0-100), renormalised over present signals.
 
     Full weights: recovery 25% + RR 20% + HRV 25% + sleep 15% + fatigue 15%.
-    When respiratory-rate data is missing, its 20% is redistributed
-    proportionally over the remaining 80% (divide by 0.80 — signals are
-    already 0-100, so no further scaling).
+    A missing signal is unknown, not zero: drop its weight and divide by the
+    remaining weight. This matters most for sleep, where the old path scored a
+    missing night as perfect sleep (0) and understated the risk.
     """
-    if has_rr_data:
-        return (
-            recovery_s * 0.25
-            + rr_s * 0.20
-            + hrv_s * 0.25
-            + sleep_s * 0.15
-            + fatigue_s * 0.15
-        )
-    raw_total = recovery_s * 0.25 + hrv_s * 0.25 + sleep_s * 0.15 + fatigue_s * 0.15
-    return raw_total / 0.80
+    weights = {
+        "recovery": 0.25,
+        "rr": 0.20 if has_rr_data else 0.0,
+        "hrv": 0.25,
+        "sleep": 0.15 if has_sleep_data else 0.0,
+        "fatigue": 0.15,
+    }
+    total = sum(weights.values())
+    return (
+        recovery_s * weights["recovery"]
+        + rr_s * weights["rr"]
+        + hrv_s * weights["hrv"]
+        + sleep_s * weights["sleep"]
+        + fatigue_s * weights["fatigue"]
+    ) / total
 
 
 # ── Main analysis functions ──────────────────────────────────────────────────
@@ -387,8 +396,14 @@ async def analyze_overtraining(
     hrv_s = _hrv_trend_signal(hrv_values)
     sleep_s = _sleep_efficiency_signal(sleep_logs)
 
-    # Weighted composite — training-load focused (TSB + Recovery = 75%)
-    score = tsb_s * 0.40 + recovery_s * 0.35 + hrv_s * 0.15 + sleep_s * 0.10
+    # Weighted composite — training-load focused (TSB + Recovery = 75%).
+    # Missing sleep is unknown, not perfect sleep: drop its weight and
+    # renormalise rather than adding a zero that lowers the score.
+    has_sleep_data = any(log.sleep_efficiency is not None for log in sleep_logs)
+    available = 0.40 + 0.35 + 0.15 + (0.10 if has_sleep_data else 0.0)
+    score = (
+        tsb_s * 0.40 + recovery_s * 0.35 + hrv_s * 0.15 + sleep_s * 0.10
+    ) / available
     severity = _classify_severity(score)
 
     messages = {
@@ -706,8 +721,17 @@ async def analyze_illness(
     # Weighted composite — physiology focused
     # When respiratory rate data is missing, redistribute its weight
     has_rr_data = current_rr is not None and baseline_rr is not None
+    has_sleep_data = any(
+        log.sleep_efficiency is not None for log in sleep_logs
+    )
     score = _illness_composite(
-        recovery_illness_s, rr_s, hrv_s, sleep_s, fatigue_s, has_rr_data
+        recovery_illness_s,
+        rr_s,
+        hrv_s,
+        sleep_s,
+        fatigue_s,
+        has_rr_data,
+        has_sleep_data,
     )
 
     severity = _classify_severity(score)

@@ -2317,11 +2317,11 @@ class ChartService:
                 )
             elif latest > 8:
                 insights.append(
-                    f"CTL rose {latest:.0f} points this week — above the safe ramp rate (+3 to +8/wk). Injury risk increases."
+                    f"CTL rose {latest:.0f} points this week — above the safe ramp range (+3 to +5/wk; +8 is the ceiling). Injury risk increases."
                 )
             elif latest >= 3:
                 insights.append(
-                    f"CTL rose {latest:.0f} points this week — inside the optimal build band (+3 to +8/wk)."
+                    f"CTL rose {latest:.0f} points this week — inside the build band (+3 to +5 safe; up to +8 is the ceiling)."
                 )
             else:
                 insights.append(

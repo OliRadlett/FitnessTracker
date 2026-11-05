@@ -31,7 +31,7 @@ HR_ZONES = [
     ("Z6", "Anaerobic", 1.18, 5.0),
 ]
 
-# LTHR-based HR zones (Andy Coggan model for HR)
+# LTHR-based HR zones (custom Friel-style boundaries, NOT Coggan's table)
 LTHR_HR_ZONES = [
     ("Z1", "Recovery", 0.00, 0.80),
     ("Z2", "Aerobic", 0.80, 0.89),
@@ -74,7 +74,8 @@ async def compute_hr_zones_from_streams(
     """Compute heart rate zone distribution from HR stream data.
 
     Uses LTHR (Lactate Threshold Heart Rate) based zones
-    (``LTHR_HR_ZONES`` — the Coggan LTHR model, not the %HRmax table).
+    (``LTHR_HR_ZONES`` — custom Friel-style LTHR bands, not the Coggan table
+    and not the %HRmax table).
     """
     if not lthr or lthr <= 0:
         return []
