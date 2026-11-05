@@ -145,7 +145,9 @@ discrete Fréchet is index-aligned, so a loop recorded from a different point
 lost its shape score. Fixed in `services/route_matching.py`:
 
 - `_align_loop_start()` rotates a loop candidate onto the reference loop's start
-  (nearest of three candidates) before Fréchet; point-to-point is untouched.
+  (nearest of two candidates) before Fréchet; point-to-point is untouched. It
+  skips the rotation when the starts are already within 200 m, so the scan does
+  not pay the extra Fréchet passes on the common same-start pair.
 - `_endpoint_similarity()` returns 1.0 for loop-vs-loop, because a loop's start
   is arbitrary. Point-to-point still requires both ends to converge.
 

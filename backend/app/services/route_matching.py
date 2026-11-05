@@ -250,7 +250,7 @@ def _align_loop_start(
     Discrete Fréchet is index-aligned, so the same loop recorded from a café
     2 km further round scores as if it were a different route: the monotone
     coupling has to walk the whole loop before it can align. Rotating ``b`` to
-    the nearest of the three candidate start points removes that artefact while
+    the nearest of two candidate start points removes that artefact while
     keeping the sequence order (and therefore direction) intact.
 
     Returns ``(aligned_b, offset_index, aligned)``. Point-to-point routes are
@@ -261,10 +261,14 @@ def _align_loop_start(
         return b, 0, False
 
     start = a[0]
+    # Already aligned (or close enough): do not pay for the rotation search.
+    if haversine_distance(start[0], start[1], b[0][0], b[0][1]) < _LOOP_THRESHOLD_M:
+        return b, 0, False
+
     ranked = sorted(
         range(len(b)),
         key=lambda i: haversine_distance(start[0], start[1], b[i][0], b[i][1]),
-    )[:3]
+    )[:2]
 
     best: float | None = None
     best_index = 0
