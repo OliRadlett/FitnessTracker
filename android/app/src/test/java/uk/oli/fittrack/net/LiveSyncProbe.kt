@@ -4,6 +4,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assume
+import org.junit.Before
 import org.junit.Test
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.LoggedSet
@@ -11,14 +13,20 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 /**
- * Manual probe against a running local backend. Skipped unless FT_DEV_TOKEN is
- * set, so CI never depends on a database. It writes one honest session and
- * deletes it again.
+ * Manual probe against a running local backend. The whole class is skipped
+ * unless FT_DEV_TOKEN is set, so CI never depends on a database — the earlier
+ * version only guarded two of the three tests, and CI caught the third trying to
+ * reach a backend that a runner does not have.
  */
 class LiveSyncProbe {
 
     private val api = LiftingApi("http://localhost:8000/api/v1")
     private val token: String? = System.getenv("FT_DEV_TOKEN")
+
+    @Before
+    fun requireBackend() {
+        Assume.assumeTrue("needs a local backend; set FT_DEV_TOKEN", token != null)
+    }
 
     @Test
     fun pullsRealHistory() {
