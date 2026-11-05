@@ -1,5 +1,6 @@
 """Strava service — activity sync, token refresh, backfill, route sync."""
 
+import asyncio
 import logging
 import math
 import uuid
@@ -1007,6 +1008,115 @@ async def backfill_streams_for_all_activities(
 
     logger.info(f"Backfilled streams for {backfilled} of {total} activities")
     return {"backfilled": backfilled, "total": total}
+
+
+async def backfill_latlng_streams(
+    db: AsyncSession,
+    user_id: uuid.UUID | None = None,
+    *,
+    limit: int | None = None,
+    delay_seconds: float = 0.0,
+) -> dict:
+    """Fetch **only** the `latlng` stream for cycling activities missing it.
+
+    The existing ``backfill_streams_for_all_activities`` targets activities
+    with *no* streams at all, so every ride that already has time/distance/
+    power was skipped — and those are exactly the rides segment matching
+    needs. Strava's stream endpoint accepts a ``keys`` subset, so this requests
+    the trace alone (smaller payload, fewer rate-limit pressure points).
+
+    Existing rides were synced before the client requested `latlng`; the
+    weekly sync only fixes new activities. ``delay_seconds`` is the caller's
+    throttle: Strava's default is 100 requests / 15 min, and 205 rides is three
+    windows. The function is resumable: it selects only missing streams, so a
+    crashed/rate-limited run can simply be re-run.
+    """
+    latlng_exists = (
+        select(ActivityStream.id)
+        .where(
+            ActivityStream.activity_id == Activity.id,
+            ActivityStream.stream_type == "latlng",
+        )
+        .correlate(Activity)
+        .exists()
+    )
+    query = (
+        select(Activity.id, Activity.user_id, Activity.provider_activity_id)
+        .where(
+            Activity.sport_type == "cycling",
+            Activity.provider_activity_id.isnot(None),
+            ~latlng_exists,
+        )
+        .order_by(Activity.start_date.desc())
+    )
+    if user_id:
+        query = query.where(Activity.user_id == user_id)
+    if limit:
+        query = query.limit(limit)
+
+    rows = list((await db.execute(query)).all())
+    if not rows:
+        return {"backfilled": 0, "skipped": 0, "total": 0}
+
+    by_user: dict[uuid.UUID, list[tuple[uuid.UUID, str]]] = defaultdict(list)
+    for activity_id, uid, provider_activity_id in rows:
+        by_user[uid].append((activity_id, provider_activity_id))
+
+    backfilled = 0
+    skipped = 0
+    for uid, activities in by_user.items():
+        connection = await get_strava_connection(db, uid)
+        if not connection:
+            logger.warning("No Strava connection for user %s; skipping latlng", uid)
+            skipped += len(activities)
+            continue
+        try:
+            connection = await refresh_if_needed(db, connection)
+        except Exception as e:  # token refresh must not abort the whole backfill
+            logger.warning("Could not refresh Strava token for %s: %s", uid, e)
+            skipped += len(activities)
+            continue
+
+        for i, (activity_id, provider_activity_id) in enumerate(activities):
+            try:
+                streams = await strava_client.get_activity_streams(
+                    connection.access_token,
+                    int(provider_activity_id),
+                    stream_types=["latlng"],
+                )
+                data = (streams.get("latlng") or {}).get("data")
+                if not data:
+                    skipped += 1
+                else:
+                    db.add(
+                        ActivityStream(
+                            activity_id=activity_id,
+                            stream_type="latlng",
+                            data={"data": data},
+                            resolution=None,
+                        )
+                    )
+                    backfilled += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to fetch latlng for activity %s: %s", activity_id, e
+                )
+                skipped += 1
+
+            if (i + 1) % 10 == 0:
+                await db.commit()
+            if delay_seconds:
+                await asyncio.sleep(delay_seconds)
+
+        await db.commit()
+
+    logger.info(
+        "Backfilled latlng for %s of %s activities (%s skipped)",
+        backfilled,
+        len(rows),
+        skipped,
+    )
+    return {"backfilled": backfilled, "skipped": skipped, "total": len(rows)}
 
 
 # ── Route sync ───────────────────────────────────────────────────────────────

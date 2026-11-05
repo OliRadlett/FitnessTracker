@@ -8,15 +8,17 @@ user's group is a 404 rather than a leak.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import select
 
-from app.models.activity import Activity
+from app.models.activity import Activity, ActivityStream
 from app.models.route import Route
 from app.models.segment import Segment, SegmentEffort, SegmentGroup
-from app.models.user import User
+from app.models.user import OAuthConnection, User
 from app.services.segment_groups import rebuild_user_groups
+from app.services.strava.sync import backfill_latlng_streams
 
 pytestmark = pytest.mark.integration
 
@@ -208,3 +210,53 @@ class TestGroups:
         assert paths.index("/groups") < paths.index("/{segment_id}")
         # /groups/{id} is two segments and cannot collide with /{id}.
         assert "/groups/{group_id}" in paths
+
+
+class TestLatlngBackfill:
+    async def test_fetches_only_missing_latlng_and_persists_it(
+        self, db_session, test_user, test_activity, monkeypatch
+    ):
+        connection = OAuthConnection(
+            user_id=test_user.id,
+            provider="strava",
+            provider_user_id="12345",
+            access_token="access",
+            refresh_token="refresh",
+            token_expires_at=datetime.now(UTC) + timedelta(hours=1),
+            status="active",
+        )
+        db_session.add(connection)
+        test_activity.provider_activity_id = "999"
+        await db_session.flush()
+        await db_session.commit()
+
+        calls: list[list[str]] = []
+
+        async def fake_streams(token, activity_id, stream_types=None):
+            calls.append(list(stream_types or []))
+            return {"latlng": {"data": [[55.9, -3.2], [55.91, -3.21]]}}
+
+        from app.services.strava import sync as sync_module
+
+        monkeypatch.setattr(
+            sync_module.strava_client, "get_activity_streams", fake_streams
+        )
+
+        stats = await backfill_latlng_streams(db_session, test_user.id)
+
+        assert stats == {"backfilled": 1, "skipped": 0, "total": 1}
+        assert calls == [["latlng"]]
+        row = (
+            await db_session.execute(
+                select(ActivityStream).where(
+                    ActivityStream.activity_id == test_activity.id,
+                    ActivityStream.stream_type == "latlng",
+                )
+            )
+        ).scalar_one()
+        assert row.data["data"][0] == [55.9, -3.2]
+
+        # A second run is a no-op: it selects only missing streams.
+        stats = await backfill_latlng_streams(db_session, test_user.id)
+        assert stats["total"] == 0
+
