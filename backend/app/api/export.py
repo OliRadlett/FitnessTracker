@@ -46,13 +46,11 @@ async def export_json(
     current_user: User = Depends(get_current_user),
 ):
     """Export every per-user collection as a single JSON document (§3.9)."""
-    from app.services.data_export import build_full_export
+    from app.services.data_export import iter_full_export
 
-    payload = await build_full_export(db, current_user.id, current_user)
-    body = json.dumps(payload, ensure_ascii=False, indent=2, default=str)
     filename = f"fittrack_export_{date.today().isoformat()}.json"
-    return Response(
-        content=body,
+    return StreamingResponse(
+        iter_full_export(db, current_user.id, current_user),
         media_type="application/json",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
