@@ -3013,11 +3013,13 @@ async def delete_plan_day(
     user_id: uuid.UUID,
     plan_id: uuid.UUID,
     day_id: uuid.UUID,
-) -> None:
+) -> uuid.UUID:
     """Delete a single plan day.
 
     Completed days are refused (HTTP 400): deleting one would orphan the
     history its linked actual represents.
+
+    Returns the undo claim id so the caller can offer the undo.
     """
     plan = await _get_plan_or_none(db, user_id, plan_id)
     if not plan:
@@ -3035,7 +3037,7 @@ async def delete_plan_day(
     from app.services.undo import record_undo
     from app.services.undo_plan import snapshot_day
 
-    await record_undo(
+    log = await record_undo(
         db,
         user_id=user_id,
         kind="plan_day_delete",
@@ -3044,6 +3046,7 @@ async def delete_plan_day(
 
     await db.delete(day)
     await db.flush()
+    return log.id
 
 
 # Prescription fields a copy carries. Deliberately excludes everything the

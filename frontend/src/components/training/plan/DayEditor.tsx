@@ -77,7 +77,7 @@ export function DayEditor({
   const { authFetch, token } = useAuthFetch();
   const edit = useInstantDayEdit(planId, week);
   const ops = usePlanDayOps(planId);
-  const { error: toastError } = useToast();
+  const { error: toastError, success: toastSuccess } = useToast();
   const autoMap = useAutoregulationMap();
 
   const isRest = day.sport === 'rest';
@@ -764,15 +764,19 @@ export function DayEditor({
       <ConfirmDialog
         open={confirmDelete}
         title="Delete this session?"
-        description={`Delete the planned session on ${day.day_date.slice(0, 10)}? This cannot be undone.`}
+        description={`Delete the planned session on ${day.day_date.slice(0, 10)}? You can undo this right after.`}
         confirmLabel="Delete"
         danger
         pending={ops.deleteDay.isPending}
         onConfirm={() =>
           ops.deleteDay.mutate(day.id, {
-            onSuccess: () => {
+            onSuccess: (result) => {
               setConfirmDelete(false);
               onDeleted?.();
+              toastSuccess('Session deleted', {
+                label: 'Undo',
+                onClick: () => ops.undoDelete.mutate(result.undo_log_id),
+              });
             },
             onError: (err: Error) => {
               setConfirmDelete(false);
