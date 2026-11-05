@@ -19,9 +19,9 @@ import type {
   TimeseriesResponse,
 } from '@/lib/api';
 import { useDeepLink } from '@/lib/useDeepLink';
-import { RideAnalysisCard } from '@/components/cycling/RideAnalysisCard';
+import { RideAnalysisCard } from '@/components/activities/RideAnalysisCard';
 import { ActivityAiAnalysisCard } from '@/components/activities/ActivityAiAnalysisCard';
-import { FuelPlanCard } from '@/components/cycling/FuelPlanCard';
+import { FuelPlanCard } from '@/components/activities/FuelPlanCard';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 
