@@ -1047,8 +1047,10 @@ export default function LiftingPage() {
 
               {/* Exercise Groups — action surface, collapsed under the ladder */}
               <details className="mt-2">
-                <summary className="flex min-h-[44px] cursor-pointer items-center text-[13px] font-medium text-muted hover:text-foreground">
+                <summary className="flex min-h-[48px] cursor-pointer list-none items-center gap-2 rounded-lg border border-accent/30 bg-accent/[0.06] px-3 text-[13px] font-medium text-accent hover:bg-accent/[0.1]">
+                  <Pencil className="h-4 w-4" aria-hidden />
                   Edit sets
+                  <span className="text-[12px] font-normal text-muted">weights, reps, RPE — expand</span>
                 </summary>
                 <div className="mt-3">
               {exerciseGroups.size > 0 ? (
