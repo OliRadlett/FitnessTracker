@@ -8,8 +8,8 @@ misses were this shape).
 
 Additive, nullable. ``SegmentGroup.geometry`` is unchanged.
 
-Revision ID: 108
-Revises: 107
+Revision ID: 109
+Revises: 108
 Create Date: 2026-11-05
 """
 
@@ -22,8 +22,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "108"
-down_revision: str | Sequence[str] | None = "107"
+revision: str = "109"
+down_revision: str | Sequence[str] | None = "108"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

@@ -16,12 +16,12 @@ from app.models.cycling import CyclingPowerRecord, CyclingProfile
 from app.models.daily_metric import DailyMetric
 from app.models.lifting import LiftingSession, LiftingSet, PersonalRecord
 from app.models.sleep import SleepLog
+from app.models.user import User
 from app.models.weight import WeightLog
 from app.services.big3 import canonical_big3_bucket, canonical_big3_total
 from app.services.cycling import (
     CTL_WARMUP_DAYS,
     POWER_DURATION_BUCKETS,
-    VO2_CLASS_SCOPE,
     _classify_decoupling,
     _classify_vo2max,
     compute_decoupling_history,
@@ -32,6 +32,8 @@ from app.services.cycling import (
     compute_vo2max_history,
     get_daily_tss,
     get_or_create_cycling_profile,
+    vo2_age,
+    vo2_scope,
 )
 from app.services.jev_classification import INTENT_LABELS, LIFT_LABELS
 from app.services.lifting import MAX_REPS_FOR_1RM_PR, brzycki_1rm
@@ -2127,13 +2129,16 @@ class ChartService:
         insights = []
         # F6: use the single scope label, so the chart copy cannot drift from
         # the classifier (it previously called these general-population bands).
-        scope_note = f"Bands: {VO2_CLASS_SCOPE}."
+        user = await self.db.get(User, user_id)
+        age = vo2_age(user.birth_date) if user else None
+        sex = user.sex if user else None
+        scope_note = f"Bands: {vo2_scope(age, sex)}."
         if len(vo2_values) >= 2:
             first = vo2_values[0]
             latest = vo2_values[-1]
             if first > 0:
                 change = latest - first
-                classification = _classify_vo2max(latest)
+                classification = _classify_vo2max(latest, age, sex)
                 insights.append(
                     f"Current VO2max: {latest:.1f} ml/kg/min ({classification}). {scope_note}"
                 )
@@ -2147,7 +2152,7 @@ class ChartService:
                         "VO2max is stable. Consistent aerobic training will drive improvement."
                     )
         elif vo2_values:
-            classification = _classify_vo2max(vo2_values[-1])
+            classification = _classify_vo2max(vo2_values[-1], age, sex)
             insights.append(
                 f"Current VO2max estimate: {vo2_values[-1]:.1f} ml/kg/min ({classification}). {scope_note}"
             )

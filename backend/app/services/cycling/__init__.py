@@ -64,6 +64,8 @@ from app.services.cycling.vo2max import (
     compute_decoupling_history,
     compute_vo2max_history,
     estimate_vo2max,
+    vo2_age,
+    vo2_scope,
 )
 from app.services.cycling.zones import (
     HR_ZONES,

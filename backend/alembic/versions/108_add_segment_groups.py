@@ -19,8 +19,8 @@ a production database inside an alembic transaction.
 ``segment_efforts.assisted`` is nullable (true / false / unknown). Ranking
 requires ``false``; the backfill leaves historical rows NULL until classified.
 
-Revision ID: 107
-Revises: 106
+Revision ID: 108
+Revises: 107
 Create Date: 2026-11-05
 """
 
@@ -33,8 +33,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision: str = "107"
-down_revision: str | Sequence[str] | None = "106"
+revision: str = "108"
+down_revision: str | Sequence[str] | None = "107"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
