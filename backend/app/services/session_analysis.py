@@ -17,6 +17,7 @@ from app.services.cycling import (
     calculate_variability_index,
     compute_decoupling_for_activity,
     compute_normalized_power,
+    timeaxis,
 )
 from app.services.lifting import brzycki_1rm
 
@@ -286,14 +287,22 @@ async def analyze_ride(
     power_stream = stream_map.get("watts") or stream_map.get("power")
     hr_stream = stream_map.get("heartrate")
     altitude_stream = stream_map.get("altitude")
+    time_stream = stream_map.get("time")
 
     power_data = _extract_stream_data(power_stream)
     hr_data = _extract_stream_data(hr_stream)
     altitude_data = _extract_stream_data(altitude_stream)
+    time_data = _extract_stream_data(time_stream)
 
     # Normalized power — computed once and reused by the VI/IF/EF sections
-    # below (and exposed in the result for cached ride contexts).
-    np_val = compute_normalized_power(power_data) if power_data else None
+    # below (and exposed in the result for cached ride contexts). A stream is
+    # not guaranteed to be 1 Hz (smart recording, decimated exports), so use
+    # the time axis when it is present and fall back to sample counts only
+    # when there is no axis to measure against.
+    if power_data and time_data:
+        np_val = timeaxis.normalized_power(time_data, power_data)
+    else:
+        np_val = compute_normalized_power(power_data) if power_data else None
 
     # 1. Power zones (requires FTP)
     power_zones = []
@@ -306,23 +315,27 @@ async def analyze_ride(
         ftp = profile.ftp_watts if profile and profile.ftp_watts else None
 
         if ftp and ftp > 0:
-            resolution = (
-                power_stream.resolution
-                if power_stream and power_stream.resolution
-                else 1
-            )
-            zone_times: dict[str, int] = {z[0]: 0 for z in POWER_ZONES}
-
-            for val in power_data:
-                if val <= 0:
-                    continue
-                pct_ftp = val / ftp
-                for zone_id, _, lower, upper in POWER_ZONES:
-                    if lower <= pct_ftp < upper:
-                        zone_times[zone_id] += resolution
-                        break
-                else:
-                    zone_times["Z7"] += resolution
+            if time_data and len(time_data) == len(power_data):
+                zone_times = timeaxis.zone_seconds(
+                    power_data, time_data, ftp, POWER_ZONES
+                )
+            else:
+                resolution = (
+                    power_stream.resolution
+                    if power_stream and power_stream.resolution
+                    else 1
+                )
+                zone_times = {z[0]: 0.0 for z in POWER_ZONES}
+                for val in power_data:
+                    if val <= 0:
+                        continue
+                    pct_ftp = val / ftp
+                    for zone_id, _, lower, upper in POWER_ZONES:
+                        if lower <= pct_ftp < upper:
+                            zone_times[zone_id] += resolution
+                            break
+                    else:
+                        zone_times["Z7"] += resolution
 
             total_zone_time = sum(zone_times.values()) or 1
             for zone_id, zone_name, _, _ in POWER_ZONES:

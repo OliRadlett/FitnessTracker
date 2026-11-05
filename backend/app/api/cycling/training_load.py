@@ -21,6 +21,7 @@ from app.services.cycling import (
     compute_training_load,
     get_daily_tss,
     get_or_create_cycling_profile,
+    timeaxis,
 )
 
 router = APIRouter()
@@ -109,15 +110,25 @@ async def recalculate_tss(
         np_result = await db.execute(
             select(ActivityStream).where(
                 ActivityStream.activity_id.in_(activity_ids),
-                ActivityStream.stream_type == "watts",
+                ActivityStream.stream_type.in_(("watts", "time")),
             )
         )
+        by_activity: dict = {}
         for stream in np_result.scalars().all():
             data = stream.data.get("data", []) if isinstance(stream.data, dict) else []
-            if data:
-                np_val = compute_normalized_power(data)
-                if np_val:
-                    np_map[stream.activity_id] = np_val
+            by_activity.setdefault(stream.activity_id, {})[stream.stream_type] = data
+        for activity_id, streams in by_activity.items():
+            power_data = streams.get("watts")
+            time_data = streams.get("time")
+            if not power_data:
+                continue
+            np_val = (
+                timeaxis.normalized_power(time_data, power_data)
+                if time_data
+                else compute_normalized_power(power_data)
+            )
+            if np_val:
+                np_map[activity_id] = np_val
 
     updated = 0
     by_source: dict[str, int] = {}
