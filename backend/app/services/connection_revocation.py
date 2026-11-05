@@ -97,3 +97,33 @@ async def revoke_grant(connection: OAuthConnection) -> bool:
 
     logger.info("Revoked the %s grant on disconnect", provider)
     return True
+
+
+# What the user has to do by hand when we cannot revoke for them. A disconnect
+# that cannot finish the job should say so and name the path, rather than leaving
+# the app listed at the provider with no explanation.
+_REVOKE_GUIDANCE = {
+    "withings": (
+        "FitTrack could not revoke its Withings access. Remove it in the "
+        "Withings app under Settings → Partner apps → FitTrack."
+    ),
+    "komoot": (
+        "Komoot uses your email and password rather than a revocable grant, so "
+        "there is nothing to revoke — change the password there if you want to "
+        "invalidate the stored credentials."
+    ),
+}
+
+
+def revoke_guidance(provider: str) -> str | None:
+    """Manual instructions when `revoke_grant` returns False, else None.
+
+    Three cases, and only one of them needs saying:
+    * revocable provider that failed → the caller reports ``grant_revoked:
+      false``; the generic message is enough, no guidance.
+    * no revocable grant at all (Withings unverified, Komoot Basic Auth) → say
+      what to do by hand.
+    * a provider we do not know → say nothing; inventing instructions is worse
+      than silence.
+    """
+    return _REVOKE_GUIDANCE.get(provider)
