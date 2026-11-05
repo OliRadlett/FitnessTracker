@@ -40,6 +40,30 @@ export interface RespiratoryRateResponse {
   date: string | null;
 }
 
+export type HealthEventType = 'illness' | 'injury' | 'fatigue' | 'other';
+export type HealthEventSeverity = 'mild' | 'moderate' | 'severe';
+
+export interface HealthEvent {
+  id: string;
+  event_type: HealthEventType;
+  start_date: string;
+  end_date: string | null;
+  severity: HealthEventSeverity;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HealthEventValidation {
+  window_days: number;
+  events: number;
+  alerts: number;
+  matched_alerts: number;
+  alert_precision: number | null;
+  covered_events: number;
+  event_coverage: number | null;
+}
+
 export interface WhoopWeeklySummary {
   week_start: string;
   week_end: string;
