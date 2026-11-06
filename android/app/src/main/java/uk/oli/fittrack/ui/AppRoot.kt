@@ -18,6 +18,7 @@ import uk.oli.fittrack.ui.goals.GoalsScreen
 import uk.oli.fittrack.ui.health.CalendarScreen
 import uk.oli.fittrack.ui.health.HealthScreen
 import uk.oli.fittrack.ui.notifications.NotificationsScreen
+import uk.oli.fittrack.ui.settings.SettingsScreen
 import uk.oli.fittrack.ui.routes.RoutesScreen
 import uk.oli.fittrack.ui.train.PlanDayEditScreen
 import uk.oli.fittrack.ui.ride.RideScreen
@@ -46,6 +47,7 @@ object Routes {
     const val CALENDAR = "calendar"
     const val ACTIVITIES = "activities"
     const val NOTIFICATIONS = "notifications"
+    const val SETTINGS = "settings"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -98,6 +100,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val activitySportValue by vm.activitySport.collectAsStateWithLifecycle()
     val activityWindowValue by vm.activityWindow.collectAsStateWithLifecycle()
     val notifications by vm.notifications.collectAsStateWithLifecycle()
+    val settings by vm.settings.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -248,6 +251,17 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.SETTINGS) {
+            SettingsScreen(
+                snapshot = settings,
+                email = auth.email,
+                onUnit = { vm.setPreferences(units = it) },
+                onTimeFormat = { vm.setPreferences(timeFormat = it) },
+                onRefresh = vm::refreshSettings,
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.HEALTH) {
             HealthScreen(
                 health = health,
@@ -342,6 +356,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onOpenActivities = { nav.navigate(Routes.ACTIVITIES) },
                     unread = notifications?.count { !it.read } ?: 0,
                     onOpenNotifications = { nav.navigate(Routes.NOTIFICATIONS) },
+                    onOpenSettings = { nav.navigate(Routes.SETTINGS) },
                     onSignIn = { nav.navigate(Routes.SIGNIN) },
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab

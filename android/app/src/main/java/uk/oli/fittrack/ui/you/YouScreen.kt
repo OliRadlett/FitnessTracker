@@ -58,6 +58,7 @@ fun YouScreen(
     onOpenActivities: () -> Unit = {},
     unread: Int = 0,
     onOpenNotifications: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -164,6 +165,11 @@ fun YouScreen(
             NavRow(if (unread > 0) "Notifications · $unread unread" else "Notifications") {
                 onOpenNotifications()
             }
+
+            Spacer(Modifier.height(20.dp))
+            Label("SETTINGS")
+            Spacer(Modifier.height(8.dp))
+            NavRow("Units, clock and connections") { onOpenSettings() }
 
             Spacer(Modifier.height(24.dp))
             Label("THIS BUILD")

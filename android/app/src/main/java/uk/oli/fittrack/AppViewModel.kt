@@ -75,6 +75,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val healthApi = uk.oli.fittrack.net.HealthApi(BuildConfig.API_BASE_URL)
     private val activitiesApi = uk.oli.fittrack.net.ActivitiesApi(BuildConfig.API_BASE_URL)
     private val notificationsApi = uk.oli.fittrack.net.NotificationsApi(BuildConfig.API_BASE_URL)
+    private val settingsApi = uk.oli.fittrack.net.SettingsApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -147,6 +148,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 attempt { loadCalendar(token) }
                 attempt { loadActivities(token) }
                 attempt { loadNotifications(token) }
+                attempt { loadSettings(token) }
                 if (_syncError.value == null && firstFailure != null) {
                     // The history itself is fine; say which section lagged
                     // rather than claiming the whole sync failed.
@@ -254,6 +256,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _activities.value = null
         _activityDetail.value = null
         _notifications.value = null
+        _settings.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -692,6 +695,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshCalendar() {
         val token = _auth.value.token ?: return
         viewModelScope.launch { loadCalendar(token) }
+    }
+
+    /** Settings: preferences and provider connections. */
+    private val _settings = MutableStateFlow<uk.oli.fittrack.domain.SettingsSnapshot?>(null)
+    val settings: StateFlow<uk.oli.fittrack.domain.SettingsSnapshot?> = _settings.asStateFlow()
+
+    private suspend fun loadSettings(token: String) {
+        _settings.value = settingsApi.snapshot(token)
+    }
+
+    fun refreshSettings() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadSettings(token) }
+    }
+
+    /** Units or clock: one preference changes, the rest of the snapshot stands. */
+    fun setPreferences(units: String? = null, timeFormat: String? = null) {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            val updated = settingsApi.updatePreferences(
+                token = token,
+                unitSystem = units,
+                timeFormat = timeFormat
+            )
+            if (updated != null) {
+                _settings.value = (_settings.value
+                    ?: uk.oli.fittrack.domain.SettingsSnapshot()).copy(preferences = updated)
+            }
+            loadSettings(token)
+        }
     }
 
     /** Notifications: the list, and how many are unread. */

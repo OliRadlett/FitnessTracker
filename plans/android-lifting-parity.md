@@ -348,6 +348,13 @@ the end, because installing per-fix wastes the only real screen we have.
   on the website. Data: `/notifications`, `/summary`, `PATCH /{id}/read`,
   `POST /read-all`.
 
+- [x] **P31 — settings.** `/settings` as account + the two preferences that change
+  what the phone shows (units, clock) + the provider connections with their
+  health in words ("Synced 2h ago", "Needs re-auth", "Last error: …") and a
+  header counting what needs attention. Units and clock are `PATCH /preferences`
+  with only the changed field; connections are read-only, because authorising a
+  provider is an OAuth browser flow and belongs on the website. Reached from You.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates
