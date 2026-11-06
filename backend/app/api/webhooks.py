@@ -116,3 +116,53 @@ async def strava_webhook_event(
         # on post-response behavior.
         await db.commit()
     return {"status": "ok", "queued": str(event.id)}
+
+
+@router.post("/whoop")
+async def whoop_webhook_event(request: Request):
+    """Receive a Whoop webhook.
+
+    Verifies the HMAC signature over the raw body, then enqueues — same contract
+    as Strava, for the same reasons (Whoop retries five times over an hour, and
+    processing inline would tie a retry to a network fetch).
+
+    The payload carries no data, only ``{user_id, id, type, trace_id}``; the drain
+    task re-reads the newest slice through the existing syncs. ``trace_id`` is
+    stored as the dedupe key, so a redelivery is a no-op rather than a second
+    sync.
+    """
+    from app.services.provider_webhooks import enqueue, whoop_signature_valid
+
+    raw_body = await request.body()
+
+    if not whoop_signature_valid(
+        raw_body,
+        request.headers.get("x-whoop-signature-timestamp"),
+        request.headers.get("x-whoop-signature"),
+        settings.whoop_client_secret,
+    ):
+        # 401 for both "wrong signature" and "not configured": a webhook receiver
+        # that accepts unverified payloads lets any caller move health data.
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    body = await request.json()
+    event_type = body.get("type")
+    if not event_type:
+        raise HTTPException(status_code=400, detail="Missing event type")
+
+    from app.database import async_session_factory
+
+    async with async_session_factory() as db:
+        queued = await enqueue(
+            db,
+            provider="whoop",
+            event_type=str(event_type),
+            payload=body,
+            provider_user_id=(
+                str(body["user_id"]) if body.get("user_id") is not None else None
+            ),
+            dedupe_key=body.get("trace_id"),
+        )
+        await db.commit()
+    # A duplicate is a success: Whoop retries until it sees a 2XX.
+    return {"status": "ok", "queued": queued}

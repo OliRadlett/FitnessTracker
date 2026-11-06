@@ -36,6 +36,7 @@ from app.tasks.maintenance import (
     quarantine_orphaned_routes_weekly,
 )
 from app.tasks.sync import (
+    process_provider_webhook_events,
     process_strava_webhook_events,
     reconcile_strava_activities,
     sync_all_routes,
