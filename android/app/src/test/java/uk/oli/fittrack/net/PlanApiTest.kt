@@ -63,10 +63,10 @@ class PlanApiTest {
         assertEquals(listOf("Back Squat"), day.exercises.map { it.name })
 
         val first = server.takeRequest(5, TimeUnit.SECONDS)!!
-        assertEquals("/training/plans", first.path)
+        assertEquals("/training-plans", first.path)
         assertEquals("Bearer tok", first.getHeader("Authorization"))
         val second = server.takeRequest(5, TimeUnit.SECONDS)!!
-        assertEquals("/training/plans/p-live", second.path)
+        assertEquals("/training-plans/p-live", second.path)
     }
 
     @Test
