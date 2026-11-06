@@ -98,6 +98,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     now = now,
                     history = history,
                     onLog = vm::logSet,
+                    onUndo = vm::undoLastSet,
                     onBack = { nav.popBackStack() },
                     onFinish = { nav.navigate(Routes.DONE) }
                 )

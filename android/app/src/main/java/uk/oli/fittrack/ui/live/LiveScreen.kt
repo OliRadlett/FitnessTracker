@@ -64,6 +64,7 @@ fun LiveScreen(
     now: Long,
     history: List<FinishedSession>,
     onLog: (Double, Int, Int) -> Unit,
+    onUndo: () -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
@@ -160,7 +161,7 @@ fun LiveScreen(
             }
 
             Spacer(Modifier.height(20.dp))
-            SetRows(session, exercise, setNumber)
+            SetRows(session, exercise, setNumber, onUndo)
             Spacer(Modifier.weight(1f))
             RpeRow(rpe) { rpe = it }
             Spacer(Modifier.height(18.dp))
@@ -323,11 +324,31 @@ private fun StepButton(glyph: String, onClick: () -> Unit, modifier: Modifier = 
 }
 
 @Composable
-private fun SetRows(session: SessionState, exercise: PlanExercise, setNumber: Int) {
+private fun SetRows(
+    session: SessionState,
+    exercise: PlanExercise,
+    setNumber: Int,
+    onUndo: () -> Unit
+) {
     // Done rows must show what was actually logged, not what the plan asked for.
     val logged = session.sets.filter { it.exercise == exercise.name }
     Column {
-        Label("THIS EXERCISE")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Label("THIS EXERCISE")
+            Spacer(Modifier.weight(1f))
+            // A fat-finger at the gym must be recoverable, not permanent.
+            if (session.sets.isNotEmpty()) {
+                Text(
+                    "Undo",
+                    fontSize = 13.sp,
+                    color = Tokens.Muted,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onUndo() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(4.dp))
         for (i in 1..exercise.sets) {
             val record = logged.getOrNull(i - 1)

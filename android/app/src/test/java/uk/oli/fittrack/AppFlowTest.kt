@@ -59,17 +59,24 @@ class AppFlowTest {
         save("app-4-second-set")
         compose.onNodeWithText("92.5 × 4").assertExists()
 
+        // A mis-tap has to be recoverable: undo drops the set and re-arms set 2.
+        compose.onNodeWithText("Undo").performClick()
+        compose.waitForIdle()
+        save("app-5-undo")
+        compose.onNodeWithText("92.5 × 4").assertDoesNotExist()
+        compose.onNodeWithText("set 2 of 4", substring = true).assertExists()
+
         // Finishing early is allowed: the plan is a target, not a cage.
         compose.onNodeWithText("Finish").performClick()
         compose.waitForIdle()
-        save("app-5-done")
+        save("app-6-done")
         // Behaviour, not machine state: the summary is what must render here.
         compose.onNodeWithText("Session done.").assertExists()
 
         // Committing the summary turns it into history and returns to Today.
         compose.onNodeWithText("Done").performClick()
         compose.waitForIdle()
-        save("app-6-today-after")
+        save("app-7-today-after")
 
         compose.onNodeWithText("LAST 7 DAYS").assertExists()
         compose.onNodeWithText("Last time").assertExists()
@@ -77,12 +84,12 @@ class AppFlowTest {
         // The log is readable, not just written.
         compose.onNodeWithText("Log").performClick()
         compose.waitForIdle()
-        save("app-7-log")
+        save("app-8-log")
         compose.onNodeWithText("1 session").assertExists()
 
         compose.onNodeWithText("Push day").performClick()
         compose.waitForIdle()
-        save("app-8-session-detail")
+        save("app-9-session-detail")
         compose.onNodeWithText("TOP SET").assertExists()
     }
 
