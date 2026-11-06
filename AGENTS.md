@@ -190,12 +190,17 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   latest weigh-in, 30-day change, the **7-day rolling average** as a line, and
   the weigh-ins with their source. `POST` logs one (the API upserts by date) and
   `DELETE` removes only a `manual` entry. 20–400 kg is enforced before sending.
-- **Ride tab**: rides from `GET /activities` ([`net/RidesApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/RidesApi.kt),
-  [`ui/ride/RideScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/ride/RideScreen.kt)) —
-  last-7-days distance/time/TSS and the recent rides with pace, power/HR and
-  TSS. The list endpoint is unfiltered, so a ride is recognised by its
-  `sport_type`; the summary is computed from the rides on screen, so it cannot
-  disagree with the list.
+- **Ride tab is the cycling page**: [`ui/ride/RideScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/ride/RideScreen.kt)
+  replicates the website's `/cycling` — seven-day tiles with the server's trend
+  arrows (`GET /cycling/metrics-summary`: TSS, rides, km, time, elevation, FTP and
+  W/kg), the power curve and its CP/W'/Pmax fit (`/cycling/power-curve`,
+  `/cycling/power-model`), time in zones (`/cycling/power-zones?days=30`), FTP
+  history with the change and VO2max (`/cycling/ftp-history`, `/cycling/vo2max`),
+  then the rides from `GET /activities`. Data comes from
+  [`net/CyclingApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/CyclingApi.kt):
+  six independent fetches that each fail alone, so a rider with no power meter
+  still gets the summary and the list. Read-only — a ride comes from Strava or
+  Komoot, and the phone is not where it gets edited.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the

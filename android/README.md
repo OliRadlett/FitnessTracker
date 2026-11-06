@@ -9,9 +9,14 @@ against those decisions.
 
 ## What works
 
-- Five-tab shell — Today, Train, Ride, Body, You. Only Ride says "not built
-  yet" now: Today has the day, Train the sessions/progress/week, Body the
-  bodyweight trend, You the account.
+- Five-tab shell — Today, Train, Ride, Body, You. Today has the day and the
+  dashboard, Train the sessions/progress/week, **Ride the cycling page**, Body
+  the bodyweight trend, You the account.
+- **Ride is the cycling page**: seven-day tiles with the server's trend arrows
+  (TSS, rides, km, time, elevation, FTP and W/kg), the power curve with its
+  CP/W'/Pmax fit, time in zones, FTP history with the change and VO2max, then
+  the rides themselves. Six independent fetches, each fail-open — no power meter
+  still means a summary and a list.
 - **Body**: bodyweight — the latest weigh-in, its 30-day change, the 7-day
   rolling average as a line, and the weigh-ins behind it with their source.
   Logging one upserts by date; only a manual entry can be deleted.
