@@ -252,6 +252,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Turn the warm-ups already logged for the current exercise into a saved
+     * template, so the ramp you actually did is the one offered next time.
+     */
+    fun saveWarmupsAsTemplate() {
+        val current = _session.value ?: return
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to save a template."
+            return
+        }
+        val exercise = currentExerciseName(current)
+        val steps = current.sets
+            .filter { it.isWarmup && it.exercise.trim() == exercise }
+            .map { uk.oli.fittrack.domain.WarmupStep(it.weightKg, it.reps, it.note) }
+        if (steps.isEmpty()) {
+            _syncError.value = "Log a warm-up set first."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val saved = liftingApi.createWarmupTemplate(
+                    token,
+                    "$exercise warmup",
+                    exercise,
+                    steps
+                )
+                if (saved != null) {
+                    _warmupTemplates.value = (_warmupTemplates.value + saved).distinctBy { it.id }
+                    _syncError.value = null
+                }
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not save the template."
+            }
+        }
+    }
+
+    /** Delete a template, putting it back if the server refuses. */
+    fun deleteWarmupTemplate(id: String) {
+        val old = _warmupTemplates.value
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to delete a template."
+            return
+        }
+        _warmupTemplates.value = old.filterNot { it.id == id }
+        viewModelScope.launch {
+            try {
+                liftingApi.deleteWarmupTemplate(token, id)
+                _syncError.value = null
+            } catch (e: Exception) {
+                _warmupTemplates.value = old
+                _syncError.value = e.message ?: "Could not delete the template."
+            }
+        }
+    }
+
+    /**
      * Type in a record for a session the phone never saw. The server is the only
      * place manual PRs can live, so this needs a token and a signal; it reverts
      * nothing because it never touched local history.

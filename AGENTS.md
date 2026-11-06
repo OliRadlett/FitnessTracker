@@ -131,7 +131,9 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   `/sessions/{id}/linkable-activities` and `PUT /sessions/{id}/link`); the Live
   screen offers saved warm-up templates (`/lifting/warmup-templates`) that log
   their steps as flagged warm-ups for the current exercise, locally, with no
-  signal.
+  signal — plus `×` to delete one and "Save these N warm-ups as a template" to
+  capture the ramp you just did (`POST`, steps numbered by position). Renaming
+  and editing a template stays on the website's Templates tab.
 - **Names are trimmed at the boundary**: the server has held both `Legs` and
   `Legs `, and an untrimmed name silently splits a lift's history in two. The
   decoder trims, and every grouping/comparison trims, so one lift is one row.

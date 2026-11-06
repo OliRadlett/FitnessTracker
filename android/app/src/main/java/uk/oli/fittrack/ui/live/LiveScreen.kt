@@ -72,6 +72,8 @@ fun LiveScreen(
     history: List<FinishedSession>,
     warmupTemplates: List<WarmupTemplate> = emptyList(),
     onApplyWarmup: (WarmupTemplate) -> Unit = {},
+    onDeleteWarmup: (WarmupTemplate) -> Unit = {},
+    onSaveWarmups: () -> Unit = {},
     onLog: (SetEntry) -> Unit,
     onUndo: () -> Unit,
     onAdjustRest: (Int) -> Unit,
@@ -225,6 +227,8 @@ fun LiveScreen(
                     onApplyWarmup(it)
                     warmupOpen = false
                 },
+                onDeleteWarmup = onDeleteWarmup,
+                onSaveWarmups = onSaveWarmups,
                 onUndo = onUndo
             )
             Spacer(Modifier.weight(1f))
@@ -516,6 +520,8 @@ private fun SetRows(
     warmupOpen: Boolean,
     onToggleWarmups: () -> Unit,
     onApplyWarmup: (WarmupTemplate) -> Unit,
+    onDeleteWarmup: (WarmupTemplate) -> Unit,
+    onSaveWarmups: () -> Unit,
     onUndo: () -> Unit
 ) {
     // Done rows must show what was actually logged, not what the plan asked for.
@@ -572,6 +578,38 @@ private fun SetRows(
                             "${formatWeight(template.steps.last().weightKg)} kg",
                         fontSize = 12.sp,
                         color = Tokens.Muted
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    // Delete is a small target on purpose: applying is the
+                    // common action, removing a template is the rare one.
+                    Text(
+                        "×",
+                        fontSize = 16.sp,
+                        color = Tokens.Muted,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onDeleteWarmup(template) }
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            val logged = session.sets.count {
+                it.isWarmup && it.exercise.trim() == exercise.name.trim()
+            }
+            if (logged > 0) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSaveWarmups() }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Save these $logged warm-ups as a template",
+                        fontSize = 13.sp,
+                        color = Tokens.Accent,
+                        modifier = Modifier.weight(1f)
                     )
                 }
             }

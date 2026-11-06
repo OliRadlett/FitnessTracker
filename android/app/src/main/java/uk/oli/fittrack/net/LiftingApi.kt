@@ -241,6 +241,59 @@ class LiftingApi(private val baseUrl: String) {
             }
         }
 
+    /** Save a ramp as a reusable template, so it is one tap next time. */
+    suspend fun createWarmupTemplate(
+        token: String,
+        name: String,
+        exercise: String?,
+        steps: List<uk.oli.fittrack.domain.WarmupStep>
+    ): uk.oli.fittrack.domain.WarmupTemplate? = withContext(Dispatchers.IO) {
+        val payload = LiftingPatchJson.encodeToString(
+            WarmupTemplateBody.serializer(),
+            WarmupTemplateBody(
+                name = name.trim(),
+                exercise_name = exercise?.trim()?.takeIf { it.isNotBlank() },
+                steps = steps.mapIndexed { index, step ->
+                    WarmupStepBody(
+                        step_number = index + 1,
+                        weight_kg = step.weightKg,
+                        reps = step.reps,
+                        notes = step.note?.takeIf { it.isNotBlank() }
+                    )
+                }
+            )
+        )
+
+        val request = Request.Builder()
+            .url("$baseUrl/lifting/warmup-templates")
+            .header("Authorization", "Bearer $token")
+            .post(payload.toRequestBody(jsonMedia))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw ApiException(response.code, "Could not save the template (${response.code})")
+            }
+            WarmupJson.decode("[$body]").firstOrNull()
+        }
+    }
+
+    /** Remove a saved template. */
+    suspend fun deleteWarmupTemplate(token: String, id: String) = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url("$baseUrl/lifting/warmup-templates/$id")
+            .header("Authorization", "Bearer $token")
+            .delete()
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw ApiException(response.code, "Could not delete the template (${response.code})")
+            }
+        }
+    }
+
     /** The saved warm-up templates (the website's Templates tab). */
     suspend fun warmupTemplates(token: String): List<uk.oli.fittrack.domain.WarmupTemplate> =
         withContext(Dispatchers.IO) {
@@ -402,6 +455,22 @@ private data class WarmupStepDto(
     val step_number: Int = 0,
     val weight_kg: Double = 0.0,
     val reps: Int = 0,
+    val notes: String? = null
+)
+
+/** `POST /lifting/warmup-templates` body (`WarmupTemplateCreate`). */
+@Serializable
+internal data class WarmupTemplateBody(
+    val name: String,
+    val exercise_name: String? = null,
+    val steps: List<WarmupStepBody> = emptyList()
+)
+
+@Serializable
+internal data class WarmupStepBody(
+    val step_number: Int,
+    val weight_kg: Double,
+    val reps: Int,
     val notes: String? = null
 )
 

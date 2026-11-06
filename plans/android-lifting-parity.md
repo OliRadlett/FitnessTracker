@@ -144,9 +144,19 @@ the end, because installing per-fix wastes the only real screen we have.
   never count. The same reasoning as Progress — the screen cannot disagree with
   the log it is drawn from, and it works on a dead signal.
 
+- [x] **P13 — templates you can keep.** The Live screen's warm-up list is now a
+  manager, not just a menu: `×` deletes a template (`DELETE
+  /lifting/warmup-templates/{id}`, optimistic, put back with a reason if the
+  server refuses), and once you have logged a ramp **"Save these N warm-ups as
+  a template"** posts exactly what you did (`POST /lifting/warmup-templates`,
+  steps numbered by position) so next time it is one tap. The website's Templates
+  tab owns renaming and editing; the phone keeps what it is good at — capturing a
+  ramp you just performed.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
-app's Week view is read-only).
+app's Week view is read-only) and template *renaming/editing* (the Templates
+tab's job).
 - [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
   @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:
   34 real sessions pulled, the log with its filters, Progress computed from that

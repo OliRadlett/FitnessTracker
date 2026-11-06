@@ -145,6 +145,69 @@ class LiftingWriteTest {
     }
 
     @Test
+    fun `saving a warm-up template posts the ramp in order`() {
+        server.enqueue(
+            MockResponse().setResponseCode(201).setBody(
+                """{"id":"t1","name":"Bench warmup","exercise_name":"Bench Press",
+                     "steps":[{"step_number":1,"weight_kg":60,"reps":8},
+                              {"step_number":2,"weight_kg":80,"reps":5,"notes":"paused"}]}"""
+            )
+        )
+
+        val saved = runBlocking {
+            api.createWarmupTemplate(
+                "tok",
+                " Bench warmup ",
+                "Bench Press",
+                listOf(
+                    uk.oli.fittrack.domain.WarmupStep(60.0, 8),
+                    uk.oli.fittrack.domain.WarmupStep(80.0, 5, "paused")
+                )
+            )
+        }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("POST", request.method)
+        assertEquals("/lifting/warmup-templates", request.path)
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("\"name\":\"Bench warmup\""))
+        assertTrue(body.contains("\"exercise_name\":\"Bench Press\""))
+        // Steps are numbered by their position, so the server's order is ours.
+        assertTrue(body.contains("\"step_number\":1"))
+        assertTrue(body.contains("\"step_number\":2"))
+        assertTrue(body.contains("\"weight_kg\":80.0"))
+        assertTrue(body.contains("\"notes\":\"paused\""))
+
+        assertEquals("t1", saved!!.id)
+        assertEquals(2, saved.steps.size)
+    }
+
+    @Test
+    fun `deleting a warm-up template hits its own path`() {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        runBlocking { api.deleteWarmupTemplate("tok", "t1") }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("DELETE", request.method)
+        assertEquals("/lifting/warmup-templates/t1", request.path)
+    }
+
+    @Test
+    fun `a refused template save is an error, not a silent no-op`() {
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"detail":"bad"}"""))
+
+        val error = runCatching {
+            runBlocking {
+                api.createWarmupTemplate("tok", "x", null, listOf(uk.oli.fittrack.domain.WarmupStep(20.0, 10)))
+            }
+        }.exceptionOrNull()
+
+        assertTrue(error is ApiException)
+        assertEquals(400, (error as ApiException).status)
+    }
+
+    @Test
     fun `deleting a session hits the session path`() {
         server.enqueue(MockResponse().setResponseCode(204))
 
