@@ -206,18 +206,23 @@ fun SessionDetailScreen(
 
             val labels = session.labels
             val linked = session.linkedActivity
-            if (labels != null || linked != null) {
+            if (labels != null) {
                 item {
                     Spacer(Modifier.height(12.dp))
-                    if (labels != null) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            labels.split?.let { LabelChip(humaniseLabel(it)) }
-                            labels.lift?.let { LabelChip(humaniseLabel(it)) }
-                            labels.klass?.let { LabelChip(humaniseLabel(it)) }
-                        }
-                        Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        labels.split?.let { LabelChip(humaniseLabel(it)) }
+                        labels.lift?.let { LabelChip(humaniseLabel(it)) }
+                        labels.klass?.let { LabelChip(humaniseLabel(it)) }
                     }
-                    if (linked != null) {
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+
+            // Linking stands on its own: a session with no labels and no link is
+            // exactly the one that needs the button.
+            item {
+                Spacer(Modifier.height(12.dp))
+                if (linked != null) {
                         Row(
                             Modifier
                                 .fillMaxWidth()
@@ -300,7 +305,6 @@ fun SessionDetailScreen(
                             )
                         }
                     }
-                }
             }
 
             item {
