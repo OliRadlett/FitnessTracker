@@ -233,6 +233,18 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   reloads the week and today and pops the screen. This is the phone's only
   writing surface into a plan: the website keeps the full editor, program matrix
   and block tools.
+- **Health and calendar**: [`ui/health/HealthScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/health/HealthScreen.kt)
+  holds both. **Health** is four answers, not ten charts: recovery (score/HRV/RHR
+  from `/metrics/readiness`, shared with the dashboard), sleep debt
+  (`/metrics/sleep-debt`), sleep timing (`/metrics/sleep-consistency` — its score,
+  spread and average bedtime) and breathing rate (`/metrics/respiratory-rate`,
+  with the change against the baseline). **Calendar** is a Monday-first month
+  grid from `GET /activities/calendar?start_date=&end_date=`: a lift dot, a ride
+  dot and a recovery tint per cell, month paging (`‹ This month ›`), and tapping
+  a day opens its entries plus recovery/sleep/HRV/RHR/strain. Data lives in
+  [`net/HealthApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/HealthApi.kt),
+  which reuses the dashboard's readiness and sleep debt rather than fetching
+  them twice under a different key. Reached from You.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the

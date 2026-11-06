@@ -288,6 +288,18 @@ the end, because installing per-fix wastes the only real screen we have.
   cannot be edited. The website keeps the full editor, program matrix and block
   tools — this is the sentence you change on a phone, not a desk tool.
 
+- [x] **P27 — health and the calendar.** **Health** is four answers rather than
+  ten charts: recovery (`/metrics/readiness`), sleep debt
+  (`/metrics/sleep-debt`), sleep timing (`/metrics/sleep-consistency` — score,
+  spread, average bedtime) and breathing rate (`/metrics/respiratory-rate`, with
+  the change against its baseline). **Calendar** is a Monday-first month grid
+  from `GET /activities/calendar`: a lift dot, a ride dot and a recovery tint per
+  cell, month paging, and a day's entries plus recovery/sleep/HRV/RHR/strain on
+  tap. Both reached from You; `HealthApi` reuses the dashboard's readiness and
+  sleep debt instead of fetching them under a second cache key. The website's
+  chart wall and its health-alert list are deliberately absent — neither answers
+  a question a phone asks.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

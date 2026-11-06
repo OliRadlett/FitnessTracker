@@ -50,6 +50,8 @@ fun YouScreen(
     routeCount: Int = 0,
     onOpenGoals: () -> Unit = {},
     onOpenRoutes: () -> Unit = {},
+    onOpenHealth: () -> Unit = {},
+    onOpenCalendar: () -> Unit = {},
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -133,6 +135,13 @@ fun YouScreen(
             Label("ROUTES")
             Spacer(Modifier.height(8.dp))
             NavRow(if (routeCount > 0) "$routeCount in the library" else "Routes") { onOpenRoutes() }
+
+            Spacer(Modifier.height(20.dp))
+            Label("HEALTH & CALENDAR")
+            Spacer(Modifier.height(8.dp))
+            NavRow("Health") { onOpenHealth() }
+            Spacer(Modifier.height(8.dp))
+            NavRow("Calendar") { onOpenCalendar() }
 
             Spacer(Modifier.height(24.dp))
             Label("THIS BUILD")
