@@ -61,8 +61,12 @@ the end, because installing per-fix wastes the only real screen we have.
   go. Local rows appear immediately; a synced session posts each set and swaps
   the row for the server's, so the id an edit needs exists. A partial failure
   keeps what succeeded and says so.
-- [ ] **P3 — repeat a session.** Start today from any finished session, with the
-  same exercises, the same working-set count and prefilled loads.
+- [x] **P3 — repeat a session.** "Repeat this session" starts today from any
+  finished session: the same exercises in the same order, the same number of
+  working sets, and the last working set's load and reps as the target
+  (`SessionEngine.planFrom`). Warm-ups are not copied — they are something you
+  ramp through, not a set the plan owes you. Refused, with the reason on the
+  button, while another session is in progress.
 - [ ] **P4 — live-flow fidelity.** Warm-up toggle, AMRAP, optional RPE,
   per-set notes, editable rest target, plate calculator.
 - [ ] **P5 — progress.** PRs (`GET /lifting/prs`), best-by-rep-range, and an

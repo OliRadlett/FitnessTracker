@@ -31,6 +31,9 @@ against those decisions.
   days), renames the focus and edits the session note. Synced rows are written
   back with `PATCH`/`POST`/`DELETE` and revert with a reason if the server
   refuses; local-only rows edit in place.
+- **Repeat a session**: "Repeat this session" starts today from a finished one —
+  the same exercises, the same number of working sets, and last time's load and
+  reps as the target. Warm-ups are not copied.
 - **History sync (pull)**: once signed in, lifting history is fetched from
   `GET /api/v1/lifting/sessions` and merged into the local log, so "last time"
   reflects what you actually lifted. Fail-open: no signal means no sync, never a

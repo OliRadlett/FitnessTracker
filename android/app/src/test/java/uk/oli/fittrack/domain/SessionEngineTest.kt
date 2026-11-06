@@ -137,6 +137,45 @@ class SessionEngineTest {
     }
 
     @Test
+    fun `a repeat plan copies working sets and skips warm-ups`() {
+        val session = FinishedSession(
+            id = "s1",
+            planTitle = "Legs",
+            startedAt = 0L,
+            endedAt = 1_000L,
+            sets = listOf(
+                LoggedSet("Back Squat", 60.0, 8, 4.0, isWarmup = true),
+                LoggedSet("Back Squat", 130.0, 3, 9.0),
+                LoggedSet("Back Squat", 130.0, 3, 9.0),
+                LoggedSet("Leg Press", 200.0, 10, 8.0)
+            )
+        )
+
+        val plan = SessionEngine.planFrom(session)
+
+        assertEquals("Legs", plan.title)
+        assertEquals(listOf("Back Squat", "Leg Press"), plan.exercises.map { it.name })
+        assertEquals(2, plan.exercises[0].sets)
+        assertEquals(3, plan.exercises[0].reps)
+        assertEquals(130.0, plan.exercises[0].weightKg, 0.001)
+        assertEquals(1, plan.exercises[1].sets)
+        assertEquals(200.0, plan.exercises[1].weightKg, 0.001)
+    }
+
+    @Test
+    fun `a session of nothing but warm-ups cannot be repeated`() {
+        val session = FinishedSession(
+            id = "s1",
+            planTitle = "Legs",
+            startedAt = 0L,
+            endedAt = 1_000L,
+            sets = listOf(LoggedSet("Back Squat", 60.0, 8, 4.0, isWarmup = true))
+        )
+
+        assertTrue(SessionEngine.planFrom(session).exercises.isEmpty())
+    }
+
+    @Test
     fun `grouping keeps every set and first-appearance order`() {
         val sets = listOf(
             set("Bench Press", 60.0, 8, warmup = true),

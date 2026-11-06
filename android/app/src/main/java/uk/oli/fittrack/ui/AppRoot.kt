@@ -148,7 +148,11 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                         nav.popBackStack()
                     },
                     onEditSession = { days, focus, note -> vm.editSession(finished.id, days, focus, note) },
-                    onAddSets = { exercise, specs -> vm.addSets(finished.id, exercise, specs) }
+                    onAddSets = { exercise, specs -> vm.addSets(finished.id, exercise, specs) },
+                    canRepeat = session == null,
+                    onRepeat = {
+                        if (vm.repeatSession(finished.id)) nav.navigate(Routes.LIVE)
+                    }
                 )
             }
         }

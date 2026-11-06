@@ -74,7 +74,9 @@ fun SessionDetailScreen(
     onDeleteSet: (Int) -> Unit = {},
     onDeleteSession: () -> Unit = {},
     onEditSession: (Long, String?, String?) -> Unit = { _, _, _ -> },
-    onAddSets: (String, List<SetEdit>) -> Unit = { _, _ -> }
+    onAddSets: (String, List<SetEdit>) -> Unit = { _, _ -> },
+    canRepeat: Boolean = true,
+    onRepeat: () -> Unit = {}
 ) {
     val zone = ZoneId.systemDefault()
     val start = Instant.ofEpochMilli(session.startedAt).atZone(zone)
@@ -300,6 +302,26 @@ fun SessionDetailScreen(
                             color = Tokens.Accent
                         )
                     }
+                }
+
+                Spacer(Modifier.height(10.dp))
+                // Repeating is the commonest next action after looking at a
+                // session, so it gets the strongest button on the screen.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (canRepeat) Tokens.Accent else Tokens.Surface)
+                        .clickable(enabled = canRepeat) { onRepeat() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        if (canRepeat) "Repeat this session" else "Finish the session in progress first",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (canRepeat) Tokens.OnAccent else Tokens.Muted
+                    )
                 }
             }
         }
