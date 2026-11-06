@@ -118,6 +118,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _syncedAt.value = System.currentTimeMillis()
                 loadTodayPlan(token)
                 loadWarmupTemplates(token)
+                loadPlanWeek(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -190,6 +191,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _planFromServer.value = false
         _plannedPlanName.value = null
         _restDay.value = false
+        _planWeek.value = null
+        _warmupTemplates.value = emptyList()
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -220,6 +223,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val _restDay = MutableStateFlow(false)
     val restDay: StateFlow<Boolean> = _restDay.asStateFlow()
+
+    /** This week's plan, for the Train tab. Null when signed out or offline. */
+    private val _planWeek = MutableStateFlow<uk.oli.fittrack.net.PlanWeek?>(null)
+    val planWeek: StateFlow<uk.oli.fittrack.net.PlanWeek?> = _planWeek.asStateFlow()
+
+    private suspend fun loadPlanWeek(token: String) {
+        runCatching { planApi.weekPlan(token, java.time.LocalDate.now()) }
+            .getOrNull()
+            ?.let { _planWeek.value = it }
+    }
+
+    /** The Train tab asks for a refresh when it opens. */
+    fun refreshPlanWeek() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadPlanWeek(token) }
+    }
 
     /** Saved warm-up templates, offered on the Live screen. */
     private val _warmupTemplates = MutableStateFlow<List<uk.oli.fittrack.domain.WarmupTemplate>>(emptyList())

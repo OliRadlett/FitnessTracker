@@ -19,9 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,8 +40,6 @@ import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.NavKind
 import uk.oli.fittrack.ui.PrimaryButton
 import uk.oli.fittrack.ui.formatWeight
-import uk.oli.fittrack.ui.log.LogScreen
-import uk.oli.fittrack.ui.progress.ProgressScreen
 import uk.oli.fittrack.ui.theme.Tokens
 import java.time.Instant
 import java.time.LocalDate
@@ -76,9 +72,6 @@ fun TodayScreen(
 ) {
     val active = session?.plan ?: plan
     val now = remember { System.currentTimeMillis() }
-    // 0 = the session in front of you, 1 = the log. Log nests under Today
-    // because "what did I do" is a view of time, and Today owns time.
-    var mode by rememberSaveable { mutableIntStateOf(0) }
     val dateLabel = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.UK))
             .uppercase(Locale.UK)
@@ -114,8 +107,6 @@ fun TodayScreen(
             Spacer(Modifier.height(10.dp))
             Text(
                 when {
-                    mode == 1 -> "Your log."
-                    mode == 2 -> "Your progress."
                     session != null -> "In progress."
                     restDay -> "Rest day."
                     else -> "${active.title}."
@@ -124,102 +115,69 @@ fun TodayScreen(
                 fontWeight = FontWeight.SemiBold,
                 color = Tokens.Fg
             )
-            Spacer(Modifier.height(16.dp))
-            ModePills(mode) { mode = it }
             Spacer(Modifier.height(20.dp))
-            if (mode == 0) {
-                if (restDay && session == null) {
-                    // The plan asked for a rest day; say so rather than
-                    // prescribing the seeded push day.
-                    Text(
-                        plannedPlanName?.let { "Nothing planned today in $it." }
-                            ?: "Nothing planned today.",
-                        fontSize = 15.sp,
-                        color = Tokens.Fg
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "Rest is training too. Start a session anyway if you want one.",
-                        fontSize = 13.sp,
-                        color = Tokens.Muted
-                    )
-                } else {
-                    PlanCard(
-                        plan = active,
-                        session = session,
-                        lastSet = lastSet,
-                        now = now,
-                        editable = !planFromServer,
-                        planName = plannedPlanName,
-                        onEditPlan = onEditPlan
-                    )
-                }
-
-                if (history.isEmpty() && session == null) {
-                    Text("Nothing logged yet today.", fontSize = 13.sp, color = Tokens.Muted)
-                } else if (history.isNotEmpty()) {
-                    Spacer(Modifier.height(18.dp))
-                    WeekStrip(strip, weekVolume)
-                }
-            } else if (mode == 1) {
-                LogScreen(history, onOpenSession)
+            if (restDay && session == null) {
+                // The plan asked for a rest day; say so rather than
+                // prescribing the seeded push day.
+                Text(
+                    plannedPlanName?.let { "Nothing planned today in $it." }
+                        ?: "Nothing planned today.",
+                    fontSize = 15.sp,
+                    color = Tokens.Fg
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Rest is training too. Start a session anyway if you want one.",
+                    fontSize = 13.sp,
+                    color = Tokens.Muted
+                )
             } else {
-                ProgressScreen(history)
+                PlanCard(
+                    plan = active,
+                    session = session,
+                    lastSet = lastSet,
+                    now = now,
+                    editable = !planFromServer,
+                    planName = plannedPlanName,
+                    onEditPlan = onEditPlan
+                )
+            }
+
+            if (history.isEmpty() && session == null) {
+                Text("Nothing logged yet today.", fontSize = 13.sp, color = Tokens.Muted)
+            } else if (history.isNotEmpty()) {
+                Spacer(Modifier.height(18.dp))
+                WeekStrip(strip, weekVolume)
             }
             Spacer(Modifier.height(20.dp))
         }
-        if (mode == 0) {
-            BottomAction {
-                // The prompt lives on the deck, not in the scroll area: at 360dp
-                // the card plus a "last time" footer leaves no room for it, so
-                // scrolled placement put it off screen. The deck never scrolls.
-                if (!signedIn) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .clickable { onSignIn() }
-                            .padding(bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Not signed in", fontSize = 12.sp, color = Tokens.Muted)
-                        Spacer(Modifier.weight(1f))
-                        Text("Sign in →", fontSize = 12.sp, color = Tokens.Accent)
-                    }
+        BottomAction {
+            // The prompt lives on the deck, not in the scroll area: at 360dp
+            // the card plus a "last time" footer leaves no room for it, so
+            // scrolled placement put it off screen. The deck never scrolls.
+            if (!signedIn) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSignIn() }
+                        .padding(bottom = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Not signed in", fontSize = 12.sp, color = Tokens.Muted)
+                    Spacer(Modifier.weight(1f))
+                    Text("Sign in →", fontSize = 12.sp, color = Tokens.Accent)
                 }
-                if (session != null) {
-                    PrimaryButton("Resume session", onResume)
-                } else if (restDay) {
-                    PrimaryButton("Start anyway", onStart)
-                } else {
-                    PrimaryButton("Start session", onStart)
-                }
+            }
+            if (session != null) {
+                PrimaryButton("Resume session", onResume)
+            } else if (restDay) {
+                PrimaryButton("Start anyway", onStart)
+            } else {
+                PrimaryButton("Start session", onStart)
             }
         }
         BottomNav(NavKind.Today, onTab)
-    }
-}
-
-@Composable
-private fun ModePills(mode: Int, onSelect: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("Today", "Log", "Progress").forEachIndexed { index, label ->
-            val selected = index == mode
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (selected) Tokens.Accent.copy(alpha = 0.14f) else Tokens.Surface)
-                    .clickable { onSelect(index) }
-                    .padding(horizontal = 14.dp, vertical = 8.dp)
-            ) {
-                Text(
-                    label,
-                    fontSize = 13.sp,
-                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (selected) Tokens.Accent else Tokens.Muted
-                )
-            }
-        }
     }
 }
 

@@ -9,9 +9,13 @@ against those decisions.
 
 ## What works
 
-- Five-tab shell — Today, Train, Ride, Body, You. Only Today has content; the
-  other four say so plainly.
-- Today: the plan, six exercises, one action. Resumes an unfinished session.
+- Five-tab shell — Today, Train, Ride, Body, You. Today and Train have content;
+  Ride and Body say so plainly.
+- Today: today and nothing else — the plan (or "Rest day"), one action. Resumes
+  an unfinished session.
+- **Train**: the training surface in three views — **Sessions** (the log),
+  **Progress** and **Week** (the active plan's current week, read-only, with
+  completed, partial, missed and rest days marked and today outlined).
 - Live: prefilled weight/reps/RPE from the set you just did, ± steppers, RPE
   chips, rest timer, and a per-exercise set list showing what you actually
   logged.
@@ -31,11 +35,11 @@ against those decisions.
   `history.json`, capped at 200. Today then shows "Last time 92.5 × 4 @7 · today"
   and a 7-day volume strip; the next session prefills from what you actually
   lifted, not from the plan.
-- **The log**: Today → **Log** lists finished sessions by week with sets and
+- **The log**: Train → **Sessions** lists finished sessions by week with sets and
   volume; tapping one opens the full session. It filters on free text (focus,
-  note, exercise names), focus, exercise and a date window, with a result count
-  and a "No sessions match" state.
-- **Progress**: Today → **Progress** shows personal bests per exercise (by
+  note, exercise names), focus, exercise, a date window and the classifier's type
+  and class, with a result count and a "No sessions match" state.
+- **Progress**: Train → **Progress** shows personal bests per exercise (by
   estimated 1RM), the best set in each rep range, and a per-exercise e1RM line
   over the last 20 sessions. Computed from the cached history, so it works
   signed out and without a signal.

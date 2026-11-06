@@ -105,21 +105,27 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   session" starts today from a finished one (`SessionEngine.planFrom`), copying
   working sets only.
 - **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
-  holds the website-versus-app matrix and the phase list (P0–P7, device pass at
+  holds the website-versus-app matrix and the phase list (P0–P10, device pass at
   the end).
-- **Progress**: Today's third segment computes PRs, best-by-rep-range and a
+- **Progress**: Train's Progress view computes PRs, best-by-rep-range and a
   per-exercise estimated-1RM line from the cached history
   ([`domain/Progress.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Progress.kt)),
   with no network in the path. Warm-ups never count; empty rep ranges are shown
   as empty rather than omitted. The chart defaults to the exercise with the
   longest **session** record, not the strongest lift — a one-off PR has no line
   to draw.
-- **Browsing the log**: Today's Log segment filters on free text (focus, note,
-  exercise names), focus, exercise, a date window and the classifier's TYPE
-  (split) and CLASS
+- **Browsing the log**: Train's **Sessions** view filters on free text (focus,
+  note, exercise names), focus, exercise, a date window and the classifier's
+  TYPE (split) and CLASS
   ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
   all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
   better than the website's months.
+- **Train tab**: [`ui/train/TrainScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/train/TrainScreen.kt)
+  holds Sessions · Progress · **Week** (the active plan's current week from
+  `GET /training-plans/{id}/week/{n}`, Monday-numbered from the plan's start,
+  with completed/partial/missed/rest and today marked). Today is today-only; the
+  two tabs stay different things. The week is read-only — the editor is the
+  website's.
 - **Labels, templates, links**: the session detail shows the classifier's
   split/lift/class chips and any linked Strava activity (link/unlink through
   `/sessions/{id}/linkable-activities` and `PUT /sessions/{id}/link`); the Live
@@ -132,8 +138,8 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
 - **Finishing**: the summary asks for the session's own RPE and a note, and
   `SessionEngine.finished()` turns the session in progress into history with
   both. A blank note is null, not an empty string.
-- **Today's session comes from the training plan**: `GET /training/plans` → the
-  plan whose dates bracket today → `GET /training/plans/{id}` → today's
+- **Today's session comes from the training plan**: `GET /training-plans` → the
+  plan whose dates bracket today → `GET /training-plans/{id}` → today's
   `sport == "strength"` day, mapped in
   [`net/PlanApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/PlanApi.kt)
   (focus as the title, prescribed sets/reps, last time's load as the weight).
@@ -141,10 +147,10 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   current plan alone rather than inventing a rest day. `SeedPlan` is only the
   fallback when signed out or offline, and the phone's plan editor is hidden
   while a server plan is showing.
-- **Not built yet**: the Train/Ride/Body tabs (explicit "not built yet"
-  screens), and one parity row: manual PRs (a PR with no session behind it needs
+- **Not built yet**: the Ride and Body tabs (explicit "not built yet" screens),
+  and one parity row: manual PRs (a PR with no session behind it needs
   `GET /lifting/prs`, whose payload has never been captured). The phase list
-  P0–P9 in [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
+  P0–P10 in [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
   is complete and the device pass has run.
 
 ## Architecture

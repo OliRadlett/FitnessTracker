@@ -70,6 +70,44 @@ class PlanApiTest {
     }
 
     @Test
+    fun `the week comes from the plan's week endpoint, numbered from its start`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"id":"p-live","name":"Autumn block","start_date":"2026-10-26","end_date":"2026-12-31"}]"""
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"plan_id":"p-live","week_number":2,"week_start":"2026-11-02","week_end":"2026-11-08",
+                     "days":[
+                       {"day_date":"2026-11-02","sport":"strength","planned_focus":"push",
+                        "day_status":"completed","planned_exercises":[{"exercise":"Bench Press","sets":4,"reps":4}]},
+                       {"day_date":"2026-11-03","sport":"rest","day_status":"rest"},
+                       {"day_date":"2026-11-06","sport":"strength","planned_focus":"legs",
+                        "day_status":"pending","planned_exercises":[{"exercise":"Back Squat","sets":5,"reps":3}]}
+                     ]}"""
+            )
+        )
+
+        val week = runBlocking { api.weekPlan("tok", today) }!!
+
+        assertEquals("Autumn block", week.planName)
+        assertEquals(2, week.weekNumber)
+        assertEquals(listOf("2026-11-02", "2026-11-03", "2026-11-06"), week.days.map { it.date })
+        assertEquals("completed", week.days[0].status)
+        assertEquals("rest", week.days[1].status)
+        assertEquals("legs", week.days[2].focus)
+        assertEquals(1, week.days[2].exercises)
+        // The 6th is the fixture's "today".
+        assertEquals(listOf(false, false, true), week.days.map { it.isToday })
+
+        val plans = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("/training-plans", plans.path)
+        val weekCall = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("/training-plans/p-live/week/2", weekCall.path)
+    }
+
+    @Test
     fun `a rest day is reported as such, not as a failure`() {
         server.enqueue(MockResponse().setResponseCode(200).setBody(plansBody))
         server.enqueue(
