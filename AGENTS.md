@@ -172,7 +172,13 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   tail) and the most-trained lifts from the cached history — no `/charts` calls,
   no network, warm-ups excluded. Same rule as Progress: it cannot disagree with
   the log it is drawn from.
-- **Not built yet**: the Ride and Body tabs (explicit "not built yet" screens).
+- **Body tab**: bodyweight from `GET /metrics/weight?days=90`
+  ([`net/BodyApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/BodyApi.kt),
+  [`ui/body/BodyScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/body/BodyScreen.kt)):
+  latest weigh-in, 30-day change, the **7-day rolling average** as a line, and
+  the weigh-ins with their source. `POST` logs one (the API upserts by date) and
+  `DELETE` removes only a `manual` entry. 20–400 kg is enforced before sending.
+- **Not built yet**: the Ride tab (an explicit "not built yet" screen).
   The lifting matrix is otherwise complete — the phase list P0–P12 in
   [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md) is done
   and the device pass has run, with plan *editing* deliberately left to the

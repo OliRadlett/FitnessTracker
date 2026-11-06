@@ -183,6 +183,16 @@ the end, because installing per-fix wastes the only real screen we have.
   itself). A lift you have never logged counts — the first time is the record —
   an equal estimate does not, and warm-ups and bodyweight sets never do.
 
+- [x] **P18 — the Body tab.** The last placeholder but Ride now has content:
+  bodyweight from `GET /metrics/weight?days=90` — the latest weigh-in, the
+  30-day change, the **7-day rolling average** as a line (the number that
+  actually answers "am I going the right way"), and the weigh-ins themselves
+  with their source. `POST /metrics/weight` logs one (upserting by date, so a
+  second weigh-in the same day replaces the first) and `DELETE
+  /metrics/weight/{id}` removes one — but only a `manual` entry: a scale's
+  reading is not ours to delete. A weight outside 20–400 kg is refused before it
+  is sent.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

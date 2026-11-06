@@ -65,6 +65,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val planApi = uk.oli.fittrack.net.PlanApi(BuildConfig.API_BASE_URL)
     private val prApi = uk.oli.fittrack.net.PrApi(BuildConfig.API_BASE_URL)
     private val todayApi = uk.oli.fittrack.net.TodayApi(BuildConfig.API_BASE_URL)
+    private val bodyApi = uk.oli.fittrack.net.BodyApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -123,6 +124,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadPlanWeek(token)
                 loadRecords(token)
                 loadBrief(token)
+                loadWeight(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -199,6 +201,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _warmupTemplates.value = emptyList()
         _records.value = emptyList()
         _brief.value = null
+        _weightTrend.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -521,6 +524,58 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _planFromServer.value = true
             }
             uk.oli.fittrack.net.PlanLookup.Unavailable -> Unit
+        }
+    }
+
+    /** Bodyweight history, for the Body tab. */
+    private val _weightTrend = MutableStateFlow<uk.oli.fittrack.domain.BodyTrend?>(null)
+    val weightTrend: StateFlow<uk.oli.fittrack.domain.BodyTrend?> = _weightTrend.asStateFlow()
+
+    private suspend fun loadWeight(token: String) {
+        runCatching { bodyApi.weight(token) }.getOrNull()?.let { _weightTrend.value = it }
+    }
+
+    /** The Body tab refreshes on open. */
+    fun refreshWeight() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadWeight(token) }
+    }
+
+    fun logWeight(weightKg: Double) {
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to log your weight."
+            return
+        }
+        if (!uk.oli.fittrack.domain.plausibleWeight(weightKg)) {
+            _syncError.value = "That weight looks wrong — 20 to 400 kg."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                bodyApi.addWeight(token, weightKg)
+                // Re-read: the server dedups by date and owns the rolling average.
+                loadWeight(token)
+                _syncError.value = null
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not save the weight."
+            }
+        }
+    }
+
+    /** Delete a manual weigh-in, putting it back if the server refuses. */
+    fun deleteWeight(id: String) {
+        val token = _auth.value.token ?: return
+        val old = _weightTrend.value
+        _weightTrend.value = old?.copy(entries = old.entries.filterNot { it.id == id })
+        viewModelScope.launch {
+            try {
+                bodyApi.deleteWeight(token, id)
+                loadWeight(token)
+                _syncError.value = null
+            } catch (e: Exception) {
+                _weightTrend.value = old
+                _syncError.value = e.message ?: "Could not delete the weight."
+            }
         }
     }
 

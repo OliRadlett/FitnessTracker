@@ -12,6 +12,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
+import uk.oli.fittrack.ui.body.BodyScreen
 import uk.oli.fittrack.ui.done.DoneScreen
 import uk.oli.fittrack.ui.live.LiveScreen
 import uk.oli.fittrack.ui.log.SessionDetailScreen
@@ -56,6 +57,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val analyses by vm.analyses.collectAsStateWithLifecycle()
     val analysisBusy by vm.analysisBusy.collectAsStateWithLifecycle()
     val brief by vm.brief.collectAsStateWithLifecycle()
+    val weightTrend by vm.weightTrend.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -206,6 +208,13 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onStartDay = { day -> if (vm.startFromDay(day)) nav.navigate(Routes.LIVE) },
                     onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                     onRefreshWeek = vm::refreshPlanWeek,
+                    onTab = nav::switchTab
+                )
+                "body" -> BodyScreen(
+                    trend = weightTrend,
+                    onLogWeight = vm::logWeight,
+                    onDeleteWeight = vm::deleteWeight,
+                    onRefresh = vm::refreshWeight,
                     onTab = nav::switchTab
                 )
                 else -> PlaceholderScreen(tab = name, onTab = nav::switchTab)
