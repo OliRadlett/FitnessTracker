@@ -69,13 +69,16 @@ fun ProgressScreen(history: List<FinishedSession>) {
         return
     }
 
+    val exercises = remember(history) { ProgressEngine.exerciseNames(history) }
     var selected by rememberSaveable(history) {
-        mutableStateOf(bests.first().exercise)
+        // Default to the exercise with the longest record, so the chart has
+        // something to draw rather than landing on a one-off lift.
+        mutableStateOf(exercises.firstOrNull() ?: bests.first().exercise)
     }
-    val exercise = if (bests.any { it.exercise == selected }) selected else bests.first().exercise
+    val exercise = if (exercises.contains(selected)) selected
+    else exercises.firstOrNull() ?: bests.first().exercise
     val ranges = remember(history, exercise) { ProgressEngine.bestByRepRange(history, exercise) }
     val series = remember(history, exercise) { ProgressEngine.progressSeries(history, exercise) }
-    val exercises = remember(history) { ProgressEngine.exerciseNames(history) }
 
     Column {
         Text(

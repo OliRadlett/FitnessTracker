@@ -149,11 +149,38 @@ class ProgressEngineTest {
     }
 
     @Test
+    fun `a lift stored with a trailing space is one personal best`() {
+        val history = listOf(
+            session("2026-11-01", set("Bench Press ", 100.0, 5)),
+            session("2026-11-02", set("Bench Press", 110.0, 5))
+        )
+
+        val bests = ProgressEngine.personalBests(history)
+
+        assertEquals(1, bests.size)
+        assertEquals("Bench Press", bests.single().exercise)
+        assertEquals(110.0, bests.single().weightKg, 0.001)
+    }
+
+    @Test
     fun `exercise names are ordered by how often they appear`() {
         val history = listOf(
             session("2026-11-01", set("Bench Press", 100.0, 5), set("Squat", 140.0, 3)),
             session("2026-11-02", set("Bench Press", 100.0, 5)),
             session("2026-11-03", set("Bench Press", 40.0, 12, warmup = true))
+        )
+
+        assertEquals(listOf("Bench Press", "Squat"), ProgressEngine.exerciseNames(history))
+    }
+
+    @Test
+    fun `an exercise with a long record outranks one with a single big session`() {
+        // The chart needs two sessions to draw; five sets in one session is not
+        // a history, so Squat must come second even though it carries more work.
+        val history = listOf(
+            session("2026-11-01", set("Bench Press", 100.0, 5), set("Squat", 200.0, 5)),
+            session("2026-11-02", set("Bench Press", 100.0, 5)),
+            session("2026-11-03", set("Bench Press", 100.0, 5))
         )
 
         assertEquals(listOf("Bench Press", "Squat"), ProgressEngine.exerciseNames(history))

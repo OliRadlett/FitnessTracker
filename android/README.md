@@ -69,11 +69,11 @@ against those decisions.
 - **The plan is still a seeded constant** (`data/SessionStore.kt › SeedPlan`).
   It does not come from the training-plan API yet, so the app prescribes the
   same push day until that lands.
-- **Lifting parity is in progress** — the website can still do things the phone
-  cannot: edit session fields, add a set/exercise, repeat a session, log
-  warm-ups/AMRAP/notes live, PRs and progress charts, and browse filters. The
-  phase list and the website-versus-app matrix live in
-  [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md).
+- **Lifting parity is in progress** — the phase list P0–P7 in
+  [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md) is
+  complete and has been run on a real phone (OnePlus 11, 360×804 dp) against
+  prod. Still on the matrix: session labels/AI tags, a linked Strava activity,
+  manual PRs, and warm-up templates.
 - No widgets, Health Connect, background sync or notifications.
 - Sign-in is not a gate — the gym flow works before you authenticate. Logging a
   set must never wait on a network round trip.

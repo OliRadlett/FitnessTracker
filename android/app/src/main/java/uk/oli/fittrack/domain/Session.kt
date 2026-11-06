@@ -139,7 +139,7 @@ object SessionEngine {
      */
     fun groupedByExercise(sets: List<LoggedSet>): List<ExerciseSets> {
         val order = LinkedHashMap<String, MutableList<LoggedSet>>()
-        for (set in sets) order.getOrPut(set.exercise) { mutableListOf() }.add(set)
+        for (set in sets) order.getOrPut(set.exercise.trim()) { mutableListOf() }.add(set)
         return order.map { (exercise, group) -> ExerciseSets(exercise, group) }
     }
 
