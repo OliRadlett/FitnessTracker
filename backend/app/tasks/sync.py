@@ -31,6 +31,26 @@ def process_strava_webhook_events() -> dict:
     return asyncio.run(_run_task_guarded("process_strava_webhook_events", _run))
 
 
+@celery_app.task(name="app.tasks.scheduler.process_provider_webhook_events")
+def process_provider_webhook_events() -> dict:
+    """Drain the non-Strava webhook queue (Whoop today).
+
+    A separate task rather than a second half of the Strava drain: the two queues
+    fail independently, and one provider's outage should not stop the other's
+    events. Both run on the same 5-minute slot.
+    """
+    import asyncio
+
+    from app.database import task_session
+    from app.services.provider_webhooks import process_pending_events
+
+    async def _run():
+        async with task_session() as db:
+            return await process_pending_events(db)
+
+    return asyncio.run(_run_task_guarded("process_provider_webhook_events", _run))
+
+
 @celery_app.task(name="app.tasks.scheduler.reconcile_strava_activities")
 def reconcile_strava_activities() -> dict:
     """Weekly safety net — heal drift (missed deletes/renames) against Strava."""
