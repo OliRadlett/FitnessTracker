@@ -625,6 +625,14 @@ function registerRoutes(ctx, server, template) {
       try {
         // The prompt's own instruction is "paste it as the first message of a new
         // session". `mode: 'new'` honours that; anything else delivers into the
+        // A raw web route carries no caller signal, and the session controller's
+        // `prompt(request, signal)` requires one — it calls `signal.throwIfAborted()`
+        // before it does anything else. A missing signal is not a cancellation,
+        // it is a crash: `Cannot read properties of undefined (reading
+        // 'throwIfAborted')`. One signal covers admission and the command path.
+        const signal = new AbortController().signal
+        // The prompt's own instruction is "paste it as the first message of a new
+        // session". `mode: 'new'` honours that; anything else delivers into the
         // session the control lives in.
         if (payload.mode === 'new') {
           const sessionController = ctx.get('sessionController')
@@ -641,7 +649,7 @@ function registerRoutes(ctx, server, template) {
             sessionId: created.sessionId,
             mode: 'queue',
             content: [{ type: 'text', text: preview.text }],
-          })
+          }, signal)
           const parsed = parseInvocation(line.slice(`/${COMMAND_NAME}`.length))
           const values = canonicalise(parsed.values)
           recordRun(values, preview, {
@@ -658,7 +666,7 @@ function registerRoutes(ctx, server, template) {
           })
           return
         }
-        const execution = await ctx.commands.execute(agent, line, [], new AbortController().signal)
+        const execution = await ctx.commands.execute(agent, line, [], signal)
         if (execution === undefined) {
           respondJson(res, 409, { error: `/${COMMAND_NAME} is not registered for that session.` })
           return

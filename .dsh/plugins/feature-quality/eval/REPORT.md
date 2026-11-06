@@ -206,6 +206,16 @@ a byte-order mark; `JSON.parse` throws, `readRun` swallowed it, and `/quality-st
 reported "no run recorded yet" for a run that existed. The reader now strips the
 mark and the wiring lab has the fixture.
 
+**F12 — the new-session path was missing a required argument, and the stub hid
+it.** `sessionController.prompt(request, signal)` calls `signal.throwIfAborted()`
+as its first act. The route passed one argument, so the default "Start in a new
+session" path failed on every submit with `Cannot read properties of undefined
+(reading 'throwIfAborted')` — surfaced in the composer as "The prompt could not
+be submitted (…)". The route now passes one signal to both admission and
+dispatch, and the stub models the real arity: it throws without a signal, so the
+check fails the way the app did. The current-session path had always been fine,
+which is why a real submission succeeded while the default path did not.
+
 
 ## Rejected
 

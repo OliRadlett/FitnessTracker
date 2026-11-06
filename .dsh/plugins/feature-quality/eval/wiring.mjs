@@ -85,6 +85,7 @@ function createWorld(overrides = {}) {
   const followed = []
   const created = []
   const prompted = []
+  const promptedSignals = []
   const agents = new Map()
   const workspace = overrides.cwd ?? mkdtempSync(join(tmpdir(), 'fq-repo-'))
 
@@ -105,12 +106,17 @@ function createWorld(overrides = {}) {
         return () => routes.delete(route.path)
       },
     },
+    // Modelled on the real controller: `prompt(request, signal)` touches the
+    // signal before anything else. A stub that accepted one argument hid a
+    // missing-signal crash that shipped to the composer.
     sessionController: {
       create: async (request) => {
         created.push(request)
         return { sessionId: 'session-new' }
       },
-      prompt: async (request) => {
+      prompt: async (request, signal) => {
+        signal.throwIfAborted()
+        promptedSignals.push({ aborted: signal.aborted })
         prompted.push(request)
         return { accepted: true }
       },
@@ -120,7 +126,9 @@ function createWorld(overrides = {}) {
         commands.set(definition.name, definition)
         return () => commands.delete(definition.name)
       },
-      execute: async (target, line) => {
+      execute: async (target, line, attachments, signal) => {
+        // The real runtime reads `signal.aborted` before dispatch.
+        if (signal.aborted) throw new Error('command aborted')
         const match = /^\/([a-z][a-z0-9_-]*)(?=$|[\t\n\r ])/u.exec(line)
         if (match === null) return undefined
         const definition = commands.get(match[1])
@@ -152,7 +160,7 @@ function createWorld(overrides = {}) {
   }
 
   plugin.apply(ctx)
-  return { ctx, commands, routes, agents, agent, followed, created, prompted, workspace }
+  return { ctx, commands, routes, agents, agent, followed, created, prompted, promptedSignals, workspace }
 }
 
 async function callRoute(world, path, payload) {
@@ -209,6 +217,8 @@ await check('new-session POST creates, prompts, records, and leaves the current 
   assertEqual(world.created.length, 1)
   assertEqual(world.created[0].cwd, world.workspace)
   assertEqual(world.prompted.length, 1)
+  assertEqual(world.promptedSignals.length, 1, 'prompt was admitted without a signal')
+  assertEqual(world.promptedSignals[0].aborted, false)
   assertEqual(world.prompted[0].sessionId, 'session-new')
   assertEqual(world.prompted[0].mode, 'queue')
   assert(typeof world.prompted[0].requestId === 'string' && world.prompted[0].requestId.length > 0, 'requestId missing')
@@ -320,7 +330,7 @@ await check('reports a command-handler failure as a readable error', async () =>
 
 await check('/quality refuses the same gap as the route', async () => {
   const world = createWorld()
-  const execution = await world.ctx.commands.execute(world.agent, '/quality Badge | surface: page')
+  const execution = await world.ctx.commands.execute(world.agent, '/quality Badge | surface: page', [], new AbortController().signal)
   assertEqual(execution.result.kind, 'error')
   assert(execution.result.text.includes('OWNER'), 'the command refusal does not name OWNER')
   assertEqual(world.followed.length, 0)
@@ -328,12 +338,12 @@ await check('/quality refuses the same gap as the route', async () => {
 
 await check('/quality-status prints the scan for the workspace', async () => {
   const world = createWorld()
-  const empty = await world.ctx.commands.execute(world.agent, '/quality-status')
+  const empty = await world.ctx.commands.execute(world.agent, '/quality-status', [], new AbortController().signal)
   assertEqual(empty.result.kind, 'success')
   assert(empty.result.text.includes('none recorded'), `unexpected: ${empty.result.text}`)
 
-  await world.ctx.commands.execute(world.agent, GOOD_LINE)
-  const named = await world.ctx.commands.execute(world.agent, '/quality-status badge')
+  await world.ctx.commands.execute(world.agent, GOOD_LINE, [], new AbortController().signal)
+  const named = await world.ctx.commands.execute(world.agent, '/quality-status badge', [], new AbortController().signal)
   assertEqual(named.result.kind, 'success')
   assert(named.result.text.includes('Quality run: badge'), `unexpected: ${named.result.text}`)
   assert(named.result.text.includes('Next: Contract'), `next deliverable not named: ${named.result.text}`)
