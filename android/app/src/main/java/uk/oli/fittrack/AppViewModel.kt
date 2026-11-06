@@ -66,6 +66,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val prApi = uk.oli.fittrack.net.PrApi(BuildConfig.API_BASE_URL)
     private val todayApi = uk.oli.fittrack.net.TodayApi(BuildConfig.API_BASE_URL)
     private val bodyApi = uk.oli.fittrack.net.BodyApi(BuildConfig.API_BASE_URL)
+    private val ridesApi = uk.oli.fittrack.net.RidesApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -125,6 +126,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadRecords(token)
                 loadBrief(token)
                 loadWeight(token)
+                loadRides(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -202,6 +204,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _records.value = emptyList()
         _brief.value = null
         _weightTrend.value = null
+        _rides.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -549,6 +552,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             uk.oli.fittrack.net.PlanLookup.Unavailable -> Unit
         }
+    }
+
+    /** Recent rides, for the Ride tab. Null until fetched. */
+    private val _rides = MutableStateFlow<List<uk.oli.fittrack.domain.Ride>?>(null)
+    val rides: StateFlow<List<uk.oli.fittrack.domain.Ride>?> = _rides.asStateFlow()
+
+    private suspend fun loadRides(token: String) {
+        runCatching { ridesApi.rides(token) }.getOrNull()?.let { _rides.value = it }
+    }
+
+    /** The Ride tab refreshes on open. */
+    fun refreshRides() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadRides(token) }
     }
 
     /** Bodyweight history, for the Body tab. */

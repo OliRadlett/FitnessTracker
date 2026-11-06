@@ -220,6 +220,15 @@ the end, because installing per-fix wastes the only real screen we have.
   surviving a restart and resync — so the DELETE reached the server. Test data
   was removed.
 
+- [x] **P21 — the Ride tab.** The last placeholder. `GET /activities` is
+  unfiltered (it answers every sport), so the app asks for a page and keeps the
+  rides by `sport_type` — `Ride`, `VirtualRide`, `EBikeRide`, `cycling`. The tab
+  shows the last 7 days as distance, time and TSS, then the recent rides with
+  pace, average power/HR and their own TSS. Every number is computed from the
+  rides on screen, so the summary cannot disagree with the list beneath it. It
+  is read-only: a ride comes from Strava or Komoot, and the phone is not where it
+  gets edited.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates
