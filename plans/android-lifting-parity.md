@@ -87,9 +87,12 @@ the end, because installing per-fix wastes the only real screen we have.
   the log it is drawn from. Manual PRs — the ones with no session behind them —
   are the one thing that would need `GET /lifting/prs`, which has never been
   captured, so it is deliberately not guessed at here.
-- [ ] **P6 — browse.** Filters (focus, exercise, date range, free text) and
-  month grouping over the cached history, since the API has no date-range
-  parameter.
+- [x] **P6 — browse.** The log filters on the four things the website filters on
+  — free text (focus, note, exercise names), focus, exercise and a date window
+  (30 d / 90 d / 1 y) — with the search box always visible and the chips behind
+  one "Filters" tap. A result count and a "No sessions match" state say what the
+  filter did; week grouping stays, because a phone reads weeks better than
+  months.
 - [ ] **P7 — device pass.** Install to the OnePlus 11 over Wi-Fi adb, run the
   whole loop against prod, and capture the screens.
 

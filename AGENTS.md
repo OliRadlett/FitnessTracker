@@ -112,9 +112,14 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   ([`domain/Progress.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Progress.kt)),
   with no network in the path. Warm-ups never count; empty rep ranges are shown
   as empty rather than omitted.
+- **Browsing the log**: Today's Log segment filters on free text (focus, note,
+  exercise names), focus, exercise and a date window
+  ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
+  all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
+  better than the website's months.
 - **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens), and parity phase P6 — browse filters
-  over the log. A manual PR (one with no session behind it) would need
+  tabs (explicit "not built yet" screens). Parity phase P7 (the device pass) is
+  next. A manual PR (one with no session behind it) would need
   `GET /lifting/prs`, which has never been captured.
 
 ## Architecture
