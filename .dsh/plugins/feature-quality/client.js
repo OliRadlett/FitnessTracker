@@ -555,6 +555,15 @@ window.__ModuleLoader__.load({
           }
           setStatus({ kind: 'ok', text: body.text ?? 'Quality prompt submitted.' })
           if (body.status !== undefined) setRun({ value: body.status })
+          // A session created on the host is not in the app's session store, so the
+          // main pane would stay on the old conversation. `uiWorkspace.openSession`
+          // is the call the sidebar itself makes; when it is unavailable the receipt
+          // still says where the session is.
+          if (typeof body.sessionId === 'string' && typeof props.openSession === 'function') {
+            if (props.openSession(body.sessionId)) {
+              setStatus({ kind: 'ok', text: `Opened a new session — run ${body.slug}. Phase 0 is starting there.` })
+            }
+          }
           const feature = collapse(values.FEATURE)
           if (feature !== '') {
             const next = [{ feature, values, at: new Date().toISOString() }]
@@ -927,11 +936,33 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots'],
       apply(pluginContext) {
+        /**
+         * Open a session in the main pane.
+         *
+         * The host's `sessionController.create` makes a real session, but the app's
+         * session store does not learn about it — the prompt runs in a session the
+         * user cannot see. This is the service the sidebar uses for the same
+         * gesture, reached lazily so a harness without it still submits.
+         *
+         * @returns whether the session was handed to the workspace.
+         */
+        const openSession = (sessionId) => {
+          try {
+            const workspace = typeof pluginContext?.get === 'function'
+              ? pluginContext.get('uiWorkspace')
+              : undefined
+            if (workspace === undefined || typeof workspace.openSession !== 'function') return false
+            workspace.openSession(sessionId)
+            return true
+          } catch {
+            return false
+          }
+        }
         pluginContext.slots.inject(SLOT, () => pluginContext.slots.register({
           name: SLOT,
           id: 'feature-quality',
           order: 4,
-        }, QualityPrompt))
+        }, (props) => h(QualityPrompt, { ...props, openSession })))
       },
     }
   },

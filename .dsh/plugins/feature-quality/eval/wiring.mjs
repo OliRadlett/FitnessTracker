@@ -493,7 +493,14 @@ function installFetch(overrides = {}) {
       return jsonResponse({ ok: true, text: 'DELIVERED PREVIEW TEXT', slug: 'badge', supplied: 4, unfilled: ['REFERENCES'], missingRequired: [], surface: 'page' })
     }
     if (address.endsWith('/start')) {
-      return jsonResponse({ ok: true, text: 'Quality prompt submitted \u2014 4/11 inputs supplied \u00b7 run badge.', slug: 'badge', status: statusPayload })
+      // The host returns the created session only on the new-session path.
+      return jsonResponse({
+        ok: true,
+        ...(body?.mode === 'new' ? { sessionId: 'session-new' } : {}),
+        text: 'Quality prompt submitted \u2014 4/11 inputs supplied \u00b7 run badge.',
+        slug: 'badge',
+        status: statusPayload,
+      })
     }
     return jsonResponse({ error: 'not found' }, 404)
   }
@@ -555,6 +562,14 @@ function createRuntime() {
     },
   }
 
+  function expand(node) {
+    if (node === null || node === undefined || typeof node !== 'object') return node
+    if (Array.isArray(node)) return node.map(expand)
+    if (typeof node.type === 'function') return expand(node.type(node.props ?? {}))
+    if (node.children === undefined) return node
+    return { ...node, children: node.children.map(expand) }
+  }
+
   function flush() {
     if (component === undefined) throw new Error('no component mounted')
     let guard = 0
@@ -562,7 +577,7 @@ function createRuntime() {
       dirty = false
       cursor = 0
       pending = []
-      tree = component(props)
+      tree = expand(component(props))
       for (const index of pending) {
         const record = effects[index]
         if (typeof record.cleanup === 'function') record.cleanup()
@@ -613,25 +628,32 @@ function createRuntime() {
 
 let loaded
 
-function mountControl(controlProps) {
+function mountControl(controlProps, options = {}) {
   const runtime = createRuntime()
+  const opened = options.opened ?? []
   const client = loaded.factory((specifier) => {
     if (specifier === 'react') return runtime.react
     throw new Error(`unexpected require(${specifier})`)
   })
   const registered = []
-  client.apply({
+  const pluginContext = {
+    // Mirrors the app: `uiWorkspace` is a Cordis service the control may reach.
+    get: (name) => (name === 'uiWorkspace'
+      ? { openSession: (sessionId) => { opened.push(sessionId) } }
+      : undefined),
     slots: {
       inject: (owner, create) => create(),
-      register: (options, component) => {
-        registered.push({ options, component })
+      register: (registration, component) => {
+        registered.push({ options: registration, component })
         return () => {}
       },
     },
-  })
+  }
+  client.apply(pluginContext)
   assertEqual(registered.length, 1, 'the control did not register exactly one component')
   assertEqual(registered[0].options.name, 'conversation.input.dock', 'wrong slot')
   runtime.setComponent(registered[0].component, controlProps)
+  runtime.opened = opened
   return runtime
 }
 
@@ -672,28 +694,10 @@ await import(pathToFileURL(fileURLToPath(new URL('client.js', root))).href)
 await check('loads under the module loader and registers into the composer dock', () => {
   assert(loaded !== undefined, 'client.js never called window.__ModuleLoader__.load')
   assertEqual(loaded.id, '@local/feature-quality')
-  const client = loaded.factory((specifier) => {
-    if (specifier === 'react') {
-      return {
-        createElement: (type, props, ...children) => ({ type, props: props ?? {}, children: children.flat() }),
-        useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
-        useRef: () => ({ current: undefined }),
-        useEffect: () => {},
-      }
-    }
-    throw new Error(`unexpected require(${specifier})`)
-  })
-  assertEqual(client.inject, ['slots'])
-  const registered = []
-  client.apply({
-    slots: {
-      inject: (owner, create) => create(),
-      register: (options, component) => { registered.push({ options, component }) },
-    },
-  })
-  assertEqual(registered.length, 1)
-  assertEqual(registered[0].options.name, 'conversation.input.dock')
-  const tree = registered[0].component({ sessionId: 'session-1' })
+  installStorage()
+  installFetch()
+  const runtime = mountControl({ sessionId: 'session-1' })
+  const tree = runtime.mount()
   assertEqual(tree.type, 'div')
   assertEqual(tree.props['data-feature-quality'], 'collapsed')
 })
@@ -899,8 +903,28 @@ await check('submits the line, closes the panel and shows the receipt', async ()
   assert(startCall.body.line.startsWith('/quality FEATURE: Badge'), `line reads: ${startCall.body.line}`)
   assert(startCall.body.line.includes('SURFACE: page'), 'the surface is missing from the line')
   assertEqual(runtime.tree.props['data-feature-quality'], 'collapsed')
-  assert(runtime.text(runtime.tree).includes('Quality prompt submitted'), 'the receipt is missing')
+  assert(runtime.text(runtime.tree).includes('Opened a new session'), `receipt reads: ${runtime.text(runtime.tree)}`)
+  assertEqual(runtime.opened, ['session-new'], 'the new session was never handed to the workspace')
   assert(!storage.has('dsh.feature-quality.draft.v2'), 'the draft was not cleared on submit')
+})
+
+await check('a current-session submit does not take over the main pane', async () => {
+  installStorage()
+  installFetch()
+  const runtime = mountControl({ sessionId: 'session-1' })
+  openControl(runtime)
+  fillRequired(runtime)
+
+  // Untick "New session": the prompt goes to the session the composer is in.
+  const fresh = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-fresh'] === true)
+  fresh.props.onChange({ target: { checked: false } })
+  runtime.flush()
+
+  const submit = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-submit'] === true)
+  await submit.props.onClick()
+  await settle()
+  runtime.flush()
+  assertEqual(runtime.opened, [], 'a current-session submit opened another session')
 })
 
 await check('shows the run count once the host reports one', async () => {

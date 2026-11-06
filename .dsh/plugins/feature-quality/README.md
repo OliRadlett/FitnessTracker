@@ -164,7 +164,11 @@ Quality prompt   ✓ 4 of 4 required   run 4/7
   text. Only one detail is open at a time — the message or the run.
 - **Start prompt** is disabled until the four required inputs are present.
 - **New session** is on by default, because the prompt says to use it as the
-  first message of a new session. Untick it to deliver into the current session.
+  first message of a new session. Submitting then **opens that session in the
+  main pane** — the host creates it, and the control hands it to the app's
+  `uiWorkspace` service, the same call the sidebar makes. If that service is not
+  available, the receipt says to open the session from the sidebar instead.
+  Untick the box to deliver into the current session; the pane does not move.
 - **Drafts** are kept in `localStorage` on this device, cleared on submit, and
   the last five submissions are offered as **Recent…**.
 - **Run strip**: once a run is recorded, the row shows `run 1/7`; clicking it

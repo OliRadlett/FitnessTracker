@@ -244,6 +244,24 @@ The client's hook runtime also learned to re-render on state the way React does,
 because four preset checks read the tree after an awaited request and saw the
 pre-request frame.
 
+**F15 — the session was created, and invisible.** `sessionController.create`
+makes a real session on disk with the prompt queued, but the app's client-side
+session store never hears about it: the main pane stayed on the old
+conversation and the sidebar did not list the new one, so "Start in a new
+session" looked like it had done nothing. Confirmed from the store —
+`session-357452a4…` existed with a 56 KB turn already running in it.
+
+Two dead ends first: the web app keeps one URL for every session (no route to
+navigate to), and `__DSH_BOOT__` exposes only module entries. The supported path
+is the service the sidebar itself calls: `uiWorkspace.openSession(sessionId)`.
+The control now hands the created id to it, guarded — if the service is missing
+the receipt still says where the session is — and the unit stub models
+`uiWorkspace` so the check fails if the call is dropped. Verified live: a submit
+in a disposable harness switched the pane to the new session, which displayed
+`Generic Feature Quality Prompt`, with the old conversation left behind. The
+receipt is not seen in that case because the control remounts inside the new
+session; its own run badge (`run 0/7`) is what appears instead.
+
 
 ## Rejected
 
