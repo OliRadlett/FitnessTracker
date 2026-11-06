@@ -124,29 +124,12 @@ fun TodayScreen(
             if (mode == 0) {
                 PlanCard(active, session, lastSet, now, onEditPlan)
 
-            if (history.isEmpty() && session == null) {
-                Spacer(Modifier.height(12.dp))
-                Text("Nothing logged yet today.", fontSize = 13.sp, color = Tokens.Muted)
-            } else if (history.isNotEmpty()) {
-                Spacer(Modifier.height(22.dp))
-                WeekStrip(strip, weekVolume)
-            }
-
-            if (!signedIn) {
-                Spacer(Modifier.height(18.dp))
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onSignIn() }
-                        .padding(vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Not signed in", fontSize = 13.sp, color = Tokens.Muted)
-                    Spacer(Modifier.weight(1f))
-                    Text("Sign in →", fontSize = 13.sp, color = Tokens.Accent)
+                if (history.isEmpty() && session == null) {
+                    Text("Nothing logged yet today.", fontSize = 13.sp, color = Tokens.Muted)
+                } else if (history.isNotEmpty()) {
+                    Spacer(Modifier.height(18.dp))
+                    WeekStrip(strip, weekVolume)
                 }
-            }
             } else {
                 LogScreen(history, onOpenSession)
             }
@@ -154,6 +137,23 @@ fun TodayScreen(
         }
         if (mode == 0) {
             BottomAction {
+                // The prompt lives on the deck, not in the scroll area: at 360dp
+                // the card plus a "last time" footer leaves no room for it, so
+                // scrolled placement put it off screen. The deck never scrolls.
+                if (!signedIn) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { onSignIn() }
+                            .padding(bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Not signed in", fontSize = 12.sp, color = Tokens.Muted)
+                        Spacer(Modifier.weight(1f))
+                        Text("Sign in →", fontSize = 12.sp, color = Tokens.Accent)
+                    }
+                }
                 if (session != null) {
                     PrimaryButton("Resume session", onResume)
                 } else {

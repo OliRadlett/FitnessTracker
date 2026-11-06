@@ -225,6 +225,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         startRest()
     }
 
+    /**
+     * Drop the last logged set. A mis-tap at the gym has to be recoverable, and
+     * the rest timer belongs to the set that just went away.
+     */
+    fun undoLastSet() {
+        val current = _session.value ?: return
+        if (current.sets.isEmpty()) return
+        val next = current.copy(sets = current.sets.dropLast(1))
+        _session.value = next
+        store.save(next)
+        restJob?.cancel()
+        _restUntil.value = null
+    }
+
     private fun currentExerciseName(state: SessionState): String =
         uk.oli.fittrack.domain.SessionEngine.currentExercise(state)?.name
             ?: state.plan.exercises.last().name
