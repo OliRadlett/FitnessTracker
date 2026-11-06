@@ -74,12 +74,19 @@ and re-running both harnesses.
 
 ## Deferred (each now measurable with the same harness)
 
-1. **The always-on brush.** 30 px of zoom slider on any series over 20 points — 5 charts on
-   `/health`, 7 on the old cycling page. Decide per chart-type: a brush earns its space on a
-   365-day series, not on a 30-point one. Requires a `ChartData` flag (`zoomable`), not a global
-   default.
+1. **The always-on brush — done 2026-11-06.** 30 px of zoom slider appeared on any series over 20
+   points (5 charts on `/health`, 7 on the old cycling page). The brush is now opt-in via
+   `ChartData.zoomable`; nothing sets it, so the control is gone everywhere and a chart that genuinely
+   needs to zoom a dense window can ask for it. Verified on prod: `brushes: 0` on `/dashboard`,
+   `/health`, `/lifting`, `/cycling`.
 2. **The duplicated chart title.** `data.title` renders as an `<h4>` inside the card that usually
    already has a `CardTitle`. Fix at the call sites, not in the renderer.
 3. **Y-domains.** Recharts still derives them from data, so flat series render flat at the top of
    an empty box. The cycling lab's hand-rolled `fitDomain` (1/2/5 steps, zero anchored only when
    meaningful) is the reference implementation.
+4. **The six components that import `recharts` directly** (`dashboard/trends/ChartPanel`,
+   `goals/GoalDetailModal`, `health/HealthCharts`, `lifting/VbtPanel`, `maps/ElevationProfile`,
+   `routes/CompareRoutesModal`). Audited 2026-11-06: they do **not** carry this defect — none sets an
+   X-axis title, so their bottom legends have nothing to collide with, and the health charts draw
+   their legend outside the plot by design. Migrating them onto `Chart` would be churn, not a fix;
+   the reason to touch them is only if they need a capability `Chart` has.

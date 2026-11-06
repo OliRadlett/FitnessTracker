@@ -391,7 +391,10 @@ export function Chart({ data, height = 400, className = '' }: ChartProps) {
   const showLegend = legendItems.length > 1;
 
   const renderBrush = () => {
-    if (pointCount <= 20) return null;
+    // Opt-in: a payload must ask for zoom. It used to appear on any series over
+    // 20 points — 30 px of chrome on charts nobody was going to zoom, directly
+    // under the axis (where the X-axis title used to be buried).
+    if (!data.zoomable || pointCount <= 20) return null;
     return (
       <Brush
         dataKey="x"

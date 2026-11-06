@@ -57,6 +57,13 @@ export interface ChartData {
   reference_areas?: ReferenceArea[];
   /** vertical playhead marker (3D replay position on stream charts) — line charts only */
   reference_line?: ReferenceLine;
+  /**
+   * Opt in to the zoom brush. Off by default: the brush is 30 px of chrome that
+   * appeared on any series over 20 points, and a control the reader has to
+   * operate before seeing the data they already have. A chart that genuinely
+   * benefits from zooming a dense window (a year of daily load) sets this true.
+   */
+  zoomable?: boolean;
 }
 
 export interface ChartParams {
