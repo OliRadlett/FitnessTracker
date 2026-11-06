@@ -309,6 +309,42 @@ function CourseRouteRow({
   );
 }
 
+function RideShapeCompare({
+  routeShape,
+  rideShape,
+}: {
+  routeShape: string | null | undefined;
+  rideShape: string | null | undefined;
+}) {
+  if (!routeShape && !rideShape) return null;
+  return (
+    <div className="flex shrink-0 items-start gap-2">
+      <div className="text-center" title="Linked route shape">
+        <RouteShape
+          encoded={routeShape}
+          width={56}
+          height={40}
+          className="text-muted"
+          strokeWidth={1.8}
+          showEndpoints={false}
+        />
+        <span className="block text-[9px] uppercase tracking-wide text-muted">route</span>
+      </div>
+      <div className="text-center" title="Recorded ride shape">
+        <RouteShape
+          encoded={rideShape}
+          width={56}
+          height={40}
+          className="text-accent"
+          strokeWidth={1.8}
+          showEndpoints={false}
+        />
+        <span className="block text-[9px] uppercase tracking-wide text-accent">ride</span>
+      </div>
+    </div>
+  );
+}
+
 function CourseDetailPanel({
   detail,
   loading,
@@ -446,48 +482,57 @@ function CourseDetailPanel({
       ) : (
         <>
           <div className="mt-2 space-y-2">
-            {visibleRides.map((activity) => (
-            <div
-              key={activity.id}
-              className="flex flex-wrap items-center gap-2 rounded-lg border border-surface-light/40 px-3 py-2"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm text-foreground">{activity.name}</p>
-                <p className="text-[11px] text-muted">
-                  {formatDate(activity.start_date)}
-                  {activity.distance_meters
-                    ? ` · ${formatKm(activity.distance_meters)}`
-                    : ''}
-                  {activity.route_name ? ` · ${activity.route_name}` : ''}
-                </p>
-              </div>
-              {statusBadge(activity.route_link_status)}
-              {activity.route_link_status === 'suggested' && (
-                <div className="flex gap-1">
-                  <Button
-                    variant="success"
-                    size="sm"
-                    onClick={() => onLink(activity.id, 'confirmed')}
-                    loading={busyActivityId === activity.id}
-                    title="Count this ride as course history"
-                  >
-                    <Check className="h-4 w-4" aria-hidden />
-                    Confirm
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onLink(activity.id, 'rejected')}
-                    loading={busyActivityId === activity.id}
-                    title="Keep the route, but not this ride link"
-                  >
-                    <X className="h-4 w-4" aria-hidden />
-                    Reject
-                  </Button>
+            {visibleRides.map((activity) => {
+              const routePreview = detail.routes.find(
+                (route) => route.id === activity.route_id,
+              )?.preview_polyline;
+              return (
+                <div
+                  key={activity.id}
+                  className="flex flex-wrap items-center gap-2 rounded-lg border border-surface-light/40 px-3 py-2"
+                >
+                  <RideShapeCompare
+                    routeShape={routePreview}
+                    rideShape={activity.preview_polyline}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm text-foreground">{activity.name}</p>
+                    <p className="text-[11px] text-muted">
+                      {formatDate(activity.start_date)}
+                      {activity.distance_meters
+                        ? ` · ${formatKm(activity.distance_meters)}`
+                        : ''}
+                      {activity.route_name ? ` · ${activity.route_name}` : ''}
+                    </p>
+                  </div>
+                  {statusBadge(activity.route_link_status)}
+                  {activity.route_link_status === 'suggested' && (
+                    <div className="flex gap-1">
+                      <Button
+                        variant="success"
+                        size="sm"
+                        onClick={() => onLink(activity.id, 'confirmed')}
+                        loading={busyActivityId === activity.id}
+                        title="Count this ride as course history"
+                      >
+                        <Check className="h-4 w-4" aria-hidden />
+                        Confirm
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => onLink(activity.id, 'rejected')}
+                        loading={busyActivityId === activity.id}
+                        title="Keep the route, but not this ride link"
+                      >
+                        <X className="h-4 w-4" aria-hidden />
+                        Reject
+                      </Button>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            })}
         </div>
         {rides.length > 6 && (
           <Button

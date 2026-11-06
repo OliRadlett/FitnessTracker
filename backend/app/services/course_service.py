@@ -28,7 +28,7 @@ from app.models.route import (
     Route,
     RouteSimilarity,
 )
-from app.services.polyline_utils import preview_polyline
+from app.services.polyline_utils import extract_activity_polyline, preview_polyline
 
 
 def _route_payload(
@@ -187,6 +187,7 @@ async def get_course(
             (
                 await db.execute(
                     select(Activity)
+                    .options(selectinload(Activity.sources))
                     .where(
                         Activity.user_id == user_id,
                         Activity.route_id.in_(route_ids),
@@ -208,6 +209,9 @@ async def get_course(
                 "route_id": a.route_id,
                 "route_name": by_route.get(a.route_id),
                 "route_link_status": a.route_link_status,
+                "preview_polyline": preview_polyline(
+                    extract_activity_polyline(a, a.sources)
+                ),
             }
             for a in rows
         ]

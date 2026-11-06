@@ -35,6 +35,9 @@ class CourseActivityRead(BaseModel):
     route_id: uuid.UUID | None = None
     route_name: str | None = None
     route_link_status: str | None = None
+    # The recorded ride's own shape, decimated for display. This is what makes
+    # Confirm/Reject a visual comparison instead of a name-and-date guess.
+    preview_polyline: str | None = None
 
 
 class CourseSummary(BaseModel):

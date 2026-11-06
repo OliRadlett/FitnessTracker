@@ -331,6 +331,25 @@ class TestRideLinkTrust:
         # Rejected links are not shown as course history.
         assert len(data["activities"]) == 2
 
+    async def test_activity_shape_is_returned_for_review(
+        self, client, db_session, test_route, test_route_activities
+    ):
+        activity = test_route_activities[0]
+        activity.raw_data = {"map": {"summary_polyline": "o}~mH~}xMz@z@z@z@z@z@"}}
+        activity.route_link_status = "suggested"
+        activity.route_link_source = "legacy"
+        await db_session.flush()
+
+        created = await client.post(
+            "/api/v1/courses",
+            json={"name": "Shape review", "route_ids": [str(test_route.id)]},
+        )
+        detail = await client.get(f"/api/v1/courses/{created.json()['id']}")
+        row = next(
+            a for a in detail.json()["activities"] if a["id"] == str(activity.id)
+        )
+        assert row["preview_polyline"]
+
     async def test_confirm_activity_without_route_is_404(
         self, client, db_session, test_user
     ):

@@ -23,6 +23,8 @@ export interface CourseActivity {
   route_id: string | null;
   route_name: string | null;
   route_link_status: 'suggested' | 'confirmed' | 'rejected' | null;
+  /** Recorded ride silhouette, decimated for display. */
+  preview_polyline: string | null;
 }
 
 export interface CourseSummary {
