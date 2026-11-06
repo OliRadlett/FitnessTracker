@@ -156,7 +156,10 @@ async def list_courses(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, A
                     selectinload(Course.routes),
                     selectinload(Course.canonical_route),
                 )
-                .where(Course.user_id == user_id)
+                .where(
+                    Course.user_id == user_id,
+                    Course.routes.any(Route.quarantined_at.is_(None)),
+                )
                 .order_by(Course.name, Course.created_at)
             )
         )
@@ -188,7 +191,10 @@ async def list_course_merge_candidates(
                     selectinload(Course.routes),
                     selectinload(Course.canonical_route),
                 )
-                .where(Course.user_id == user_id)
+                .where(
+                    Course.user_id == user_id,
+                    Course.routes.any(Route.quarantined_at.is_(None)),
+                )
                 .order_by(Course.name, Course.created_at)
             )
         )
@@ -216,20 +222,25 @@ async def list_course_merge_candidates(
         key = " ".join(course.name.casefold().split())
         groups.setdefault(key, []).append(course)
 
+    def active_route(course: Course) -> Route | None:
+        if course.canonical_route is not None:
+            if course.canonical_route.quarantined_at is None:
+                return course.canonical_route
+        return next(
+            (route for route in course.routes if route.quarantined_at is None),
+            None,
+        )
+
     candidates: list[dict[str, Any]] = []
     for group in groups.values():
         if len(group) < 2:
             continue
         for index, course_a in enumerate(group):
-            route_a = course_a.canonical_route or (
-                course_a.routes[0] if course_a.routes else None
-            )
+            route_a = active_route(course_a)
             if route_a is None:
                 continue
             for course_b in group[index + 1 :]:
-                route_b = course_b.canonical_route or (
-                    course_b.routes[0] if course_b.routes else None
-                )
+                route_b = active_route(course_b)
                 if route_b is None:
                     continue
                 if route_a.distance_meters <= 0 or route_b.distance_meters <= 0:

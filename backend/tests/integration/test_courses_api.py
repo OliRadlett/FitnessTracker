@@ -428,6 +428,40 @@ class TestCourseMergeCandidates:
         )
 
 
+class TestQuarantinedCourses:
+    async def test_quarantine_only_course_is_hidden_from_list(
+        self, client, db_session, test_user
+    ):
+        from datetime import UTC, datetime
+
+        from app.models.route import Route
+
+        hidden = Route(
+            user_id=test_user.id,
+            name="Quarantined course",
+            sport_type="cycling",
+            distance_meters=15_000.0,
+            encoded_polyline="o}~mH~}xMz@z@z@z@z@z@",
+            start_lat=51.4430,
+            start_lng=-0.2710,
+            end_lat=51.4430,
+            end_lng=-0.2710,
+            is_loop=True,
+            quarantined_at=datetime.now(UTC),
+        )
+        db_session.add(hidden)
+        await db_session.flush()
+        created = await client.post(
+            "/api/v1/courses",
+            json={"name": "Quarantined course", "route_ids": [str(hidden.id)]},
+        )
+        assert created.status_code == 201
+
+        listed = await client.get("/api/v1/courses")
+        assert listed.status_code == 200
+        assert not any(item["id"] == created.json()["id"] for item in listed.json())
+
+
 class TestManualLinks:
     async def test_search_routes_and_link_rides(
         self, client, db_session, test_user, test_route
