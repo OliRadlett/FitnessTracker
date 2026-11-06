@@ -61,7 +61,12 @@ data class SessionState(
     val id: String,
     val startedAt: Long,
     val plan: Plan,
-    val sets: List<LoggedSet> = emptyList()
+    val sets: List<LoggedSet> = emptyList(),
+    /**
+     * Target rest between working sets, in seconds. Adjustable mid-session, and
+     * persisted with everything else so a process death does not reset it.
+     */
+    val restSeconds: Int = DEFAULT_REST_SECONDS
 ) {
     /** Warm-ups are sets you did, but they are not sets the plan asked for. */
     val doneSets: Int get() = sets.count { !it.isWarmup }
@@ -141,6 +146,10 @@ object SessionEngine {
     fun isComplete(state: SessionState): Boolean =
         state.plan.exercises.all { doneFor(state, it.name) >= it.sets }
 
+    /** Clamp a rest adjustment into something a gym actually uses. */
+    fun restTarget(currentSeconds: Int, deltaSeconds: Int): Int =
+        (currentSeconds + deltaSeconds).coerceIn(MIN_REST_SECONDS, MAX_REST_SECONDS)
+
     /**
      * The plan a repeat of a finished session should prescribe: the same
      * exercises in the same order, the same number of **working** sets, and the
@@ -166,5 +175,8 @@ object SessionEngine {
     const val DEFAULT_RPE = 7
 }
 
-/** Rest between working sets. Fixed for v0.1; the plan will own it later. */
-const val REST_MILLIS = 150_000L
+/** Rest between working sets. The plan will own this later; the session owns it for now. */
+const val DEFAULT_REST_SECONDS = 150
+const val MIN_REST_SECONDS = 60
+const val MAX_REST_SECONDS = 600
+const val REST_STEP_SECONDS = 30

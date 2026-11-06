@@ -24,7 +24,6 @@ import uk.oli.fittrack.data.withSet
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.LoggedSet
-import uk.oli.fittrack.domain.REST_MILLIS
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.net.ApiException
 import uk.oli.fittrack.net.AuthApi
@@ -514,9 +513,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun currentExerciseName(state: SessionState): String =
         uk.oli.fittrack.domain.SessionEngine.currentExercise(state)?.name
             ?: state.plan.exercises.last().name
+    /**
+     * Change the rest target. A running rest restarts with the new length, so
+     * "I need another minute" is one tap rather than finish-and-re-log.
+     */
+    fun adjustRest(deltaSeconds: Int) {
+        val current = _session.value ?: return
+        val next = uk.oli.fittrack.domain.SessionEngine.restTarget(current.restSeconds, deltaSeconds)
+        if (next == current.restSeconds) return
+        val updated = current.copy(restSeconds = next)
+        _session.value = updated
+        store.save(updated)
+        if (_restUntil.value != null) startRest()
+    }
+
     private fun startRest() {
         restJob?.cancel()
-        val until = System.currentTimeMillis() + REST_MILLIS
+        val seconds = _session.value?.restSeconds ?: uk.oli.fittrack.domain.DEFAULT_REST_SECONDS
+        val until = System.currentTimeMillis() + seconds * 1000L
         _restUntil.value = until
         _now.value = System.currentTimeMillis()
         restJob = viewModelScope.launch {

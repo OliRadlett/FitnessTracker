@@ -8,6 +8,8 @@ import org.junit.Test
 
 class SessionEngineTest {
 
+    private val legacyJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
     private val plan = Plan(
         title = "Push day",
         exercises = listOf(
@@ -173,6 +175,25 @@ class SessionEngineTest {
         )
 
         assertTrue(SessionEngine.planFrom(session).exercises.isEmpty())
+    }
+
+    @Test
+    fun `rest target steps by half a minute and stays in range`() {
+        assertEquals(180, SessionEngine.restTarget(DEFAULT_REST_SECONDS, 30))
+        assertEquals(120, SessionEngine.restTarget(DEFAULT_REST_SECONDS, -30))
+        assertEquals(MAX_REST_SECONDS, SessionEngine.restTarget(MAX_REST_SECONDS, 30))
+        assertEquals(MIN_REST_SECONDS, SessionEngine.restTarget(MIN_REST_SECONDS, -30))
+    }
+
+    @Test
+    fun `an old session file without a rest target still loads`() {
+        // The field arrived after sessions were already being written to disk;
+        // a missing one must not throw away the workout in progress.
+        val legacy = """{"id":"s","startedAt":0,"plan":{"title":"T","exercises":[]},"sets":[]}"""
+
+        val decoded = legacyJson.decodeFromString<SessionState>(legacy)
+
+        assertEquals(DEFAULT_REST_SECONDS, decoded.restSeconds)
     }
 
     @Test

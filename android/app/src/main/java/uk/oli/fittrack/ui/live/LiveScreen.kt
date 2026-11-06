@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.PlanExercise
+import uk.oli.fittrack.domain.PlateMath
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.domain.SetEntry
@@ -70,6 +71,7 @@ fun LiveScreen(
     history: List<FinishedSession>,
     onLog: (SetEntry) -> Unit,
     onUndo: () -> Unit,
+    onAdjustRest: (Int) -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
@@ -94,6 +96,10 @@ fun LiveScreen(
     // RPE is collapsed by default, as it is on the website: most sets do not
     // need one, and the instrument has a 360 × 804 dp budget.
     var rpeOpen by remember(exercise.name) { mutableStateOf(false) }
+    // Which bar is on the rack. A calculator that assumes 20 kg is wrong half
+    // the time in a gym with a 15 kg women's bar.
+    var barKg by remember(session.id) { mutableFloatStateOf(PlateMath.DEFAULT_BAR_KG.toFloat()) }
+    val plates = PlateMath.loadout(weight.toDouble(), barKg.toDouble())
 
     // The VM only ticks while resting; the session clock has to run all the time.
     var clock by remember { mutableLongStateOf(session.startedAt) }
@@ -150,7 +156,11 @@ fun LiveScreen(
             }
 
             Spacer(Modifier.height(18.dp))
-            if (resting) RestCard(remaining) else LastSetCard(session, exercise)
+            if (resting) {
+                RestCard(remaining, session.restSeconds, onAdjustRest)
+            } else {
+                LastSetCard(session, exercise)
+            }
             Spacer(Modifier.height(14.dp))
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -160,6 +170,32 @@ fun LiveScreen(
                     value = formatWeight(weight),
                     onMinus = { weight = (weight - 2.5f).coerceAtLeast(0f) },
                     onPlus = { weight += 2.5f },
+                    caption = {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "bar ${formatWeight(barKg)} ▾",
+                                    fontSize = 12.sp,
+                                    color = Tokens.Muted,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable {
+                                            barKg = if (barKg == PlateMath.DEFAULT_BAR_KG.toFloat()) {
+                                                PlateMath.LIGHT_BAR_KG.toFloat()
+                                            } else {
+                                                PlateMath.DEFAULT_BAR_KG.toFloat()
+                                            }
+                                        }
+                                        .padding(vertical = 2.dp)
+                                )
+                            }
+                            Text(
+                                plates.describe(),
+                                fontSize = 12.sp,
+                                color = if (plates.shortfallKg > 0.0) Tokens.Muted else Tokens.Fg
+                            )
+                        }
+                    },
                     modifier = Modifier.weight(1f)
                 )
                 MetricStepper(
@@ -337,7 +373,7 @@ private fun LastSetCard(session: SessionState, exercise: PlanExercise) {
 }
 
 @Composable
-private fun RestCard(remaining: Long) {
+private fun RestCard(remaining: Long, targetSeconds: Int, onAdjust: (Int) -> Unit) {
     Column(
         Modifier
             .fillMaxWidth()
@@ -366,13 +402,41 @@ private fun RestCard(remaining: Long) {
         ) {
             Box(
                 Modifier
-                    .fillMaxWidth((remaining / 150_000f).coerceIn(0f, 1f))
+                    .fillMaxWidth((remaining / (targetSeconds * 1000f)).coerceIn(0f, 1f))
                     .fillMaxHeight()
                     .background(Tokens.Accent)
             )
         }
         Spacer(Modifier.height(10.dp))
-        Text("Rest is a suggestion — log early if you're ready.", fontSize = 13.sp, color = Tokens.Muted)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "target ${formatRemaining(targetSeconds * 1000L)}",
+                fontSize = 12.sp,
+                color = Tokens.Muted
+            )
+            Spacer(Modifier.weight(1f))
+            RestAdjust("−30s") { onAdjust(-30) }
+            Spacer(Modifier.width(8.dp))
+            RestAdjust("+30s") { onAdjust(30) }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Rest is a suggestion — log early if you're ready.", fontSize = 12.sp, color = Tokens.Muted)
+    }
+}
+
+/** Adjusting rest mid-rest is the whole point; the target belongs where the clock is. */
+@Composable
+private fun RestAdjust(label: String, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .height(34.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(Tokens.SurfaceLight)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium, color = Tokens.Fg)
     }
 }
 
@@ -383,6 +447,7 @@ private fun MetricStepper(
     value: String,
     onMinus: () -> Unit,
     onPlus: () -> Unit,
+    caption: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -397,6 +462,10 @@ private fun MetricStepper(
             Text(value, fontSize = 60.sp, fontWeight = FontWeight.Medium, color = Tokens.Fg, style = Tabular)
             Spacer(Modifier.width(6.dp))
             Text(unit, fontSize = 13.sp, color = Tokens.Muted, modifier = Modifier.padding(bottom = 12.dp))
+        }
+        if (caption != null) {
+            Spacer(Modifier.height(4.dp))
+            caption()
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
