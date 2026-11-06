@@ -85,14 +85,27 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
 - **History sync**: `GET /lifting/sessions` on sign-in, mapped in
   [`net/LiftingApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/LiftingApi.kt)
   from a captured live payload and merged into the local log. Warm-up sets are
-  dropped so prefill never comes from an empty bar. Finishing uploads via
+  **kept and flagged** (`is_warmup`), never dropped: the detail screen shows them
+  as the website does, while `SessionEngine.workingSets` keeps them out of
+  prefill, volume and set counts. Finishing uploads via
   `POST /lifting/sessions` with `live_key` = the phone's session id, which makes
   the retry idempotent; on success the local id becomes the server's, so the next
   pull cannot duplicate it. Fail-open: no signal means no sync, never a blocked
   workout.
-- **Not built yet**: the real training plan (still `SeedPlan`), and the
-  Train/Ride/Body tabs — those render an explicit "not built yet" screen rather
-  than an empty shell.
+- **Editing history**: [`SessionDetailScreen`](android/app/src/main/java/uk/oli/fittrack/ui/log/SessionDetailScreen.kt)
+  shows every set grouped by exercise (W/AMRAP badges, per-set notes, session
+  note and RPE); tapping a set edits it inline. A synced row calls
+  `PATCH /lifting/sets/{id}` or `DELETE` and **reverts with a reason** if the
+  server refuses, so a failed edit never silently diverges from the website.
+  Local-only rows edit in place. `PATCH` bodies use `LiftingPatchJson`
+  (`encodeDefaults` + `explicitNulls`) so a cleared RPE is sent as `null` rather
+  than omitted.
+- **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
+  holds the website-versus-app matrix and the phase list (P0–P7, device pass at
+  the end).
+- **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
+  tabs (explicit "not built yet" screens), and parity phases P2–P6 — session
+  fields, repeat, warm-up logging, PRs/progress, browse filters.
 
 ## Architecture
 

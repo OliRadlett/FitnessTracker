@@ -20,8 +20,8 @@ class SessionEngineTest {
 
     private fun stateWith(vararg sets: LoggedSet) = started().copy(sets = sets.toList())
 
-    private fun set(exercise: String, kg: Double, reps: Int, rpe: Int = 7) =
-        LoggedSet(exercise, kg, reps, rpe, at = 0L)
+    private fun set(exercise: String, kg: Double, reps: Int, rpe: Int = 7, warmup: Boolean = false) =
+        LoggedSet(exercise, kg, reps, rpe.toDouble(), at = 0L, isWarmup = warmup)
 
     @Test
     fun `starts on the first exercise`() {
@@ -102,5 +102,53 @@ class SessionEngineTest {
     fun `set number is one past what is logged`() {
         val state = stateWith(set("Bench Press", 90.0, 4))
         assertEquals(2, SessionEngine.setNumber(state, plan.exercises.first()))
+    }
+
+    @Test
+    fun `a warm-up does not count towards the plan`() {
+        val state = stateWith(set("Bench Press", 60.0, 8, warmup = true))
+
+        assertEquals(0, SessionEngine.doneFor(state, "Bench Press"))
+        assertEquals("Bench Press", SessionEngine.currentExercise(state)?.name)
+        assertEquals(1, SessionEngine.setNumber(state, plan.exercises.first()))
+    }
+
+    @Test
+    fun `a warm-up never prefills the next working set`() {
+        val state = stateWith(
+            set("Bench Press", 60.0, 8, rpe = 4, warmup = true),
+            set("Bench Press", 90.0, 4, rpe = 8)
+        )
+
+        val prefill = SessionEngine.prefill(state, plan.exercises.first())
+
+        assertEquals(90.0, prefill.weightKg, 0.001)
+        assertEquals(8, prefill.rpe)
+    }
+
+    @Test
+    fun `volume excludes warm-ups, matching the backend`() {
+        val state = stateWith(
+            set("Bench Press", 60.0, 8, warmup = true),
+            set("Bench Press", 90.0, 4)
+        )
+
+        assertEquals(360.0, SessionEngine.volumeKg(state.sets), 0.001)
+    }
+
+    @Test
+    fun `grouping keeps every set and first-appearance order`() {
+        val sets = listOf(
+            set("Bench Press", 60.0, 8, warmup = true),
+            set("Bench Press", 90.0, 4),
+            set("Lateral Raise", 7.5, 12)
+        )
+
+        val groups = SessionEngine.groupedByExercise(sets)
+
+        assertEquals(listOf("Bench Press", "Lateral Raise"), groups.map { it.exercise })
+        assertEquals(2, groups.first().sets.size)
+        assertEquals(1, groups.first().workingSets.size)
+        assertEquals(360.0, groups.first().volumeKg, 0.001)
     }
 }

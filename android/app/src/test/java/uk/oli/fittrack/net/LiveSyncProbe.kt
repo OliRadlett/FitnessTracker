@@ -49,8 +49,8 @@ class LiveSyncProbe {
             startedAt = now - 1_800_000,
             endedAt = now,
             sets = listOf(
-                LoggedSet("Harness Bench", 60.0, 5, 7, now),
-                LoggedSet("Harness Bench", 62.5, 5, 8, now)
+                LoggedSet("Harness Bench", 60.0, 5, 7.0, now),
+                LoggedSet("Harness Bench", 62.5, 5, 8.0, now)
             )
         )
 

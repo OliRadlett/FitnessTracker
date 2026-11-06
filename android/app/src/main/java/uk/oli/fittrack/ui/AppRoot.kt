@@ -138,7 +138,16 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             if (finished == null) {
                 LaunchedEffect(Unit) { nav.popBackStack() }
             } else {
-                SessionDetailScreen(finished, onBack = { nav.popBackStack() })
+                SessionDetailScreen(
+                    session = finished,
+                    onBack = { nav.popBackStack() },
+                    onEditSet = { index, edit -> vm.editSet(finished.id, index, edit) },
+                    onDeleteSet = { index -> vm.deleteSet(finished.id, index) },
+                    onDeleteSession = {
+                        vm.deleteSession(finished.id)
+                        nav.popBackStack()
+                    }
+                )
             }
         }
 

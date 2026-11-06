@@ -22,8 +22,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uk.oli.fittrack.domain.FinishedSession
+import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.formatWeight
+import uk.oli.fittrack.ui.plural
 import uk.oli.fittrack.ui.theme.Tokens
 import java.time.Instant
 import java.time.LocalDate
@@ -116,7 +118,8 @@ private fun SessionRow(session: FinishedSession, zone: ZoneId, onClick: () -> Un
             Text(session.planTitle, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = Tokens.Fg)
             Spacer(Modifier.height(3.dp))
             Text(
-                "${session.sets.size} sets · ${formatWeight(session.volumeKg.toFloat())} kg",
+                "${plural(SessionEngine.workingSets(session.sets).size, "set")}" +
+                    " · ${formatWeight(session.volumeKg.toFloat())} kg",
                 fontSize = 13.sp,
                 color = Tokens.Muted,
                 style = TextStyle(fontFeatureSettings = "tnum")

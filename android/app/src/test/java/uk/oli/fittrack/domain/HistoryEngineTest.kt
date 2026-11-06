@@ -1,6 +1,7 @@
 package uk.oli.fittrack.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDate
@@ -13,8 +14,14 @@ class HistoryEngineTest {
     private fun at(date: String, hour: Int = 18): Long =
         LocalDate.parse(date).atTime(hour, 0).atZone(zone).toInstant().toEpochMilli()
 
-    private fun set(exercise: String, kg: Double, reps: Int, rpe: Int = 7, whenAt: Long = 0L) =
-        LoggedSet(exercise, kg, reps, rpe, whenAt)
+    private fun set(
+        exercise: String,
+        kg: Double,
+        reps: Int,
+        rpe: Int = 7,
+        whenAt: Long = 0L,
+        warmup: Boolean = false
+    ) = LoggedSet(exercise, kg, reps, rpe.toDouble(), whenAt, isWarmup = warmup)
 
     private fun finished(
         date: String,
@@ -51,7 +58,25 @@ class HistoryEngineTest {
 
         assertEquals(92.5, last!!.weightKg, 0.001)
         assertEquals(3, last.reps)
-        assertEquals(8, last.rpe)
+        assertEquals(8.0, last.rpe!!, 0.001)
+    }
+
+    @Test
+    fun `a warm-up is never the last set of an exercise`() {
+        val history = listOf(
+            finished(
+                "2026-11-04",
+                sets = listOf(
+                    set("Bench Press", 60.0, 8, rpe = 4, warmup = true),
+                    set("Bench Press", 90.0, 4, rpe = 8)
+                )
+            )
+        )
+
+        val last = HistoryEngine.lastSetFor(history, "Bench Press")
+
+        assertEquals(90.0, last!!.weightKg, 0.001)
+        assertFalse(last.isWarmup)
     }
 
     @Test

@@ -45,7 +45,7 @@ fun DoneScreen(session: SessionState, previous: FinishedSession?, onDone: () -> 
     val volume = SessionEngine.volumeKg(session.sets)
     val lastAt = session.sets.maxOfOrNull { it.at } ?: session.startedAt
     val duration = lastAt - session.startedAt
-    val topSet = session.sets.maxByOrNull { it.weightKg }
+    val topSet = SessionEngine.workingSets(session.sets).maxByOrNull { it.weightKg }
 
     Column(
         Modifier
