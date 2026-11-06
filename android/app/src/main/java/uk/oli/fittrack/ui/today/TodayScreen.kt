@@ -64,6 +64,9 @@ fun TodayScreen(
     plan: Plan,
     signedIn: Boolean,
     history: List<FinishedSession>,
+    planFromServer: Boolean = false,
+    plannedPlanName: String? = null,
+    restDay: Boolean = false,
     onEditPlan: () -> Unit,
     onOpenSession: (String) -> Unit,
     onSignIn: () -> Unit,
@@ -114,6 +117,7 @@ fun TodayScreen(
                     mode == 1 -> "Your log."
                     mode == 2 -> "Your progress."
                     session != null -> "In progress."
+                    restDay -> "Rest day."
                     else -> "${active.title}."
                 },
                 fontSize = 30.sp,
@@ -124,7 +128,32 @@ fun TodayScreen(
             ModePills(mode) { mode = it }
             Spacer(Modifier.height(20.dp))
             if (mode == 0) {
-                PlanCard(active, session, lastSet, now, onEditPlan)
+                if (restDay && session == null) {
+                    // The plan asked for a rest day; say so rather than
+                    // prescribing the seeded push day.
+                    Text(
+                        plannedPlanName?.let { "Nothing planned today in $it." }
+                            ?: "Nothing planned today.",
+                        fontSize = 15.sp,
+                        color = Tokens.Fg
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Rest is training too. Start a session anyway if you want one.",
+                        fontSize = 13.sp,
+                        color = Tokens.Muted
+                    )
+                } else {
+                    PlanCard(
+                        plan = active,
+                        session = session,
+                        lastSet = lastSet,
+                        now = now,
+                        editable = !planFromServer,
+                        planName = plannedPlanName,
+                        onEditPlan = onEditPlan
+                    )
+                }
 
                 if (history.isEmpty() && session == null) {
                     Text("Nothing logged yet today.", fontSize = 13.sp, color = Tokens.Muted)
@@ -160,6 +189,8 @@ fun TodayScreen(
                 }
                 if (session != null) {
                     PrimaryButton("Resume session", onResume)
+                } else if (restDay) {
+                    PrimaryButton("Start anyway", onStart)
                 } else {
                     PrimaryButton("Start session", onStart)
                 }
@@ -198,6 +229,8 @@ private fun PlanCard(
     session: SessionState?,
     lastSet: LoggedSet?,
     now: Long,
+    editable: Boolean,
+    planName: String?,
     onEditPlan: () -> Unit
 ) {
     Column(
@@ -216,13 +249,17 @@ private fun PlanCard(
             }
             Label(
                 if (session == null) {
-                    "${plan.exercises.size} EXERCISES · ${plan.totalSets} SETS"
+                    if (planName != null) {
+                        "FROM ${planName.uppercase(Locale.UK)}"
+                    } else {
+                        "${plan.exercises.size} EXERCISES · ${plan.totalSets} SETS"
+                    }
                 } else {
                     "${session.doneSets} OF ${plan.totalSets} SETS LOGGED"
                 }
             )
             Spacer(Modifier.weight(1f))
-            if (session == null) {
+            if (session == null && editable) {
                 Text(
                     "Edit",
                     fontSize = 13.sp,
@@ -232,6 +269,9 @@ private fun PlanCard(
                         .clickable { onEditPlan() }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 )
+            }
+            if (session == null && !editable) {
+                Text("Training plan", fontSize = 12.sp, color = Tokens.Muted)
             }
         }
         Spacer(Modifier.height(10.dp))

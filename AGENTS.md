@@ -125,12 +125,21 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
 - **Finishing**: the summary asks for the session's own RPE and a note, and
   `SessionEngine.finished()` turns the session in progress into history with
   both. A blank note is null, not an empty string.
-- **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens), and parity gaps still on the matrix:
-  session labels/AI tags, a linked Strava activity, manual PRs (needs
-  `GET /lifting/prs`, never captured) and warm-up templates. The phase list
-  P0–P7 in [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
-  is complete and the device pass has run.
+- **Today's session comes from the training plan**: `GET /training/plans` → the
+  plan whose dates bracket today → `GET /training/plans/{id}` → today's
+  `sport == "strength"` day, mapped in
+  [`net/PlanApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/PlanApi.kt)
+  (focus as the title, prescribed sets/reps, last time's load as the weight).
+  A rest day shows "Rest day." and "Start anyway"; a failed request leaves the
+  current plan alone rather than inventing a rest day. `SeedPlan` is only the
+  fallback when signed out or offline, and the phone's plan editor is hidden
+  while a server plan is showing.
+- **Not built yet**: the Train/Ride/Body tabs (explicit "not built yet"
+  screens), and parity gaps still on the matrix: session labels/AI tags, a linked
+  Strava activity, manual PRs (needs `GET /lifting/prs`, never captured) and
+  warm-up templates. The phase list P0–P8 in
+  [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md) is
+  complete and the device pass has run.
 
 ## Architecture
 

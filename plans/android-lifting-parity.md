@@ -98,6 +98,17 @@ the end, because installing per-fix wastes the only real screen we have.
   sheet does, and both travel into history — the detail shows them, and a synced
   session carries them to the API. `SessionEngine.finished()` owns the
   conversion, so a blank note stays blank rather than becoming an empty string.
+- [x] **P8 — today's real session.** The app fetches the training plan
+  (`GET /training/plans` → the plan whose dates bracket today → `GET
+  /training/plans/{id}`) and turns today's planned strength day into the plan the
+  gym flow starts from: focus as the title, exercises with their prescribed sets
+  and reps, and last time's load as the weight (a planned entry carries no load —
+  only `pct_1rm`/`rpe` hints). A rest day says "Rest day." with a "Start anyway"
+  button instead of prescribing the seeded push day, and a failed request leaves
+  the existing plan alone rather than inventing a rest day. The phone's own plan
+  editor remains for offline/demo use and is hidden while the server plan shows.
+- [ ] **P9 — warm-up templates, labels and the linked activity.** The matrix's
+  remaining rows.
 - [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
   @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:
   34 real sessions pulled, the log with its filters, Progress computed from that

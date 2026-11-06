@@ -62,6 +62,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val tokenStore: TokenStore? = runCatching { TokenStore(app) }.getOrNull()
     private val authApi = AuthApi(BuildConfig.API_BASE_URL)
     private val liftingApi = LiftingApi(BuildConfig.API_BASE_URL)
+    private val planApi = uk.oli.fittrack.net.PlanApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -115,6 +116,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _syncError.value = null
                 _syncedAt.value = System.currentTimeMillis()
+                loadTodayPlan(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -182,6 +184,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val token = _auth.value.token
         tokenStore?.clear()
         _auth.value = AuthUiState()
+        // The server plan is not ours to keep once the token is gone.
+        _plan.value = planStore.load() ?: SeedPlan.pushDay
+        _planFromServer.value = false
+        _plannedPlanName.value = null
+        _restDay.value = false
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -192,15 +199,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * The plan the app prescribes: the one edited on the phone, or the seeded
-     * starter. Editable until the training-plan API is wired up, at which point
-     * this becomes the offline copy rather than the source.
+     * starter. When the training-plan API answers, today's planned session
+     * replaces both — that is the website's "today's session" card.
      */
     private val _plan = MutableStateFlow(planStore.load() ?: SeedPlan.pushDay)
     val plan: StateFlow<uk.oli.fittrack.domain.Plan> = _plan.asStateFlow()
 
+    /** True once the plan on screen came from the server, so it is not editable here. */
+    private val _planFromServer = MutableStateFlow(false)
+    val planFromServer: StateFlow<Boolean> = _planFromServer.asStateFlow()
+
+    private val _plannedPlanName = MutableStateFlow<String?>(null)
+    val plannedPlanName: StateFlow<String?> = _plannedPlanName.asStateFlow()
+
+    /**
+     * True when the plan covers today but today is not a training day. The app
+     * then says so instead of prescribing the seeded push day — a rest day the
+     * plan asked for is training, not a gap to fill.
+     */
+    private val _restDay = MutableStateFlow(false)
+    val restDay: StateFlow<Boolean> = _restDay.asStateFlow()
+
     fun updatePlan(newPlan: uk.oli.fittrack.domain.Plan) {
         _plan.value = newPlan
+        _planFromServer.value = false
+        _plannedPlanName.value = null
+        _restDay.value = false
         planStore.save(newPlan)
+    }
+
+    /**
+     * Ask the training plan what today is. Best-effort in every direction; a
+     * failed request leaves the current plan alone rather than showing a rest
+     * day the plan never asked for.
+     */
+    private suspend fun loadTodayPlan(token: String) {
+        when (val lookup = planApi.todayPlan(token, java.time.LocalDate.now(), _history.value)) {
+            is uk.oli.fittrack.net.PlanLookup.Planned -> {
+                _plan.value = uk.oli.fittrack.net.PlanJson.toPlan(lookup.day)
+                _plannedPlanName.value = lookup.day.planName.takeIf { it.isNotBlank() }
+                _restDay.value = false
+                _planFromServer.value = true
+            }
+            is uk.oli.fittrack.net.PlanLookup.NoneToday -> {
+                _plannedPlanName.value = lookup.planName.takeIf { it.isNotBlank() }
+                _restDay.value = true
+                _planFromServer.value = true
+            }
+            uk.oli.fittrack.net.PlanLookup.Unavailable -> Unit
+        }
     }
 
     fun startSession() {
