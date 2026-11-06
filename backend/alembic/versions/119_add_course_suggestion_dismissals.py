@@ -1,7 +1,7 @@
 """Durable dismissal for course-pair suggestions.
 
-Revision ID: 118
-Revises: 117
+Revision ID: 119
+Revises: 118
 
 The similarity cache is rebuilt on every scan, so a "not the same course"
 decision cannot live on ``route_similarity``. It lives here, keyed by the
@@ -15,8 +15,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "118"
-down_revision = "117"
+revision = "119"
+down_revision = "118"
 branch_labels = None
 depends_on = None
 

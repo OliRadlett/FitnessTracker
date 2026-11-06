@@ -260,13 +260,15 @@ Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
 **Route courses** — [`plans/route-courses-2026-11-05.md`](plans/route-courses-2026-11-05.md).
 The model is **Course → Route → Ride**: `Course` is the identity, `Route` is a
 concrete variant (geometry, direction, start/end, provider sources), `Activity`
-is the ride. Migration **116** adds `courses` + `routes.course_id` +
+is the ride. Migration **117** adds `courses` + `routes.course_id` +
 `course_link_log` and backfills **one course per existing route** (1:1); it does
-not group variants or delete routes. Migration **117** adds
+not group variants or delete routes. Migration **118** adds
 `activities.route_link_status/source/confidence/confirmed_at`; every existing
 ride→route link is backfilled **`suggested` + `legacy`** because those links
 came from the WIP matcher. Course history/PRs must read `confirmed` only.
-Grouping is an `UPDATE routes SET course_id`, not a merge; `merge_routes` stays
+Migration **119** stores durable suggestion dismissals; the suggestion query
+skips both pair orientations. Grouping is an `UPDATE routes SET course_id`, not
+a merge; `merge_routes` stays
 for identical variants. The API is `/api/v1/courses` (`GET/POST /`, `GET
 /uncoursed`, `GET /suggestions` (review-tier pairs from `route_similarity`),
 group/ungroup under `/{course_id}/routes/{route_id}`, merge
@@ -296,11 +298,10 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `117`** — the head is `116` (`107` user demographics, `108`/`109`
-segment groups + line geometry, `110` health events, `111` power provenance, `112`
-`weight_logs.raw_data`, `113` DailyMetric SpO2 + skin temp, `114` gear, `115` activity laps,
-`116` provider webhook events), `096` is `undo_logs`, and one branch was renumbered **three
-times** in one sitting because `main` kept claiming the numbers (pitfall 34). Check
+**New migrations continue from `120`** — main's head was `116` (`provider_webhook_events`);
+this branch adds `117` courses, `118` link trust and `119` suggestion dismissals, so this
+branch's head is `119`. `096` is `undo_logs`, and this branch was renumbered **four times**
+in one sitting because `main` kept claiming the numbers (pitfall 34). Check
 `git ls-tree origin/main backend/alembic/versions/` immediately before renumbering, and again
 before opening the PR.
 

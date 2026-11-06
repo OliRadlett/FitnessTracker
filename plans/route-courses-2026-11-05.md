@@ -1,6 +1,6 @@
 # Route courses — production plan (Course → Route → Ride)
 
-> Status: **migrations 116 + 117, course service/API and the `/courses` surface
+> Status: **migrations 117–119, course service/API and the `/courses` surface
 > implemented on `feature/route-courses`; not deployed.** The API is
 > `GET/POST /api/v1/courses`, `GET /uncoursed`, `GET /suggestions` (review-tier
 > pairs from `route_similarity`), group/ungroup under
@@ -76,7 +76,7 @@ Non-destructive group/ungroup audit: `user_id`, `course_id`, `route_id`,
 
 ## 3. Migrations
 
-### 116 — `courses` + `routes.course_id` + `course_link_log`
+### 117 — `courses` + `routes.course_id` + `course_link_log`
 
 - Additive only.
 - Backfill **1:1**: one course per existing route, `identity_source='legacy'`,
@@ -86,7 +86,7 @@ Non-destructive group/ungroup audit: `user_id`, `course_id`, `route_id`,
 - Down: drop the log, the FK/column, the table. Safe before grouping; after
   grouping, export `course_link_log` first.
 
-### 117 — ride-link trust
+### 118 — ride-link trust
 
 - Add the four `activities` columns.
 - Backfill every existing `route_id IS NOT NULL` as
@@ -94,7 +94,7 @@ Non-destructive group/ungroup audit: `user_id`, `course_id`, `route_id`,
 - Never promotes a link to `confirmed`.
 - Down: drop the constraint and columns; `activities.route_id` is untouched.
 
-### 118 — durable suggestion dismissals
+### 119 — durable suggestion dismissals
 
 - New `course_suggestion_dismissals`: `user_id`, `route_a_id`, `route_b_id`,
   `created_at`; unique per user/ordered pair; `a <> b` check.
@@ -127,15 +127,15 @@ Non-destructive group/ungroup audit: `user_id`, `course_id`, `route_id`,
 
 ## 6. Rollout
 
-1. **Branch:** `feature/route-courses` from `origin/main` (115).
-2. **Local:** apply 116/117 to a throwaway DB, verify the backfill counts and
+1. **Branch:** `feature/route-courses` from `origin/main` (116).
+2. **Local:** apply 117/118 to a throwaway DB, verify the backfill counts and
    the check constraint (done: 1 route → 1 course; activity → suggested/legacy;
    bad link status rejected).
 3. **CI:** backend tests + migration chain test (`tests/test_course_schema.py`).
-4. **Staging:** apply 116/117 to a copy of prod; verify 108 routes → 108 courses,
+4. **Staging:** apply 117/118 to a copy of prod; verify 108 routes → 108 courses,
    every route has a course, no duplicate `canonical_route_id`, existing
    activities all `suggested`/`legacy`.
-5. **Prod:** apply 116/117 in the normal Deploy. No behavior change: the routes
+5. **Prod:** apply 117/118 in the normal Deploy. No behavior change: the routes
    API/UI do not read `course_id` yet.
 6. **Follow-up (separate):** course API, grouping review UI, confirmed-link
    review, course history/PRs.
@@ -165,12 +165,12 @@ Road signals are optional enrichment; the geometric engine always runs.
 
 ## 7. Quality gate
 
-- `alembic upgrade head` then `downgrade 115` then `upgrade head` on a
+- `alembic upgrade head` then `downgrade 116` then `upgrade head` on a
   throwaway DB.
-- `routes` count = `courses` count after 116 (for the backfilled population);
+- `routes` count = `courses` count after 117 (for the backfilled population);
   every route has `course_id`; zero duplicate `canonical_route_id`.
 - A route can be canonical for one course only; a second attempt is refused.
-- 117: existing links are `suggested` + `legacy`; course history reads
+- 118: existing links are `suggested` + `legacy`; course history reads
   `confirmed` only; the check constraint rejects a status without a route.
 - `pytest tests/test_course_schema.py -q` passes.
 - No route/activity is deleted or rewritten.
@@ -182,7 +182,7 @@ Road signals are optional enrichment; the geometric engine always runs.
 3. Canonical route — user-selected, with a default suggestion.
 4. Uncoursed routes — allowed and surfaced in Maintain.
 5. UI naming — Course / Route / Ride vs Route / Variant / Ride.
-6. Legacy Komoot groups — separate cleanup, not part of 116.
+6. Legacy Komoot groups — separate cleanup, not part of 117.
 
 ## 9. Evidence
 
@@ -206,9 +206,9 @@ They are intentionally not merged; the lab is deletable in one commit.
 - `backend/app/services/course_service.py` — list/get/group/ungroup, link trust.
 - `backend/app/schemas/course.py` — course schemas.
 - `backend/app/api/courses.py` + `backend/app/main.py` — `/api/v1/courses`.
-- `backend/alembic/versions/116_add_courses_and_route_course_id.py`
-- `backend/alembic/versions/117_add_activity_route_link_trust.py`
-- `backend/alembic/versions/118_add_course_suggestion_dismissals.py`
+- `backend/alembic/versions/117_add_courses_and_route_course_id.py`
+- `backend/alembic/versions/118_add_activity_route_link_trust.py`
+- `backend/alembic/versions/119_add_course_suggestion_dismissals.py`
 - `backend/tests/test_course_schema.py`
 - `backend/tests/integration/test_courses_api.py`
 - `frontend/src/app/(app)/courses/page.tsx`
