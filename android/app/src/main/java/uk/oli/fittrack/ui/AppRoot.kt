@@ -58,6 +58,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val analysisBusy by vm.analysisBusy.collectAsStateWithLifecycle()
     val brief by vm.brief.collectAsStateWithLifecycle()
     val weightTrend by vm.weightTrend.collectAsStateWithLifecycle()
+    val weekOffset by vm.weekOffset.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -206,6 +207,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     records = records,
                     onAddRecord = vm::addRecord,
                     onStartDay = { day -> if (vm.startFromDay(day)) nav.navigate(Routes.LIVE) },
+                    weekOffset = weekOffset,
+                    onShiftWeek = vm::shiftWeek,
+                    onThisWeek = vm::thisWeek,
                     onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                     onRefreshWeek = vm::refreshPlanWeek,
                     onTab = nav::switchTab

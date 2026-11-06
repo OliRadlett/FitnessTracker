@@ -193,6 +193,12 @@ the end, because installing per-fix wastes the only real screen we have.
   reading is not ours to delete. A weight outside 20–400 kg is refused before it
   is sent.
 
+- [x] **P19 — page the week.** A week view that cannot look ahead is a list with
+  a date on it. The Week header now carries `‹ week N ›` and a "This week" jump
+  when you have paged away. The number is counted in Monday-based weeks from the
+  plan's own start (`PlanWeeks`), and clamped to the plan's extent, so an arrow
+  never asks the API for week 0 or week 999 — and past either end it stays put.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

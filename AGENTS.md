@@ -105,7 +105,7 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   session" starts today from a finished one (`SessionEngine.planFrom`), copying
   working sets only.
 - **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
-  holds the website-versus-app matrix and the phase list (P0–P10, device pass at
+  holds the website-versus-app matrix and the phase list (P0–P19, device pass at
   the end).
 - **Progress**: Train's Progress view computes PRs, best-by-rep-range and a
   per-exercise estimated-1RM line from the cached history
@@ -125,8 +125,10 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   `GET /training-plans/{id}/week/{n}`, Monday-numbered from the plan's start,
   with completed/partial/missed/rest and today marked). A strength day carries
   its prescription, so tapping it starts that session (load = last time's) —
-  `AppViewModel.startFromDay`, refused while one is already in progress. Today is
-  today-only; the two tabs stay different things.
+  `AppViewModel.startFromDay`, refused while one is already in progress. The
+  header pages between weeks (`‹ week N ›` plus "This week"); the number is
+  Monday-based from the plan's start and clamped to its extent by `PlanWeeks`.
+  Today is today-only; the two tabs stay different things.
 - **Labels, templates, links**: the session detail shows the classifier's
   split/lift/class chips and any linked Strava activity (link/unlink through
   `/sessions/{id}/linkable-activities` and `PUT /sessions/{id}/link`); the Live
@@ -179,7 +181,7 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   the weigh-ins with their source. `POST` logs one (the API upserts by date) and
   `DELETE` removes only a `manual` entry. 20–400 kg is enforced before sending.
 - **Not built yet**: the Ride tab (an explicit "not built yet" screen).
-  The lifting matrix is otherwise complete — the phase list P0–P12 in
+  The lifting matrix is otherwise complete — the phase list P0–P19 in
   [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md) is done
   and the device pass has run, with plan *editing* deliberately left to the
   website.

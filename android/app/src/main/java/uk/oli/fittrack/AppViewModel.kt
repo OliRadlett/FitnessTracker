@@ -300,8 +300,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _planWeek = MutableStateFlow<uk.oli.fittrack.net.PlanWeek?>(null)
     val planWeek: StateFlow<uk.oli.fittrack.net.PlanWeek?> = _planWeek.asStateFlow()
 
+    /** How far the Train tab's Week view is paged from this week; 0 is today's. */
+    private val _weekOffset = MutableStateFlow(0)
+    val weekOffset: StateFlow<Int> = _weekOffset.asStateFlow()
+
+    /** Page the Week view. Clamping to the plan's extent happens in the API call. */
+    fun shiftWeek(delta: Int) {
+        val next = (_weekOffset.value + delta).coerceIn(-52, 52)
+        if (next == _weekOffset.value) return
+        _weekOffset.value = next
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadPlanWeek(token) }
+    }
+
+    fun thisWeek() {
+        if (_weekOffset.value == 0) return
+        _weekOffset.value = 0
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadPlanWeek(token) }
+    }
+
     private suspend fun loadPlanWeek(token: String) {
-        runCatching { planApi.weekPlan(token, java.time.LocalDate.now()) }
+        runCatching { planApi.weekPlan(token, java.time.LocalDate.now(), _weekOffset.value) }
             .getOrNull()
             ?.let { _planWeek.value = it }
     }

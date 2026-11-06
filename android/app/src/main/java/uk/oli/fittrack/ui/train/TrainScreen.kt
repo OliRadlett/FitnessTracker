@@ -55,6 +55,9 @@ fun TrainScreen(
     records: List<uk.oli.fittrack.domain.PersonalRecord> = emptyList(),
     onAddRecord: (String, Double, Int, String?) -> Unit = { _, _, _, _ -> },
     onStartDay: (PlanDaySummary) -> Unit = {},
+    weekOffset: Int = 0,
+    onShiftWeek: (Int) -> Unit = {},
+    onThisWeek: () -> Unit = {},
     onOpenSession: (String) -> Unit,
     onRefreshWeek: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -98,7 +101,14 @@ fun TrainScreen(
             when (mode) {
                 0 -> LogScreen(history, onOpenSession)
                 1 -> ProgressScreen(history, records, onAddRecord)
-                else -> WeekPlan(planWeek, onRefreshWeek, onStartDay)
+                else -> WeekPlan(
+                    week = planWeek,
+                    weekOffset = weekOffset,
+                    onRefresh = onRefreshWeek,
+                    onShiftWeek = onShiftWeek,
+                    onThisWeek = onThisWeek,
+                    onStartDay = onStartDay
+                )
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -136,7 +146,10 @@ private fun ModePills(mode: Int, onSelect: (Int) -> Unit) {
 @Composable
 private fun WeekPlan(
     week: PlanWeek?,
+    weekOffset: Int,
     onRefresh: () -> Unit,
+    onShiftWeek: (Int) -> Unit,
+    onThisWeek: () -> Unit,
     onStartDay: (PlanDaySummary) -> Unit
 ) {
     if (week == null) {
@@ -164,14 +177,48 @@ private fun WeekPlan(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label(week.planName.uppercase(Locale.UK))
             Spacer(Modifier.weight(1f))
+            // Paging is the point of a week view: you look ahead, and you look
+            // back. The server clamps the number to the plan's extent.
+            Text(
+                "‹",
+                fontSize = 18.sp,
+                color = Tokens.Muted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onShiftWeek(-1) }
+                    .padding(horizontal = 10.dp, vertical = 2.dp)
+            )
             Text("week ${week.weekNumber}", fontSize = 12.sp, color = Tokens.Muted)
+            Text(
+                "›",
+                fontSize = 18.sp,
+                color = Tokens.Muted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable { onShiftWeek(1) }
+                    .padding(horizontal = 10.dp, vertical = 2.dp)
+            )
         }
         Spacer(Modifier.height(4.dp))
-        Text(
-            "${shortDate(week.weekStart)} – ${shortDate(week.weekEnd)}",
-            fontSize = 12.sp,
-            color = Tokens.Muted
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${shortDate(week.weekStart)} – ${shortDate(week.weekEnd)}",
+                fontSize = 12.sp,
+                color = Tokens.Muted
+            )
+            if (weekOffset != 0) {
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "This week",
+                    fontSize = 12.sp,
+                    color = Tokens.Accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onThisWeek() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(10.dp))
         week.days.forEach { day -> DayRow(day, onStartDay) }
     }
