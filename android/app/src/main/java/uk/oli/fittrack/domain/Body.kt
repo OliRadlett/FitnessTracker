@@ -67,15 +67,5 @@ fun formatWeightKg(weightKg: Double): String =
     if (weightKg == weightKg.toLong().toDouble()) weightKg.toLong().toString()
     else String.format(java.util.Locale.UK, "%.1f", weightKg)
 
-/** Epoch millis for a weigh-in date, so a list can be sorted and dated. */
-fun WeightEntry.instantOrNull(zone: ZoneId = ZoneId.systemDefault()): Long? =
-    localDate()?.atStartOfDay(zone)?.toInstant()?.toEpochMilli()
-
-/** Today as the API writes it. */
-fun todayIso(): String = LocalDate.now().toString()
-
 /** Guard against a fat-fingered "7" or "700" being sent as a bodyweight. */
 fun plausibleWeight(kg: Double): Boolean = kg in 20.0..400.0
-
-/** A compact epoch for sorting without a zone argument at the call site. */
-fun epochOrZero(instant: Instant): Long = instant.toEpochMilli()
