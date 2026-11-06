@@ -127,3 +127,7 @@ labels/
 
 # Superpowers plan workspaces (ledger, briefs, fixtures) — session scratch.
 .superpowers/
+
+# Device-pass captures and thrown-away PR bodies. Screenshots live in the PR,
+# not in the repo: they are evidence of a moment, not an artifact.
+qa/

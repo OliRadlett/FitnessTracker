@@ -302,6 +302,36 @@ the end, because installing per-fix wastes the only real screen we have.
   chart wall and its health-alert list are deliberately absent — neither answers
   a question a phone asks.
 
+- [x] **P28 — device pass 2** (the six pages added after the first pass). Run on
+  the OnePlus 11 against prod, following sections 9–15 of
+  [`android-device-pass.md`](android-device-pass.md). It found seven things no
+  JVM test could see:
+  1. **You could not scroll**, so Health and Calendar — the entry points to two
+     of the new pages — were unreachable below the fold;
+  2. **one slow endpoint aborted the whole sync** ("History sync failed:
+     timeout"), blanking goals, routes, health and the calendar while their own
+     endpoints were healthy — each section now fails alone;
+  3. the You screen still said *"Sync is not wired up yet"* after syncing 20 t
+     of history;
+  4. **a failed goals load looked like "No goals yet."** — it now names the HTTP
+     code and offers Try again;
+  5. **a goal you had just created vanished** (POST 201, list refresh failed) —
+     creation inserts optimistically, deletion removes locally;
+  6. **metric chips wrapped to three lines** and broke their row's height;
+  7. **switching a plan day to Rest would have deleted its prescription** — the
+     app now omits `planned_exercises`, so Rest is reversible.
+  Also: the calendar had no marker for today (accent border now).
+  Verified against prod: the dashboard's five cards with real numbers, 100 routes
+  with decoded 90-point silhouettes and working filters, health agreeing with the
+  dashboard exactly, a real month with recovery tints and a day detail, and a
+  plan day edited *"push" → "Push day" → "push"* through the app with real
+  weights (90 / 70 / 30 / 40 / 7.5 / 46) confirming the `weight_kg` decode.
+  **Backend bug found, not fixed here:** `GET /api/v1/goals` returns 500 for this
+  account once a goal exists while `POST` returns 201 — local integration tests
+  pass, so it is data-specific; the app now surfaces the code. A test goal
+  (FTP 85) created during the pass still needs deleting once that endpoint works.
+  Fixes: `#467`.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

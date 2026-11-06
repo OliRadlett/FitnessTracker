@@ -1,0 +1,5 @@
+- insert:
+    - id: opencode-go-usage
+      name: opencode-go-usage
+      config:
+        credentialRef: OPENCODE_GO_API_KEY

@@ -144,8 +144,11 @@ internal object GoalsJson {
  */
 class GoalsApi(private val baseUrl: String) {
 
+    // `/goals` evaluates every goal's current value, which can take a while on
+    // an account with history — 20 s timed out on device while the POST was
+    // fine, which read as "the goal you just created does not exist".
     private val client = OkHttpClient.Builder()
-        .callTimeout(20, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
         .build()
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
@@ -160,9 +163,29 @@ class GoalsApi(private val baseUrl: String) {
         .url("$baseUrl$path")
         .header("Authorization", "Bearer $token")
 
-    suspend fun goals(token: String): List<Goal> = withContext(Dispatchers.IO) {
-        execute(builder("/goals", token).get().build())?.let(GoalsJson::goals).orEmpty()
+    /** Null when the request failed; an empty list means the account has none. */
+    suspend fun goalsOrNull(token: String): List<Goal>? = withContext(Dispatchers.IO) {
+        (load(token) as? GoalsLoad.Ok)?.goals
     }
+
+    /**
+     * The goals, or why they could not be fetched.
+     *
+     * The code matters: on device `GET /goals` failed while `POST /goals`
+     * succeeded, and "no goals" and "the server said 500" have to look
+     * different — one is a fact about the account, the other is a bug.
+     */
+    suspend fun load(token: String): GoalsLoad = withContext(Dispatchers.IO) {
+        client.newCall(builder("/goals", token).get().build()).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                return@withContext GoalsLoad.Failed(response.code, body.take(200))
+            }
+            GoalsLoad.Ok(GoalsJson.goals(body))
+        }
+    }
+
+    suspend fun goals(token: String): List<Goal> = goalsOrNull(token).orEmpty()
 
     suspend fun metrics(token: String): List<GoalMetric> = withContext(Dispatchers.IO) {
         execute(builder("/goals/metrics", token).get().build())?.let(GoalsJson::metrics).orEmpty()
@@ -212,14 +235,35 @@ class GoalsApi(private val baseUrl: String) {
 
     /** Goals plus the metric registry, fetched together. */
     suspend fun snapshot(token: String): GoalsSnapshot = coroutineScope {
-        val goals = async { runCatching { goals(token) }.getOrNull().orEmpty() }
+        val goals = async { runCatching { load(token) }.getOrNull() }
         val metrics = async { runCatching { metrics(token) }.getOrNull().orEmpty() }
-        GoalsSnapshot(goals = goals.await(), metrics = metrics.await())
+        when (val result = goals.await()) {
+            is GoalsLoad.Ok -> GoalsSnapshot(goals = result.goals, metrics = metrics.await())
+            is GoalsLoad.Failed -> GoalsSnapshot(
+                metrics = metrics.await(),
+                goalsFailed = true,
+                failureCode = result.code
+            )
+            // The call itself threw: no status to report, but still not "empty".
+            null -> GoalsSnapshot(metrics = metrics.await(), goalsFailed = true)
+        }
     }
+}
+
+/** What `GET /goals` said. */
+sealed interface GoalsLoad {
+    data class Ok(val goals: List<Goal>) : GoalsLoad
+    data class Failed(val code: Int, val body: String = "") : GoalsLoad
 }
 
 /** The goals page's data; either half may be empty. */
 data class GoalsSnapshot(
     val goals: List<Goal> = emptyList(),
-    val metrics: List<GoalMetric> = emptyList()
+    val metrics: List<GoalMetric> = emptyList(),
+    /**
+     * True when the goals request failed rather than returned nothing: an empty
+     * list and an unreachable server must not look the same on screen.
+     */
+    val goalsFailed: Boolean = false,
+    val failureCode: Int? = null
 )
