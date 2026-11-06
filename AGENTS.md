@@ -316,6 +316,31 @@ shows terrain and surface; the page renders no quality controls. Audit:
 [`docs/route-intelligence-audit-2026-11-05.md`](docs/route-intelligence-audit-2026-11-05.md).
 Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
 
+**Route courses** — [`plans/route-courses-2026-11-05.md`](plans/route-courses-2026-11-05.md).
+The model is **Course → Route → Ride**: `Course` is the identity, `Route` is a
+concrete variant (geometry, direction, start/end, provider sources), `Activity`
+is the ride. Migration **117** adds `courses` + `routes.course_id` +
+`course_link_log` and backfills **one course per existing route** (1:1); it does
+not group variants or delete routes. Migration **118** adds
+`activities.route_link_status/source/confidence/confirmed_at`; every existing
+ride→route link is backfilled **`suggested` + `legacy`** because those links
+came from the WIP matcher. Course history/PRs must read `confirmed` only.
+Migration **119** stores durable suggestion dismissals; the suggestion query
+skips both pair orientations. Grouping is an `UPDATE routes SET course_id`, not
+a merge; `merge_routes` stays
+for identical variants. The API is `/api/v1/courses` (`GET/POST /`, `GET
+/uncoursed`, `GET /suggestions` (review-tier pairs from `route_similarity`), `GET /merge-candidates` (same-name courses below the geometry floor),
+group/ungroup under `/{course_id}/routes/{route_id}`, merge
+`/{target_id}/merge/{source_id}`, `PATCH /{course_id}` (rename), list dismissed suggestions at
+`/suggestions/dismissed`, dismiss/restore a pair at
+`/suggestions/{a}/{b}/dismiss`, confirm/reject at
+`/ride-links/{activity_id}/...`, manual pickers at `/routes/search` and
+`/rides/search`, and a manual confirmed link at `/ride-links/{activity_id}/link`);
+the UI is `/courses` (More → Courses),
+built on `lib/api/courses.ts`. The 86-route investigation (11 cached pairs,
+start-offset collapse, 86 → 79 grouping) lives in `prototype/route-merging/` on
+the main worktree and is not merged.
+
 **Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–4 landed;
 Waves 0–2 merged to `main` as PR #234, Waves 3–4 in review). Nine specs in
 [`plans/`](plans/) from a re-baselined brainstorm, plus
@@ -333,11 +358,10 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `117`** — the head is `116` (`107` user demographics, `108`/`109`
-segment groups + line geometry, `110` health events, `111` power provenance, `112`
-`weight_logs.raw_data`, `113` DailyMetric SpO2 + skin temp, `114` gear, `115` activity laps,
-`116` provider webhook events), `096` is `undo_logs`, and one branch was renumbered **three
-times** in one sitting because `main` kept claiming the numbers (pitfall 34). Check
+**New migrations continue from `120`** — main's head was `116` (`provider_webhook_events`);
+this branch adds `117` courses, `118` link trust and `119` suggestion dismissals, so this
+branch's head is `119`. `096` is `undo_logs`, and this branch was renumbered **four times**
+in one sitting because `main` kept claiming the numbers (pitfall 34). Check
 `git ls-tree origin/main backend/alembic/versions/` immediately before renumbering, and again
 before opening the PR.
 

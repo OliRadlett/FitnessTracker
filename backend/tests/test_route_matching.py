@@ -10,6 +10,7 @@ from app.services.route_matching import (
     polyline_length,
     resample,
     score_route_pair,
+    score_route_pair_either_direction,
     simplify,
 )
 
@@ -43,7 +44,9 @@ def _rect_circuit(size_km: float, step_m: float = 50.0):
     pts = []
     for i in range(len(corners) - 1):
         a, b = corners[i], corners[i + 1]
-        seg_len = math.hypot((b[0] - a[0]) * _M_PER_DEG_LAT, (b[1] - a[1]) * 111_320.0 * _COS)
+        seg_len = math.hypot(
+            (b[0] - a[0]) * _M_PER_DEG_LAT, (b[1] - a[1]) * 111_320.0 * _COS
+        )
         n = max(int(seg_len // step_m), 1)
         for k in range(n):
             f = k / n
@@ -57,7 +60,9 @@ def _with_town_detour(base: list[tuple[float, float]], dev_km: float = 0.8):
     n = len(base)
     start = int(n * 0.4)
     end = int(n * 0.5)
-    detour = [(_lat + dev_km * 1000.0 / _M_PER_DEG_LAT, lng) for _lat, lng in base[start:end]]
+    detour = [
+        (_lat + dev_km * 1000.0 / _M_PER_DEG_LAT, lng) for _lat, lng in base[start:end]
+    ]
     return base[:start] + detour + base[end:]
 
 
@@ -113,6 +118,26 @@ def test_three_laps_vs_five_laps_of_same_circuit_match():
     assert bd.matched, bd.to_dict()
     assert bd.min_coverage > 0.9
     assert bd.lap_ratio == 5.0 or bd.lap_ratio is None  # length ratio ~0.6
+
+
+def test_loop_start_offset_is_start_invariant():
+    base = _rect_circuit(5.0, step_m=40.0)
+    k = len(base) // 10  # 10% of the loop, ~2 km around
+    rotated = base[k:] + base[:k]
+
+    bd = score_route_pair(base, rotated)
+    assert bd.matched, bd.to_dict()
+    assert bd.tier == "auto", bd.to_dict()
+    assert bd.min_coverage > 0.98
+    assert bd.frechet_similarity > 0.85
+
+
+def test_reversed_loop_is_still_rejected():
+    base = _rect_circuit(5.0, step_m=40.0)
+    bd = score_route_pair(base, list(reversed(base)))
+    assert bd.reversed
+    assert bd.tier == "none"
+    assert bd.total == 0.0
 
 
 def test_town_detour_on_long_route_matches():
@@ -201,3 +226,28 @@ def test_road_signal_does_not_override_reversed():
     assert bd.reversed
     assert bd.total == 0.0
 
+
+def test_pair_matching_is_direction_independent():
+    # A square loop plus a 2.2 km out-and-back spur. The detour gate is
+    # directional, so the spur-first orientation fails (the spur is longer
+    # than the 2 km budget) while the base-first orientation passes. A scan
+    # must not drop the pair just because storage order put the spur first.
+    base = [(0.0, 0.0), (0.0, 0.02), (0.02, 0.02), (0.02, 0.0), (0.0, 0.0)]
+    spur = [
+        (0.0, 0.0),
+        (-0.01, 0.0),
+        (0.0, 0.0),
+        (0.0, 0.02),
+        (0.02, 0.02),
+        (0.02, 0.0),
+        (0.0, 0.0),
+    ]
+
+    assert not score_route_pair(spur, base).matched
+    assert score_route_pair(base, spur).matched
+
+    forward = score_route_pair_either_direction(spur, base)
+    reverse = score_route_pair_either_direction(base, spur)
+    assert forward.matched
+    assert reverse.matched
+    assert forward.total == reverse.total
