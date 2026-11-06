@@ -91,6 +91,21 @@ prototype/<slug>/qa/                  the harness and its output: contact sheet,
 ```
 `DECISIONS.md` and `REFERENCE.md` live outside the lab on purpose: deleting the
 lab at the end of the run must not delete the reasoning that produced it.
+Tools in this repository
+The paths above are written by tools that ship with this prompt. Use them instead
+of rebuilding the mechanics; if a path is missing, build the equivalent in the lab
+and record why.
+`node .dsh/plugins/feature-quality/tools/quality.mjs new "<feature>" --surface <surface> --owner <owner>`
+writes `CONTRACT.md`, `REFERENCE.md`, `DECISIONS.md` and the lab harness. It
+deliberately writes no `FIRST-LOOK.md` and no `PRODUCTION.md`: those record work
+that happened, not work that was intended.
+`node .dsh/plugins/feature-quality/tools/quality.mjs check <slug>`
+is the mechanical gate: it exits 1 until the contract's eight fields are filled,
+the reference and decisions exist, and one artifact is in `qa/`. Use it as
+evidence at the first look; it does not judge the artifact, you do.
+`node .dsh/plugins/feature-quality/tools/contact-sheet.mjs --out <file> <frames…>`
+is one labelled page from frames you already rendered. The lab harness in
+`templates/states.mjs` renders the states and calls it.
 Phase 0 — Ground and diagnose (no code)
 Read only what determines the artifact:
 `AGENTS.md` and the project conventions that apply.
@@ -265,7 +280,9 @@ shape in the diagnosis; it decides the fix.
 | Unreviewed | Nobody can say what "good" is | No saved reference, no gate | Stop; do Phase 0.5 and Phase 1 |
 Definition of done
 The artifact exists and was reviewed against the saved reference frames.
-The gate is met, or the kill criterion was triggered.
+The contract's gate is met, or the kill criterion was triggered.
+`quality.mjs check <slug>` exits 0: contract filled, the reference and decisions
+written, one artifact rendered. That is evidence, not the quality gate.
 `CONTRACT.md`, `DECISIONS.md`, `REFERENCE.md` and `FIRST-LOOK.md` are current.
 The reconcile command in `prototype/<slug>/qa/` runs from a clean shell and
 reproduces the artifact.
