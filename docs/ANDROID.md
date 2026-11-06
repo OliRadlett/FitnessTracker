@@ -184,6 +184,17 @@ web UI: its decisions come from [`prototype/android/`](../prototype/android/READ
   [`net/HealthApi.kt`](../android/app/src/main/java/uk/oli/fittrack/net/HealthApi.kt),
   which reuses the dashboard's readiness and sleep debt rather than fetching
   them twice under a different key. Reached from You.
+- **Activities page**: [`ui/activities/ActivitiesScreen.kt`](../android/app/src/main/java/uk/oli/fittrack/ui/activities/ActivitiesScreen.kt)
+  is the feed and one activity. The feed filters by sport (All / Rides / Lifts)
+  and window (30d / 90d / 1y / All) and reads "Today · Ride · 55.6 km · 3h 12m ·
+  400 m · TSS 118" with the two label axes (purpose, ride type) under it; a lift
+  borrows its focus for the sport. The detail draws `encoded_polyline` through
+  the same decoder the routes atlas uses, then distance/time/climb,
+  power/HR/TSS/speed, the route name, any linked lift and whether streams exist
+  — the replay itself stays on the website, which the screen says. Data in
+  [`net/ActivitiesApi.kt`](../android/app/src/main/java/uk/oli/fittrack/net/ActivitiesApi.kt);
+  reached from You → Activities. The website's comparison mode and replay
+  theatre are deliberately absent.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md)), the
