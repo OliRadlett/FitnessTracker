@@ -13,6 +13,7 @@ import androidx.navigation.compose.rememberNavController
 import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.body.BodyScreen
+import uk.oli.fittrack.ui.ride.RideScreen
 import uk.oli.fittrack.ui.done.DoneScreen
 import uk.oli.fittrack.ui.live.LiveScreen
 import uk.oli.fittrack.ui.log.SessionDetailScreen
@@ -59,6 +60,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val brief by vm.brief.collectAsStateWithLifecycle()
     val weightTrend by vm.weightTrend.collectAsStateWithLifecycle()
     val weekOffset by vm.weekOffset.collectAsStateWithLifecycle()
+    val rides by vm.rides.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -212,6 +214,11 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onThisWeek = vm::thisWeek,
                     onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                     onRefreshWeek = vm::refreshPlanWeek,
+                    onTab = nav::switchTab
+                )
+                "ride" -> RideScreen(
+                    rides = rides,
+                    onRefresh = vm::refreshRides,
                     onTab = nav::switchTab
                 )
                 "body" -> BodyScreen(
