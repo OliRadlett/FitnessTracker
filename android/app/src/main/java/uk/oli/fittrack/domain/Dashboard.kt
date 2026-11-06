@@ -102,52 +102,9 @@ data class SleepDebt(
 }
 
 /**
- * A goal, with the percentage worked out when the server did not supply one.
- *
- * Progress from `starting_value` is the honest reading: a goal of "80 kg" from
- * a start of 100 kg is 20% done at 96 kg, not 120%.
+ * Goals live in [Goal] (domain/Goals.kt): the dashboard and the goals page must
+ * agree about progress, so they share one model.
  */
-data class GoalProgress(
-    val id: String,
-    val metric: String,
-    val target: Double,
-    val current: Double? = null,
-    val starting: Double? = null,
-    val targetDate: String? = null,
-    val status: String = "active",
-    val serverProgressPct: Double? = null,
-    val note: String? = null
-) {
-    val progressPct: Double?
-        get() {
-            serverProgressPct?.let { return it.coerceIn(0.0, 100.0) }
-            val now = current ?: return null
-            val start = starting
-            return when {
-                start == null && target > 0.0 -> (now / target * 100.0).coerceIn(0.0, 100.0)
-                start != null && start != target ->
-                    ((now - start) / (target - start) * 100.0).coerceIn(0.0, 100.0)
-                now >= target -> 100.0
-                else -> 0.0
-            }
-        }
-
-    /** "78.5 → 80.0 kg", without pretending to know the metric's unit. */
-    fun describe(current: Double? = this.current): String {
-        val now = current ?: return formatMetric(target)
-        return "${formatMetric(now)} → ${formatMetric(target)}"
-    }
-
-    private fun formatMetric(value: Double): String =
-        if (value == value.toLong().toDouble()) value.toLong().toString()
-        else String.format(java.util.Locale.UK, "%.1f", value)
-}
-
-/** Goals that still matter, soonest first; archived and done ones drop out. */
-fun activeGoals(goals: List<GoalProgress>, limit: Int = 3): List<GoalProgress> =
-    goals.filter { it.status == "active" }
-        .sortedWith(compareBy({ it.targetDate ?: "9999-12-31" }, { it.metric }))
-        .take(limit)
 
 /** The week at a glance: the website's Weekly tab, in a few numbers. */
 data class WeekSummary(

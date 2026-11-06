@@ -2,6 +2,7 @@ package uk.oli.fittrack.ui.today
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,7 +26,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import uk.oli.fittrack.domain.GoalProgress
+import uk.oli.fittrack.domain.Goal
 import uk.oli.fittrack.domain.LoadTrend
 import uk.oli.fittrack.domain.Readiness
 import uk.oli.fittrack.domain.SleepDebt
@@ -35,6 +36,7 @@ import uk.oli.fittrack.domain.activeGoals
 import uk.oli.fittrack.domain.formatDistanceKm
 import uk.oli.fittrack.domain.formatRideDuration
 import uk.oli.fittrack.domain.formLabel
+import uk.oli.fittrack.domain.metricLabel
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.formatWeight
 import uk.oli.fittrack.ui.plural
@@ -224,7 +226,7 @@ fun ReadinessCard(readiness: Readiness, sleep: SleepDebt?) {
 
 /** Up to three active goals, with progress that reads honestly. */
 @Composable
-fun GoalsCard(goals: List<GoalProgress>) {
+fun GoalsCard(goals: List<Goal>, onOpen: (() -> Unit)? = null) {
     val shown = activeGoals(goals)
     if (shown.isEmpty()) return
     Column(
@@ -232,14 +234,21 @@ fun GoalsCard(goals: List<GoalProgress>) {
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(Tokens.Surface)
+            .then(if (onOpen != null) Modifier.clickable { onOpen() } else Modifier)
             .padding(16.dp)
     ) {
-        Label("GOALS")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Label("GOALS")
+            Spacer(Modifier.weight(1f))
+            if (onOpen != null) {
+                Text("All goals ›", fontSize = 12.sp, color = Tokens.Accent)
+            }
+        }
         shown.forEach { goal ->
             Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    goal.metric,
+                    goal.label.ifBlank { metricLabel(goal.metric) },
                     fontSize = 14.sp,
                     color = Tokens.Fg,
                     modifier = Modifier.weight(1f),

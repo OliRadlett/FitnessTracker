@@ -18,7 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
-import uk.oli.fittrack.domain.GoalProgress
+import uk.oli.fittrack.domain.Goal
 import uk.oli.fittrack.domain.LoadPoint
 import uk.oli.fittrack.domain.Readiness
 import uk.oli.fittrack.domain.SleepDebt
@@ -163,7 +163,7 @@ class DashboardCardsTest {
             Column(Modifier.padding(16.dp)) {
                 GoalsCard(
                     listOf(
-                        GoalProgress(
+                        Goal(
                             id = "g1",
                             metric = "weight_kg",
                             target = 80.0,
@@ -171,7 +171,7 @@ class DashboardCardsTest {
                             starting = 92.0,
                             targetDate = "2026-12-31"
                         ),
-                        GoalProgress(
+                        Goal(
                             id = "g2",
                             metric = "fitness_ctl",
                             target = 60.0,
@@ -185,7 +185,8 @@ class DashboardCardsTest {
         save("dash-5-goals")
 
         compose.onNodeWithText("GOALS").assertIsDisplayed()
-        compose.onNodeWithText("weight_kg").assertIsDisplayed()
+        // The label comes from the domain fallback, not the raw key.
+        compose.onNodeWithText("Bodyweight").assertIsDisplayed()
         compose.onNodeWithText("88.9 → 80").assertIsDisplayed()
     }
 

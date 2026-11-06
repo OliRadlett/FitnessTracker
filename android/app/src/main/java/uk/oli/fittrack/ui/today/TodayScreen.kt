@@ -71,6 +71,7 @@ fun TodayScreen(
     dashboardLoading: Boolean = false,
     onRefreshDashboard: () -> Unit = {},
     rides: List<uk.oli.fittrack.domain.Ride> = emptyList(),
+    onOpenGoals: () -> Unit = {},
     onEditPlan: () -> Unit,
     onOpenSession: (String) -> Unit,
     onSignIn: () -> Unit,
@@ -215,7 +216,7 @@ fun TodayScreen(
                 }
                 if (snapshot.goals.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
-                    GoalsCard(snapshot.goals)
+                    GoalsCard(snapshot.goals, onOpen = onOpenGoals)
                 }
                 if (history.isNotEmpty() || rides.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))

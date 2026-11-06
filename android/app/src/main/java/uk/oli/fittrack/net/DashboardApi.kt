@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import uk.oli.fittrack.domain.GoalProgress
+import uk.oli.fittrack.domain.Goal
 import uk.oli.fittrack.domain.LoadPoint
 import uk.oli.fittrack.domain.Readiness
 import uk.oli.fittrack.domain.SleepDebt
@@ -48,19 +48,6 @@ private data class SleepDebtDto(
     val days_below_target: Int = 0,
     val target_hours: Double = 8.0,
     val window_days: Int = 7
-)
-
-@Serializable
-private data class GoalDto(
-    val id: String = "",
-    val metric: String = "",
-    val target_value: Double = 0.0,
-    val current_value: Double? = null,
-    val starting_value: Double? = null,
-    val target_date: String? = null,
-    val status: String = "active",
-    val progress_pct: Double? = null,
-    val notes: String? = null
 )
 
 internal object DashboardJson {
@@ -113,24 +100,11 @@ internal object DashboardJson {
         )
     }
 
-    fun goals(body: String): List<GoalProgress> = runCatching {
-        json.decodeFromString<List<GoalDto>>(body)
-    }.getOrDefault(emptyList()).mapNotNull { dto ->
-        val metric = dto.metric.trim()
-        // A goal with no metric cannot be shown, let alone progressed.
-        if (dto.id.isBlank() || metric.isEmpty()) return@mapNotNull null
-        GoalProgress(
-            id = dto.id,
-            metric = metric,
-            target = dto.target_value,
-            current = dto.current_value,
-            starting = dto.starting_value,
-            targetDate = dto.target_date,
-            status = dto.status.ifBlank { "active" },
-            serverProgressPct = dto.progress_pct,
-            note = dto.notes?.takeIf { it.isNotBlank() }
-        )
-    }
+    /**
+     * Goals are decoded by [GoalsJson] so the dashboard and the goals page cannot
+     * disagree about what a goal says or how far along it is.
+     */
+    fun goals(body: String): List<uk.oli.fittrack.domain.Goal> = GoalsJson.goals(body)
 }
 
 /**
@@ -171,7 +145,7 @@ class DashboardApi(private val baseUrl: String) {
         get("/metrics/sleep-debt?days=$days", token)?.let(DashboardJson::sleepDebt)
     }
 
-    suspend fun goals(token: String): List<GoalProgress> = withContext(Dispatchers.IO) {
+    suspend fun goals(token: String): List<Goal> = withContext(Dispatchers.IO) {
         get("/goals", token)?.let(DashboardJson::goals).orEmpty()
     }
 
@@ -199,5 +173,5 @@ data class DashboardSnapshot(
     val load: TrainingLoad? = null,
     val readiness: Readiness? = null,
     val sleepDebt: SleepDebt? = null,
-    val goals: List<GoalProgress> = emptyList()
+    val goals: List<Goal> = emptyList()
 )
