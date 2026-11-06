@@ -206,6 +206,16 @@ web UI: its decisions come from [`prototype/android/`](../prototype/android/READ
   website's type filters and preference grid stay on the website — a phone reads
   a notification, it does not configure one. Reached from You, which shows the
   unread count.
+- **Settings page**: [`ui/settings/SettingsScreen.kt`](../android/app/src/main/java/uk/oli/fittrack/ui/settings/SettingsScreen.kt)
+  is the account, the two preferences that change what the phone shows (units,
+  clock) and the provider connections. Each connection reports its health in
+  words — "Synced 2h ago", "Needs re-auth", "Last error: …" — and the header
+  counts what needs attention ("2 connections · 1 needs attention"), because a
+  silent broken connection is the one thing a settings page must shout about.
+  Units and clock are `PATCH /preferences` with **only** the changed field;
+  connections are read-only (`GET /connections/`), since authorising a provider
+  is an OAuth browser flow and belongs on the website — the page says so. Reached
+  from You.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md)), the
