@@ -562,6 +562,31 @@ private fun SetRows(
         }
         Spacer(Modifier.height(4.dp))
         if (warmupOpen) {
+            // "Save these…" sits at the TOP of the expanded list: with four
+            // warm-ups already logged the list is taller than the space above
+            // the action deck, and the save action at the bottom was invisible
+            // on a 360x804 phone (found on device).
+            val logged = session.sets.count {
+                it.isWarmup && it.exercise.trim() == exercise.name.trim()
+            }
+            if (logged > 0) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onSaveWarmups() }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Save these $logged warm-ups as a template",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Tokens.Accent,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
             templates.forEach { template ->
                 Row(
                     Modifier
@@ -590,26 +615,6 @@ private fun SetRows(
                             .clip(RoundedCornerShape(6.dp))
                             .clickable { onDeleteWarmup(template) }
                             .padding(horizontal = 8.dp, vertical = 2.dp)
-                    )
-                }
-            }
-            val logged = session.sets.count {
-                it.isWarmup && it.exercise.trim() == exercise.name.trim()
-            }
-            if (logged > 0) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { onSaveWarmups() }
-                        .padding(vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Save these $logged warm-ups as a template",
-                        fontSize = 13.sp,
-                        color = Tokens.Accent,
-                        modifier = Modifier.weight(1f)
                     )
                 }
             }

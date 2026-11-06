@@ -93,6 +93,11 @@ class PlanApiTest {
 
         assertEquals("Autumn block", week.planName)
         assertEquals(2, week.weekNumber)
+        // Today's week and the plan's extent, so the pager knows its edges.
+        assertEquals(2, week.thisWeekNumber)
+        assertEquals(10, week.totalWeeks)
+        assertEquals(true, week.canPageBack)
+        assertEquals(true, week.canPageForward)
         assertEquals(listOf("2026-11-02", "2026-11-03", "2026-11-06"), week.days.map { it.date })
         assertEquals("completed", week.days[0].status)
         assertEquals("rest", week.days[1].status)

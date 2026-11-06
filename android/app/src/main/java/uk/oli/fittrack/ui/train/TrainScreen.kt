@@ -189,24 +189,25 @@ private fun WeekPlan(
                 )
             }
             // Paging is the point of a week view: you look ahead, and you look
-            // back. The server clamps the number to the plan's extent.
+            // back. An arrow is dead at the plan's edge rather than silently
+            // returning the same week.
             Text(
                 "‹",
                 fontSize = 18.sp,
-                color = Tokens.Muted,
+                color = if (week.canPageBack) Tokens.Muted else Tokens.Muted.copy(alpha = 0.3f),
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .clickable { onShiftWeek(-1) }
+                    .clickable(enabled = week.canPageBack) { onShiftWeek(-1) }
                     .padding(horizontal = 10.dp, vertical = 2.dp)
             )
             Text("week ${week.weekNumber}", fontSize = 12.sp, color = Tokens.Muted)
             Text(
                 "›",
                 fontSize = 18.sp,
-                color = Tokens.Muted,
+                color = if (week.canPageForward) Tokens.Muted else Tokens.Muted.copy(alpha = 0.3f),
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .clickable { onShiftWeek(1) }
+                    .clickable(enabled = week.canPageForward) { onShiftWeek(1) }
                     .padding(horizontal = 10.dp, vertical = 2.dp)
             )
         }
@@ -287,19 +288,20 @@ private fun DayRow(day: PlanDaySummary, onStartDay: (PlanDaySummary) -> Unit) {
                 Spacer(Modifier.width(10.dp))
             }
             Text(
-                when (day.status) {
-                    "completed" -> "✓"
-                    "partial" -> "◐"
-                    "missed" -> "missed"
-                    "rest" -> "rest"
-                    else -> if (day.isToday) "today" else ""
-                },
+                // Today is an anchor: a completed session should not hide which
+                // day you are looking at, so the marker and the status coexist.
+                listOfNotNull(
+                    if (day.isToday) "today" else null,
+                    when (day.status) {
+                        "completed" -> "✓"
+                        "partial" -> "◐"
+                        "missed" -> "missed"
+                        "rest" -> "rest"
+                        else -> null
+                    }
+                ).joinToString(" "),
                 fontSize = 12.sp,
-                color = when (day.status) {
-                    "completed" -> Tokens.Accent
-                    "missed" -> Tokens.Muted
-                    else -> Tokens.Muted
-                }
+                color = if (day.status == "completed") Tokens.Accent else Tokens.Muted
             )
         }
     }

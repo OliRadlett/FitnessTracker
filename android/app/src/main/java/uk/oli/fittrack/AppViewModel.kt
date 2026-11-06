@@ -321,9 +321,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private suspend fun loadPlanWeek(token: String) {
-        runCatching { planApi.weekPlan(token, java.time.LocalDate.now(), _weekOffset.value) }
-            .getOrNull()
-            ?.let { _planWeek.value = it }
+        val week = runCatching { planApi.weekPlan(token, java.time.LocalDate.now(), _weekOffset.value) }
+            .getOrNull() ?: return
+        _planWeek.value = week
+        // The server clamps to the plan's extent, so paging past the end comes
+        // back as the same week. Re-derive the offset from what actually loaded,
+        // otherwise "This week" appears while this week is already on screen.
+        _weekOffset.value = week.weekNumber - week.thisWeekNumber
     }
 
     /** The Train tab asks for a refresh when it opens. */

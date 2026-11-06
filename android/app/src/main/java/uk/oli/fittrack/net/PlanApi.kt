@@ -180,8 +180,15 @@ data class PlanWeek(
     val weekNumber: Int,
     val weekStart: String,
     val weekEnd: String,
-    val days: List<PlanDaySummary>
-)
+    val days: List<PlanDaySummary>,
+    /** The week containing today, so a pager can tell how far it has moved. */
+    val thisWeekNumber: Int = weekNumber,
+    /** The plan's last week; paging past it would ask for a week that is not there. */
+    val totalWeeks: Int = weekNumber
+) {
+    val canPageBack: Boolean get() = weekNumber > 1
+    val canPageForward: Boolean get() = weekNumber < totalWeeks
+}
 
 @Serializable
 private data class WeekDto(
@@ -275,6 +282,7 @@ class PlanApi(private val baseUrl: String) {
         val body = runCatching { get("$baseUrl/training-plans/${active.id}/week/$weekNumber", token) }
             .getOrNull() ?: return@withContext null
         WeekJson.decode(body, active.name, today)
+            ?.copy(thisWeekNumber = thisWeek, totalWeeks = total)
     }
 
     /**

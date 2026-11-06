@@ -228,6 +228,15 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
 }
 
 private fun NavHostController.switchTab(kind: NavKind) {
+    // Today is its own destination, not a "tab/{name}" placeholder: routing it
+    // through the tab route showed "NOT BUILT YET / Today" — found on device.
+    if (kind == NavKind.Today) {
+        navigate(Routes.TODAY) {
+            popUpTo(Routes.TODAY) { inclusive = false }
+            launchSingleTop = true
+        }
+        return
+    }
     navigate(Routes.tab(kind)) {
         popUpTo(Routes.TODAY) { inclusive = false }
         launchSingleTop = true

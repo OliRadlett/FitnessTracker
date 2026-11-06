@@ -225,7 +225,13 @@ fun SessionDetailScreen(
                             .background(Tokens.Surface)
                             .padding(16.dp)
                     ) {
-                        Text(analysis.text, fontSize = 14.sp, color = Tokens.Fg)
+                        // The model answers in markdown; the screen is plain
+                        // text, so the markers are stripped rather than shown.
+                        Text(
+                            uk.oli.fittrack.domain.AnalysisText.plain(analysis.text),
+                            fontSize = 14.sp,
+                            color = Tokens.Fg
+                        )
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
