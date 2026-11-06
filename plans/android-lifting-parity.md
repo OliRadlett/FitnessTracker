@@ -199,6 +199,27 @@ the end, because installing per-fix wastes the only real screen we have.
   plan's own start (`PlanWeeks`), and clamped to the plan's extent, so an arrow
   never asks the API for week 0 or week 999 — and past either end it stays put.
 
+- [x] **P20 — the device pass.** Driven on the OnePlus 11 (360×804 dp) against
+  prod, following [`android-device-pass.md`](android-device-pass.md). It found
+  four bugs the 180 JVM tests could not:
+  1. the **Today tab showed "NOT BUILT YET / Today"** — `switchTab` sent every tab
+     through the `tab/{name}` route, and Today is its own destination;
+  2. **"Save these N warm-ups…" was invisible**, sitting below a template list
+     taller than the space above the action deck;
+  3. the **AI analysis rendered as raw markdown** (`###`, `**`) — now stripped by
+     `AnalysisText`;
+  4. the **week pager lied at the plan's edge** (same week, "This week" shown) —
+     `PlanWeek` now carries its extent and the arrows die at the ends.
+  Also caught: `android:windowLightNavigationBar` needed API 27 while `minSdk` is
+  26 (`:app:lintDebug` now passes), and a completed plan day hid the "today"
+  marker.
+  Verified live: rest day + verdict, Week (week 11, today, day statuses), Sessions
+  volumes, Progress records (including a **manual Deadlift 190×1**) and analytics,
+  Body (88.9 kg, −1.0 kg over 30 days, the 7-day line), a full session (warm-up
+  template applied, saved and deleted; RPE 8 + note; pushed) and its deletion
+  surviving a restart and resync — so the DELETE reached the server. Test data
+  was removed.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates
