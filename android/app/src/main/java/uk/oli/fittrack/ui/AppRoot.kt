@@ -53,6 +53,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val linkCandidates by vm.linkCandidates.collectAsStateWithLifecycle()
     val planWeek by vm.planWeek.collectAsStateWithLifecycle()
     val records by vm.records.collectAsStateWithLifecycle()
+    val analyses by vm.analyses.collectAsStateWithLifecycle()
+    val analysisBusy by vm.analysisBusy.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -169,6 +171,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onLoadLinkable = { vm.loadLinkableActivities(finished.id) },
                     onLinkActivity = { activity -> vm.linkActivity(finished.id, activity) },
                     onCancelLink = vm::clearLinkCandidates,
+                    analysis = analyses[finished.id],
+                    analysisBusy = analysisBusy == finished.id,
+                    onLoadAnalysis = { vm.loadAnalysis(finished.id) },
+                    onAnalyse = { vm.requestAnalysis(finished.id) },
                     canRepeat = session == null,
                     onRepeat = {
                         if (vm.repeatSession(finished.id)) nav.navigate(Routes.LIVE)

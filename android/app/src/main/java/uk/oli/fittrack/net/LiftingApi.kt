@@ -206,6 +206,48 @@ class LiftingApi(private val baseUrl: String) {
             }
         }
 
+    /**
+     * The cached AI analysis of a session, or null when none has been made.
+     *
+     * The POST variant generates one, which is a Gemini call: it can take tens
+     * of seconds, so it uses a longer-timeout client rather than the 20 s one
+     * the rest of the app uses.
+     */
+    suspend fun sessionAnalysis(token: String, sessionId: String): SessionAnalysis? =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId/ai-analysis")
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not load the analysis (${response.code})")
+                }
+                AnalysisJson.decode(body)
+            }
+        }
+
+    /** Ask the server to analyse the session; returns the fresh analysis. */
+    suspend fun requestSessionAnalysis(token: String, sessionId: String): SessionAnalysis? =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId/ai-analysis")
+                .header("Authorization", "Bearer $token")
+                .post(ByteArray(0).toRequestBody(jsonMedia))
+                .build()
+
+            slowClient.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not analyse the session (${response.code})")
+                }
+                AnalysisJson.decode(body)
+            }
+        }
+
     /** Strava activities that could be the ride/class behind a session. */
     suspend fun linkableActivities(token: String, sessionId: String): List<LinkedActivity> =
         withContext(Dispatchers.IO) {
@@ -428,6 +470,12 @@ class LiftingApi(private val baseUrl: String) {
 
     private val json = Json { ignoreUnknownKeys = true }
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
+
+    /** For the one call that waits on a model rather than a query. */
+    private val slowClient = OkHttpClient.Builder()
+        .callTimeout(120, TimeUnit.SECONDS)
+        .readTimeout(120, TimeUnit.SECONDS)
+        .build()
 }
 
 /** A session's editable scalars, in the wire's names. */
@@ -440,6 +488,46 @@ data class SessionPatch(
     val ended_at: String,
     val duration_seconds: Int
 )
+
+/** A session's AI analysis, as `LlmAnalysisRead` returns it. */
+data class SessionAnalysis(
+    val text: String,
+    val model: String,
+    val createdAt: Long?
+)
+
+@Serializable
+private data class AnalysisDto(
+    val analysis_text: String = "",
+    val model_used: String = "",
+    val created_at: String? = null
+)
+
+object AnalysisJson {
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    /** The endpoint answers JSON `null` when no analysis exists yet. */
+    fun decode(body: String): SessionAnalysis? {
+        val trimmed = body.trim()
+        if (trimmed.isEmpty() || trimmed == "null") return null
+        return runCatching {
+            json.decodeFromString<AnalysisDto>(trimmed)
+        }.getOrNull()
+            ?.let { dto ->
+                val text = dto.analysis_text.trim()
+                if (text.isEmpty()) return null
+                SessionAnalysis(
+                    text = text,
+                    model = dto.model_used,
+                    createdAt = dto.created_at?.let { raw ->
+                        runCatching { java.time.OffsetDateTime.parse(raw).toInstant().toEpochMilli() }
+                            .getOrNull()
+                    }
+                )
+            }
+    }
+}
 
 /** A saved warm-up template, as `GET /lifting/warmup-templates` returns it. */
 @Serializable

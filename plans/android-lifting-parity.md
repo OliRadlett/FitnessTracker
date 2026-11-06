@@ -153,6 +153,14 @@ the end, because installing per-fix wastes the only real screen we have.
   tab owns renaming and editing; the phone keeps what it is good at — capturing a
   ramp you just performed.
 
+- [x] **P14 — analyse a session.** The website can ask Gemini what it thinks of
+  a session; the app can now too. `GET /lifting/sessions/{id}/ai-analysis`
+  returns the cached analysis (JSON `null` when there is none), and the POST
+  generates one on demand — through a longer-timeout client, because a model
+  reading the session is not a database query. The detail shows the text with
+  its model and a "Run again", and an unset key surfaces as `501` on the button
+  rather than a silent nothing.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

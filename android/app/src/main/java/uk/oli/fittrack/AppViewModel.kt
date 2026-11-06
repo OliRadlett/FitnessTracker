@@ -227,6 +227,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _restDay = MutableStateFlow(false)
     val restDay: StateFlow<Boolean> = _restDay.asStateFlow()
 
+    /** Analyses already fetched this session, by session id. */
+    private val _analyses =
+        MutableStateFlow<Map<String, uk.oli.fittrack.net.SessionAnalysis>>(emptyMap())
+    val analyses: StateFlow<Map<String, uk.oli.fittrack.net.SessionAnalysis>> =
+        _analyses.asStateFlow()
+
+    private val _analysisBusy = MutableStateFlow<String?>(null)
+    val analysisBusy: StateFlow<String?> = _analysisBusy.asStateFlow()
+
+    /** The cached analysis for an open session, if it has been fetched. */
+    fun loadAnalysis(sessionId: String) {
+        val token = _auth.value.token ?: return
+        if (_analyses.value.containsKey(sessionId)) return
+        viewModelScope.launch {
+            runCatching { liftingApi.sessionAnalysis(token, sessionId) }
+                .onSuccess { analysis ->
+                    if (analysis != null) {
+                        _analyses.value = _analyses.value + (sessionId to analysis)
+                    }
+                }
+        }
+    }
+
+    /**
+     * Generate an analysis. Slow by nature (a model reads the session), so the
+     * screen shows which session is busy rather than a generic spinner.
+     */
+    fun requestAnalysis(sessionId: String) {
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to analyse a session."
+            return
+        }
+        if (_analysisBusy.value != null) return
+        _analysisBusy.value = sessionId
+        viewModelScope.launch {
+            try {
+                val analysis = liftingApi.requestSessionAnalysis(token, sessionId)
+                if (analysis != null) {
+                    _analyses.value = _analyses.value + (sessionId to analysis)
+                }
+                _syncError.value = null
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not analyse the session."
+            } finally {
+                _analysisBusy.value = null
+            }
+        }
+    }
+
     /** This week's plan, for the Train tab. Null when signed out or offline. */
     private val _planWeek = MutableStateFlow<uk.oli.fittrack.net.PlanWeek?>(null)
     val planWeek: StateFlow<uk.oli.fittrack.net.PlanWeek?> = _planWeek.asStateFlow()

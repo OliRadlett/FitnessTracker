@@ -6,6 +6,8 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -142,6 +144,53 @@ class LiftingWriteTest {
 
         val unlink = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertTrue(unlink.body.readUtf8().contains("\"activity_id\":null"))
+    }
+
+    @Test
+    fun `the cached analysis is a GET, and a missing one is null rather than an error`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("null"))
+        assertNull(runBlocking { api.sessionAnalysis("tok", "sess-7") })
+        assertEquals("/lifting/sessions/sess-7/ai-analysis", server.takeRequest(5, TimeUnit.SECONDS)!!.path)
+
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"id":"a1","analysis_type":"lifting","analysis_text":"  Solid volume.  ",
+                     "model_used":"gemini-2.0","created_at":"2026-11-06T12:00:00+00:00"}"""
+            )
+        )
+
+        val analysis = runBlocking { api.sessionAnalysis("tok", "sess-7") }!!
+
+        assertEquals("Solid volume.", analysis.text)
+        assertEquals("gemini-2.0", analysis.model)
+        assertNotNull(analysis.createdAt)
+    }
+
+    @Test
+    fun `asking for an analysis is a POST on the same path`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"id":"a1","analysis_text":"Fresh analysis","model_used":"gemini-2.0"}"""
+            )
+        )
+
+        val analysis = runBlocking { api.requestSessionAnalysis("tok", "sess-7") }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("POST", request.method)
+        assertEquals("/lifting/sessions/sess-7/ai-analysis", request.path)
+        assertEquals("Fresh analysis", analysis!!.text)
+    }
+
+    @Test
+    fun `an unavailable model surfaces its status`() {
+        server.enqueue(MockResponse().setResponseCode(501).setBody("""{"detail":"unset"}"""))
+
+        val error = runCatching { runBlocking { api.requestSessionAnalysis("tok", "sess-7") } }
+            .exceptionOrNull()
+
+        assertTrue(error is ApiException)
+        assertEquals(501, (error as ApiException).status)
     }
 
     @Test
