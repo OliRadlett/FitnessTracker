@@ -79,9 +79,14 @@ the end, because installing per-fix wastes the only real screen we have.
   loads). The weight stepper carries a plate calculator: bar weight (20/15 kg,
   tap to switch) and the greedy per-side loadout on `PlateMath`, including the
   shortfall when the weight cannot be made with real plates.
-- [ ] **P5 — progress.** PRs (`GET /lifting/prs`), best-by-rep-range, and an
-  exercise-progress view driven by `GET /charts/exercise_progress`; weekly
-  volume and estimated-1RM history from `/charts/*` rather than re-derived.
+- [x] **P5 — progress.** A third Today segment ("Progress") computes everything
+  from the sets the app already holds: personal bests per exercise (by estimated
+  1RM, Brzycki), the best set in each rep range (1 / 2–3 / 4–6 / 7–12 / 12+, with
+  empty ranges shown rather than hidden), and a per-exercise e1RM line over the
+  last 20 sessions. No network, so it works signed out and cannot disagree with
+  the log it is drawn from. Manual PRs — the ones with no session behind them —
+  are the one thing that would need `GET /lifting/prs`, which has never been
+  captured, so it is deliberately not guessed at here.
 - [ ] **P6 — browse.** Filters (focus, exercise, date range, free text) and
   month grouping over the cached history, since the API has no date-range
   parameter.

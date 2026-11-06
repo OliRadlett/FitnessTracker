@@ -32,6 +32,10 @@ against those decisions.
   lifted, not from the plan.
 - **The log**: Today → **Log** lists finished sessions by week with sets and
   volume; tapping one opens the full session.
+- **Progress**: Today → **Progress** shows personal bests per exercise (by
+  estimated 1RM), the best set in each rep range, and a per-exercise e1RM line
+  over the last 20 sessions. Computed from the cached history, so it works
+  signed out and without a signal.
 - **Session detail**: every set, grouped by exercise, with warm-ups flagged,
   AMRAP badges, per-set notes, the session note and the session's own RPE.
   Tapping a set edits it inline (weight, reps, RPE, warm-up/AMRAP, note); a set

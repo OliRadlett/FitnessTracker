@@ -107,9 +107,15 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
 - **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
   holds the website-versus-app matrix and the phase list (P0–P7, device pass at
   the end).
+- **Progress**: Today's third segment computes PRs, best-by-rep-range and a
+  per-exercise estimated-1RM line from the cached history
+  ([`domain/Progress.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Progress.kt)),
+  with no network in the path. Warm-ups never count; empty rep ranges are shown
+  as empty rather than omitted.
 - **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens), and parity phases P5–P6 —
-  PRs/progress, browse filters.
+  tabs (explicit "not built yet" screens), and parity phase P6 — browse filters
+  over the log. A manual PR (one with no session behind it) would need
+  `GET /lifting/prs`, which has never been captured.
 
 ## Architecture
 

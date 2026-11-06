@@ -115,6 +115,21 @@ class AppFlowTest {
         save("app-8-log")
         compose.onNodeWithText("1 session").assertExists()
 
+        // Progress is computed from the same sets: a PR, a rep-range strip and
+        // an estimated-1RM line, with no network in the path.
+        compose.onNodeWithText("Progress").performClick()
+        compose.waitForIdle()
+        save("app-8b-progress")
+        compose.onNodeWithText("PERSONAL BESTS").assertExists()
+        compose.onNodeWithText("BEST BY REP RANGE").assertExists()
+        compose.onAllNodesWithText("Bench Press").onFirst().assertExists()
+        compose.onNodeWithText("ESTIMATED 1RM").assertExists()
+        // One session is not a trend, and the screen says so rather than drawing
+        // a flat line through a single point.
+        compose.onNodeWithText("Two sessions of an exercise and the line appears.").assertExists()
+
+        compose.onNodeWithText("Log").performClick()
+        compose.waitForIdle()
         compose.onNodeWithText("Push day").performClick()
         compose.waitForIdle()
         save("app-9-session-detail")
