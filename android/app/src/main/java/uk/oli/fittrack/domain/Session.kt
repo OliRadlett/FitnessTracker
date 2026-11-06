@@ -37,7 +37,12 @@ data class LoggedSet(
     val isAmrap: Boolean = false,
     val note: String? = null,
     /** The server's set id once the session is on the server; null while local-only. */
-    val serverId: String? = null
+    val serverId: String? = null,
+    /**
+     * The client-owned identity the API dedupes on. Stable across retries, and
+     * the only way to find a set again after an append whose response was lost.
+     */
+    val clientId: String? = null
 )
 
 /** A session in progress. Persisted after every set, so the process dying mid-workout costs nothing. */

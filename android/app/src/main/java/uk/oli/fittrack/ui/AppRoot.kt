@@ -146,7 +146,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onDeleteSession = {
                         vm.deleteSession(finished.id)
                         nav.popBackStack()
-                    }
+                    },
+                    onEditSession = { days, focus, note -> vm.editSession(finished.id, days, focus, note) },
+                    onAddSets = { exercise, specs -> vm.addSets(finished.id, exercise, specs) }
                 )
             }
         }

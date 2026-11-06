@@ -44,6 +44,29 @@ object HistoryEngine {
     /** The most recent finished session, whatever it was. */
     fun lastSession(history: List<FinishedSession>): FinishedSession? = newestFirst(history).firstOrNull()
 
+    /**
+     * Move a session by whole days, keeping its time of day and its duration.
+     *
+     * `plusDays` on a zoned time is the only arithmetic that survives a DST
+     * boundary: adding 86,400,000 ms to the instant would move a 18:00 session
+     * to 17:00 or 19:00 the day the clocks change.
+     */
+    fun shifted(
+        session: FinishedSession,
+        days: Long,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault()
+    ): FinishedSession {
+        if (days == 0L) return session
+        fun shift(millis: Long): Long =
+            java.time.Instant.ofEpochMilli(millis).atZone(zone).plusDays(days)
+                .toInstant().toEpochMilli()
+
+        return session.copy(
+            startedAt = shift(session.startedAt),
+            endedAt = shift(session.endedAt)
+        )
+    }
+
     /** Volume per local day for the last [days] days, oldest first, zero-filled. */
     fun dailyVolume(
         history: List<FinishedSession>,

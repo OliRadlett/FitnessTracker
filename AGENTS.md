@@ -94,18 +94,20 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   workout.
 - **Editing history**: [`SessionDetailScreen`](android/app/src/main/java/uk/oli/fittrack/ui/log/SessionDetailScreen.kt)
   shows every set grouped by exercise (W/AMRAP badges, per-set notes, session
-  note and RPE); tapping a set edits it inline. A synced row calls
-  `PATCH /lifting/sets/{id}` or `DELETE` and **reverts with a reason** if the
-  server refuses, so a failed edit never silently diverges from the website.
-  Local-only rows edit in place. `PATCH` bodies use `LiftingPatchJson`
-  (`encodeDefaults` + `explicitNulls`) so a cleared RPE is sent as `null` rather
-  than omitted.
+  note and RPE); tapping a set edits it inline, `+ Set` adds a missed set,
+  `+ Add exercise` adds a whole exercise, and `Edit` changes the session's date
+  (by whole days), focus and note. A synced row calls `PATCH`/`DELETE`/`POST`
+  and **reverts with a reason** if the server refuses, so a failed edit never
+  silently diverges from the website. Local-only rows edit in place. `PATCH`
+  bodies use `LiftingPatchJson` (`encodeDefaults` + `explicitNulls`) so a cleared
+  RPE is sent as `null` rather than omitted; a day move uses `plusDays` on a
+  zoned time so an 18:00 session stays 18:00 across a DST boundary.
 - **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
   holds the website-versus-app matrix and the phase list (P0–P7, device pass at
   the end).
 - **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens), and parity phases P2–P6 — session
-  fields, repeat, warm-up logging, PRs/progress, browse filters.
+  tabs (explicit "not built yet" screens), and parity phases P3–P6 — repeat a
+  session, warm-up logging, PRs/progress, browse filters.
 
 ## Architecture
 

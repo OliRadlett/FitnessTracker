@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uk.oli.fittrack.domain.ExerciseSets
 import uk.oli.fittrack.domain.FinishedSession
+import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.LoggedSet
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.net.SetEdit
@@ -60,9 +62,9 @@ import java.util.Locale
  * One finished session, in the same shape the website shows it: every set,
  * warm-ups included, grouped by exercise, with notes and the session's own RPE.
  *
- * Read-only for now — editing lands with the write path — but the data is the
- * whole session rather than a summary of it, because a session you cannot
- * inspect is a session you cannot trust.
+ * Everything the website can change here is changeable too: a set's numbers,
+ * the session's date/focus/note, a missing set and a missing exercise — and a
+ * set or the session can be deleted.
  */
 @Composable
 fun SessionDetailScreen(
@@ -70,7 +72,9 @@ fun SessionDetailScreen(
     onBack: () -> Unit,
     onEditSet: (Int, SetEdit) -> Unit = { _, _ -> },
     onDeleteSet: (Int) -> Unit = {},
-    onDeleteSession: () -> Unit = {}
+    onDeleteSession: () -> Unit = {},
+    onEditSession: (Long, String?, String?) -> Unit = { _, _, _ -> },
+    onAddSets: (String, List<SetEdit>) -> Unit = { _, _ -> }
 ) {
     val zone = ZoneId.systemDefault()
     val start = Instant.ofEpochMilli(session.startedAt).atZone(zone)
@@ -83,6 +87,9 @@ fun SessionDetailScreen(
     // already-logged set is a couch job, so it is inline rather than a sheet.
     var editing by remember(session.id) { mutableStateOf<Int?>(null) }
     var confirmingDelete by remember(session.id) { mutableStateOf(false) }
+    var editingSession by remember(session.id) { mutableStateOf(false) }
+    var addingTo by remember(session.id) { mutableStateOf<String?>(null) }
+    var addingExercise by remember(session.id) { mutableStateOf(false) }
 
     Column(
         Modifier
@@ -110,13 +117,37 @@ fun SessionDetailScreen(
                 )
             }
             Text(
+                "Edit",
+                fontSize = 13.sp,
+                color = Tokens.Accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        editingSession = !editingSession
+                        editing = null
+                        addingExercise = false
+                    }
+                    .padding(horizontal = 10.dp, vertical = 10.dp)
+            )
+            Text(
                 "Delete",
                 fontSize = 13.sp,
                 color = Tokens.Muted,
                 modifier = Modifier
                     .clip(RoundedCornerShape(10.dp))
                     .clickable { confirmingDelete = true }
-                    .padding(horizontal = 10.dp, vertical = 10.dp)
+                    .padding(horizontal = 8.dp, vertical = 10.dp)
+            )
+        }
+
+        if (editingSession) {
+            SessionEditor(
+                session = session,
+                onSave = { days, focus, note ->
+                    onEditSession(days, focus, note)
+                    editingSession = false
+                },
+                onCancel = { editingSession = false }
             )
         }
 
@@ -185,7 +216,14 @@ fun SessionDetailScreen(
                 val start = offset
                 offset += group.sets.size
                 item(key = "header-${group.exercise}") {
-                    ExerciseHeader(group)
+                    ExerciseHeader(
+                        group = group,
+                        onAddSet = {
+                            editing = null
+                            addingExercise = false
+                            addingTo = if (addingTo == group.exercise) null else group.exercise
+                        }
+                    )
                 }
                 itemsIndexed(group.sets) { index, set ->
                     val global = start + index
@@ -209,6 +247,58 @@ fun SessionDetailScreen(
                                 onCancel = { editing = null }
                             )
                         }
+                    }
+                }
+                if (addingTo == group.exercise) {
+                    item(key = "add-${group.exercise}") {
+                        val template = group.workingSets.lastOrNull()
+                            ?: group.sets.lastOrNull()
+                            ?: LoggedSet(group.exercise, 20.0, 5)
+                        SetEditor(
+                            set = template,
+                            title = "Add set",
+                            saveLabel = "Add",
+                            onSave = { edit ->
+                                onAddSets(group.exercise, listOf(edit))
+                                addingTo = null
+                            },
+                            onDelete = null,
+                            onCancel = { addingTo = null }
+                        )
+                    }
+                }
+            }
+
+            item {
+                Spacer(Modifier.height(22.dp))
+                if (addingExercise) {
+                    AddExerciseForm(
+                        onAdd = { name, specs ->
+                            onAddSets(name, specs)
+                            addingExercise = false
+                        },
+                        onCancel = { addingExercise = false }
+                    )
+                } else {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Tokens.Surface)
+                            .clickable {
+                                addingTo = null
+                                editing = null
+                                addingExercise = true
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "+ Add exercise",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Tokens.Accent
+                        )
                     }
                 }
             }
@@ -264,7 +354,7 @@ private fun HeroCard(
 }
 
 @Composable
-private fun ExerciseHeader(group: ExerciseSets) {
+private fun ExerciseHeader(group: ExerciseSets, onAddSet: () -> Unit) {
     val warmups = group.sets.size - group.workingSets.size
     Column {
         Spacer(Modifier.height(18.dp))
@@ -281,6 +371,18 @@ private fun ExerciseHeader(group: ExerciseSets) {
                 else plural(group.sets.size, "set"),
                 fontSize = 12.sp,
                 color = Tokens.Muted
+            )
+            // A forgotten set is the commonest thing to fix, so it is one tap
+            // from the exercise it belongs to.
+            Text(
+                "+ Set",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = Tokens.Accent,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onAddSet() }
+                    .padding(start = 10.dp, top = 10.dp, bottom = 10.dp)
             )
         }
         Spacer(Modifier.height(2.dp))
@@ -361,8 +463,10 @@ private fun Badge(text: String, color: androidx.compose.ui.graphics.Color) {
 @Composable
 private fun SetEditor(
     set: LoggedSet,
+    title: String = "Edit set",
+    saveLabel: String = "Save",
     onSave: (SetEdit) -> Unit,
-    onDelete: () -> Unit,
+    onDelete: (() -> Unit)? = null,
     onCancel: () -> Unit
 ) {
     var weight by remember(set) { mutableFloatStateOf(set.weightKg.toFloat()) }
@@ -381,6 +485,14 @@ private fun SetEditor(
             .background(Tokens.SurfaceLight)
             .padding(14.dp)
     ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Label(title.uppercase(Locale.UK))
+            Spacer(Modifier.weight(1f))
+            if (set.exercise.isNotBlank()) {
+                Text(set.exercise, fontSize = 12.sp, color = Tokens.Muted)
+            }
+        }
+        Spacer(Modifier.height(10.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             StepField(
                 label = "WEIGHT",
@@ -450,15 +562,17 @@ private fun SetEditor(
 
         Spacer(Modifier.height(12.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Delete set",
-                fontSize = 13.sp,
-                color = Tokens.Muted,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .clickable { confirmDelete = true }
-                    .padding(horizontal = 8.dp, vertical = 8.dp)
-            )
+            if (onDelete != null) {
+                Text(
+                    "Delete set",
+                    fontSize = 13.sp,
+                    color = Tokens.Muted,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { confirmDelete = true }
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                )
+            }
             Spacer(Modifier.weight(1f))
             Text(
                 "Cancel",
@@ -488,11 +602,11 @@ private fun SetEditor(
                     }
                     .padding(horizontal = 18.dp, vertical = 10.dp)
             ) {
-                Text("Save", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Tokens.OnAccent)
+                Text(saveLabel, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Tokens.OnAccent)
             }
         }
 
-        if (confirmDelete) {
+        if (confirmDelete && onDelete != null) {
             Spacer(Modifier.height(8.dp))
             ConfirmRow(
                 question = "Delete this set?",
@@ -500,6 +614,203 @@ private fun SetEditor(
                 onConfirm = onDelete,
                 onCancel = { confirmDelete = false }
             )
+        }
+    }
+}
+
+@Composable
+private fun SessionEditor(
+    session: FinishedSession,
+    onSave: (Long, String?, String?) -> Unit,
+    onCancel: () -> Unit
+) {
+    val zone = ZoneId.systemDefault()
+    var focus by remember(session.id) { mutableStateOf(session.planTitle) }
+    var note by remember(session.id) { mutableStateOf(session.note.orEmpty()) }
+    var days by remember(session.id) { mutableStateOf(0L) }
+
+    val moved = HistoryEngine.shifted(session, days, zone)
+    val dateLabel = Instant.ofEpochMilli(moved.startedAt).atZone(zone)
+        .format(DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.UK))
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 6.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Tokens.Surface)
+            .padding(14.dp)
+    ) {
+        Label("EDIT SESSION")
+        Spacer(Modifier.height(10.dp))
+
+        Label("DATE")
+        Spacer(Modifier.height(6.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            StepButton("−", { days -= 1 }, Modifier.width(56.dp))
+            Text(
+                dateLabel,
+                fontSize = 14.sp,
+                color = Tokens.Fg,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.weight(1f)
+            )
+            StepButton("+", { days += 1 }, Modifier.width(56.dp))
+        }
+        if (days != 0L) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                if (days > 0) "Moving $days day${if (days == 1L) "" else "s"} later"
+                else "Moving ${-days} day${if (days == -1L) "" else "s"} earlier",
+                fontSize = 12.sp,
+                color = Tokens.Muted
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = focus,
+            onValueChange = { focus = it },
+            placeholder = { Text("Focus", fontSize = 14.sp, color = Tokens.Muted) },
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 14.sp, color = Tokens.Fg),
+            modifier = Modifier.fillMaxWidth().testTag("focus-field")
+        )
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = note,
+            onValueChange = { note = it },
+            placeholder = { Text("Notes", fontSize = 14.sp, color = Tokens.Muted) },
+            minLines = 2,
+            textStyle = TextStyle(fontSize = 14.sp, color = Tokens.Fg),
+            modifier = Modifier.fillMaxWidth().testTag("note-field")
+        )
+
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Cancel",
+                fontSize = 13.sp,
+                color = Tokens.Muted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onCancel() }
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Tokens.Accent)
+                    .clickable { onSave(days, focus, note) }
+                    .padding(horizontal = 18.dp, vertical = 10.dp)
+            ) {
+                Text("Save", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Tokens.OnAccent)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddExerciseForm(
+    onAdd: (String, List<SetEdit>) -> Unit,
+    onCancel: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var sets by remember { mutableIntStateOf(3) }
+    var weight by remember { mutableFloatStateOf(20f) }
+    var reps by remember { mutableIntStateOf(8) }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Tokens.Surface)
+            .padding(14.dp)
+    ) {
+        Label("ADD EXERCISE")
+        Spacer(Modifier.height(10.dp))
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            placeholder = { Text("Exercise name", fontSize = 14.sp, color = Tokens.Muted) },
+            singleLine = true,
+            textStyle = TextStyle(fontSize = 14.sp, color = Tokens.Fg),
+            modifier = Modifier.fillMaxWidth().testTag("exercise-name")
+        )
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            StepField(
+                label = "SETS",
+                value = sets.toString(),
+                unit = "",
+                onMinus = { sets = (sets - 1).coerceAtLeast(1) },
+                onPlus = { sets = (sets + 1).coerceAtMost(10) },
+                modifier = Modifier.weight(1f)
+            )
+            StepField(
+                label = "WEIGHT",
+                value = formatWeight(weight),
+                unit = "kg",
+                onMinus = { weight = (weight - 2.5f).coerceAtLeast(0f) },
+                onPlus = { weight += 2.5f },
+                modifier = Modifier.weight(1f)
+            )
+            StepField(
+                label = "REPS",
+                value = reps.toString(),
+                unit = "",
+                onMinus = { reps = (reps - 1).coerceAtLeast(1) },
+                onPlus = { reps += 1 },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (name.isBlank()) {
+                Text("Name the exercise first.", fontSize = 12.sp, color = Tokens.Muted)
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                "Cancel",
+                fontSize = 13.sp,
+                color = Tokens.Muted,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onCancel() }
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            )
+            Spacer(Modifier.width(8.dp))
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (name.isBlank()) Tokens.SurfaceLight else Tokens.Accent)
+                    .clickable(enabled = name.isNotBlank()) {
+                        onAdd(
+                            name.trim(),
+                            List(sets) {
+                                SetEdit(
+                                    weight_kg = weight.toDouble(),
+                                    reps = reps,
+                                    rpe = null,
+                                    is_warmup = false,
+                                    is_amrap = false,
+                                    notes = null
+                                )
+                            }
+                        )
+                    }
+                    .padding(horizontal = 18.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    "Add",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (name.isBlank()) Tokens.Muted else Tokens.OnAccent
+                )
+            }
         }
     }
 }
