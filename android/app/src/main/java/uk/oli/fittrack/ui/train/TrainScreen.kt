@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uk.oli.fittrack.domain.FinishedSession
@@ -175,8 +176,18 @@ private fun WeekPlan(
 
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Label(week.planName.uppercase(Locale.UK))
-            Spacer(Modifier.weight(1f))
+            // At 360dp a long plan name would push the arrows off screen, so the
+            // name gives way first: the controls are the interactive things.
+            Box(Modifier.weight(1f)) {
+                Text(
+                    week.planName.uppercase(Locale.UK),
+                    fontSize = 12.sp,
+                    letterSpacing = 1.sp,
+                    color = Tokens.Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
             // Paging is the point of a week view: you look ahead, and you look
             // back. The server clamps the number to the plan's extent.
             Text(
