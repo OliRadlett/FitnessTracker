@@ -47,7 +47,9 @@ fun YouScreen(
     syncedAt: Long? = null,
     syncError: String? = null,
     goalCount: Int = 0,
+    routeCount: Int = 0,
     onOpenGoals: () -> Unit = {},
+    onOpenRoutes: () -> Unit = {},
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -122,36 +124,44 @@ fun YouScreen(
             Spacer(Modifier.height(24.dp))
             Label("GOALS")
             Spacer(Modifier.height(8.dp))
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Tokens.Surface)
-                    .clickable { onOpenGoals() }
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    if (goalCount > 0) "$goalCount active goal${if (goalCount == 1) "" else "s"}"
-                    else "Set a goal",
-                    fontSize = 14.sp,
-                    color = Tokens.Fg,
-                    modifier = Modifier.weight(1f)
-                )
-                Text("›", fontSize = 16.sp, color = Tokens.Muted)
-            }
+            NavRow(
+                if (goalCount > 0) "$goalCount active goal${if (goalCount == 1) "" else "s"}"
+                else "Set a goal"
+            ) { onOpenGoals() }
+
+            Spacer(Modifier.height(20.dp))
+            Label("ROUTES")
+            Spacer(Modifier.height(8.dp))
+            NavRow(if (routeCount > 0) "$routeCount in the library" else "Routes") { onOpenRoutes() }
 
             Spacer(Modifier.height(24.dp))
             Label("THIS BUILD")
             Spacer(Modifier.height(8.dp))
             Text(
-                "The dashboard, the lifting log and the cycling page; goals, routes, " +
-                    "plan editing, health and the calendar are next.",
+                "The dashboard, the lifting log, the cycling page, goals and routes; plan " +
+                    "editing, health and the calendar are next.",
                 fontSize = 13.sp,
                 color = Tokens.Muted
             )
             Spacer(Modifier.weight(1f))
         }
         BottomNav(NavKind.You, onTab)
+    }
+}
+
+/** A row that opens another screen: the same shape for goals and routes. */
+@Composable
+private fun NavRow(label: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Tokens.Surface)
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, fontSize = 14.sp, color = Tokens.Fg, modifier = Modifier.weight(1f))
+        Text("›", fontSize = 16.sp, color = Tokens.Muted)
     }
 }

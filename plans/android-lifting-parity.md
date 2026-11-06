@@ -270,6 +270,14 @@ the end, because installing per-fix wastes the only real screen we have.
   `GoalProgress` so one model answers for both surfaces. Reached from You ("N
   active goals") and from the dashboard's GOALS card.
 
+- [x] **P25 — the routes page.** `/routes` as a shape-led atlas: each route is
+  drawn from its `preview_polyline` (decoded in `domain/Polyline.kt`, aspect
+  corrected at the route's latitude), with filters (All / Loops / Unridden /
+  Favourites), favourites first then longest, and an expanded row showing
+  locality, loop/point-to-point, surface, quality and favourite state. No map
+  tiles, no key, no signal. Reached from You → Routes. The web's duplicate
+  maintenance and segment views stay on the website.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates
