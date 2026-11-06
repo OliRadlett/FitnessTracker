@@ -178,6 +178,31 @@ class SessionEngineTest {
     }
 
     @Test
+    fun `finishing carries the session note and effort, not just the sets`() {
+        val state = stateWith(
+            set("Bench Press", 90.0, 4),
+            set("Bench Press", 92.5, 4)
+        ).copy(startedAt = 1_000L)
+
+        val finished = SessionEngine.finished(state, "  felt strong  ", 8.5)
+
+        assertEquals("felt strong", finished.note)
+        assertEquals(8.5, finished.rpeSession!!, 0.001)
+        assertEquals(state.sets.size, finished.sets.size)
+        assertEquals("Push day", finished.planTitle)
+        // The session ends at the last set that was actually logged.
+        assertEquals(state.sets.maxOf { it.at }, finished.endedAt)
+    }
+
+    @Test
+    fun `a blank note is no note`() {
+        val finished = SessionEngine.finished(started(), "   ", null)
+
+        assertNull(finished.note)
+        assertNull(finished.rpeSession)
+    }
+
+    @Test
     fun `rest target steps by half a minute and stays in range`() {
         assertEquals(180, SessionEngine.restTarget(DEFAULT_REST_SECONDS, 30))
         assertEquals(120, SessionEngine.restTarget(DEFAULT_REST_SECONDS, -30))

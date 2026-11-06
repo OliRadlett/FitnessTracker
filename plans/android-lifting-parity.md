@@ -93,6 +93,11 @@ the end, because installing per-fix wastes the only real screen we have.
   one "Filters" tap. A result count and a "No sessions match" state say what the
   filter did; week grouping stays, because a phone reads weeks better than
   months.
+- [x] **P5b — session RPE and note at the finish.** The summary asks "how did it
+  feel?" (session RPE, `—` allowed) and takes a note, as the website's finish
+  sheet does, and both travel into history — the detail shows them, and a synced
+  session carries them to the API. `SessionEngine.finished()` owns the
+  conversion, so a blank note stays blank rather than becoming an empty string.
 - [ ] **P7 — device pass.** Install to the OnePlus 11 over Wi-Fi adb, run the
   whole loop against prod, and capture the screens.
 

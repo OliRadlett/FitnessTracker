@@ -20,7 +20,8 @@ against those decisions.
   rest), **AMRAP** flags a set as all-out, and RPE is optional and can be a half
   point (6.0–10.0 by 0.5). All three travel to the API as `is_warmup`,
   `is_amrap` and a nullable `rpe`.
-- Done: volume, sets, duration and top set, computed from the log.
+- Done: volume, sets, duration and top set, computed from the log — plus the
+  session's own RPE and a note, which travel into history and to the API.
 - Process death costs nothing: the session is written to disk after every set.
 - **Rest and plates**: the rest card states its target (2:30 by default) and
   adjusts in 30-second steps mid-rest, restarting the timer at the new length.
