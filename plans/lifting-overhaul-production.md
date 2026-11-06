@@ -2,8 +2,7 @@
 
 > **Source artifact:** `prototype/lifting/` — eight-state contact sheet, gate result in
 > `prototype/lifting/GATE.md`. This plan ports the **decisions**, not the lab code.
-> **Status:** P1 (Overview) and the Big-3 backend fix are implemented on
-> `feature/lifting-overhaul`; P2–P7 remain. This plan is the source of truth for the port.
+> **Status:** **shipped** — all four tabs (Overview / Sessions / Analytics / PRs) are live on `main` and `prod`. Originally P1 on `feature/lifting-overhaul`; P2–P7 remain. This plan is the source of truth for the port.
 > **Owner:** Oli + agent. **Branch:** `feature/lifting-overhaul` from `main` (not `prod`).
 
 ---

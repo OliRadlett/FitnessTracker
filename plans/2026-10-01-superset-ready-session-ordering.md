@@ -1,5 +1,7 @@
 # Design Spec — Section 6: Superset-Ready Session Ordering (and the identity leak that blocks it)
 
+> **Status**: implemented — `LiftingSet.order_index` (migration 093) and `(order_index, created_at, id)` ordering shipped.
+
 > **Date**: 2026-10-01 · **Type**: bug fix (data integrity) + enabling refactor · **Surface**: `PATCH /lifting/sessions/{id}/sets/{set_id}`, session read order, live tracker
 >
 > **Origin**: brainstorm `plans/brainstorm-2026-09-30-open-agenda.md` item **C5** —

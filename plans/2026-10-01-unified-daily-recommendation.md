@@ -1,5 +1,7 @@
 # Design Spec — Section 1 (REVISED): Unified Daily Verdict on `/today`
 
+> **Status**: implemented — `services/today.py` and `GET /dashboard/today` shipped.
+
 > **Date**: 2026-10-01 · **Type**: architectural (scope narrowed, no new endpoint) · **Surface**: `/today`
 > **Origin**: original Section 1 (`plans/2026-10-01-unified-daily-recommendation.md`)
 > was built on a **stale premise** — that `/today` was a client-side POC verdict

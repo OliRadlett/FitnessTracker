@@ -1,6 +1,6 @@
 # Relive 3D — Production Plan
 
-> **Status**: draft for approval (2026-11-03). The standalone prototype is
+> **Status**: **shipped** — the Google 3D viewer landed in #339 (`574972ac`, 2026-11-04) and is on `main`/`prod`; the plan below is the delivered record. Originally a draft for approval (2026-11-03). The standalone prototype is
 > verified; this plan covers the production integration, cost/terms, data
 > contracts, migration, quality gates and rollout.
 >
@@ -584,13 +584,13 @@ dates.
 ## Appendix A — Prototype evidence
 
 - Six-pose contact sheet:
-  [`prototype/relive/qa/out/contact-sheet-google3d.png`](../prototype/relive/qa/out/contact-sheet-google3d.png)
+  `prototype/relive/qa/out/contact-sheet-google3d.png` (not committed)
 - Story panel:
-  [`prototype/relive/qa/out/google3d-story.png`](../prototype/relive/qa/out/google3d-story.png)
+  `prototype/relive/qa/out/google3d-story.png` (not committed)
 - Real Arthur’s Seat ghost:
-  [`prototype/relive/qa/out/arthurs-ghost.png`](../prototype/relive/qa/out/arthurs-ghost.png)
+  `prototype/relive/qa/out/arthurs-ghost.png` (not committed)
 - Production picker:
-  [`prototype/relive/qa/out/arthurs-ghost-picker.png`](../prototype/relive/qa/out/arthurs-ghost-picker.png)
+  `prototype/relive/qa/out/arthurs-ghost-picker.png` (not committed)
 - Prototype QA: 11/11 Playwright tests at the last full run; typecheck clean.
 - Rider lab: [`prototype/relive/rider-studio.html`](../prototype/relive/rider-studio.html)
   (parked; no production surface).

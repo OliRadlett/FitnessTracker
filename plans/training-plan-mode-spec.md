@@ -1,6 +1,6 @@
 # Plan Mode — Phase 1 Implementation Spec
 
-> **Status**: v1 — design for review. Implements **Phase 1** of [`training-redesign-plan.md`](training-redesign-plan.md) (§5.1 + §3, the "one editor" model).
+> **Status**: **implemented, then superseded** by the Week · Plan rebuild — this is a historical spec. Originally v1 — design for review. Implements **Phase 1** of [`training-redesign-plan.md`](training-redesign-plan.md) (§5.1 + §3, the "one editor" model).
 > **Depends on**: Phase 0 (shipped on `feature/training-editor-primitives`: the shell, `useInstantDayEdit`, `usePlanDayOps`, the three day endpoints, `planDayCache`).
 > **Goal**: Replace the temporary **Build | Week** toggle and the standalone `WorkoutPlanner` with **one Plan mode**: the week is the primary surface, any day opens the same `DayEditor`, field edits commit instantly, and structural changes are discrete atomic operations.
 
@@ -207,7 +207,7 @@ So absorption is small: port `ExpandableRouteMatch`/`FitBar` into `plan/Prescrip
 | **Phase order** | **E2E guard → Phase 1 → Review → Peaks → mobile.** | Phase 1 is the core value and unblocks the Program matrix; the E2E guard de-risks it. |
 | **Strength `S1`** | **Run in parallel with Phase 1** (backend-only, independent). | No shared surface. |
 | **E2E guard** | **Add a `/training` Playwright spec first.** | CI has Playwright; there is no browser in the build loop, so the rewrite needs a guard. |
-| **`.dsh/` drift** | **Reconcile into `main`** (dedicated chore PR). | The repo's rule is `main`/`prod` content-identity; the bundle is tooling-only. |
+| **`.dsh/` drift** | **Resolved 2026-11-06** — `.dsh/` is tracked on `main`. | The repo's rule is `main`/`prod` content-identity; the bundle is tooling-only. |
 | **Create duplication** | **Consolidate** — Plan mode's "no plan" state links to the Plans surface; the create forms live only there. | One create surface. |
 
 **Still open**: none. Anything discovered during implementation goes to the register in [`training-redesign-plan.md`](training-redesign-plan.md) §15.

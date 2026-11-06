@@ -26,14 +26,14 @@ keeps new visualizations from silently becoming new obligations.
    `?pr=`) land on the correct side of the gate.
 2. **Labeled zones within a view.** Where both modes share a screen, a
    `SectionLabel` names the review zone explicitly (e.g. "Set review"), so the
-   boundary is visible, not implied. Reference: `SetsVisualizer` under its
+   boundary is visible, not implied. Reference: `SetLadder` under its
    label in the session detail.
 3. **Floating action layer.** Primary actions float physically apart from
    scrolling review content: sticky, bordered, shadowed, backdrop-blurred.
    Reference: `QuickAddSetBar` (`sticky bottom-4 z-10 … shadow-lg backdrop-blur`).
 4. **Read-only viz components.** A review component takes data props and emits
    no mutations — no POST/PATCH/DELETE, no query invalidation. All writes live
-   in table/form/action components. Reference: `SetsVisualizer` (`sets` +
+   in table/form/action components. Reference: `SetLadder` (`sets` +
    `e1rmByExercise` in, nothing out); `CombinedLoadChart` (reads one query).
    If a chart file imports `useMutation`, it is on the wrong side of the gate.
 5. **Suggest-only shared data.** Hooks feeding both modes return data, never

@@ -1,6 +1,6 @@
 # Multi-Sport Days — Plan
 
-> **Status**: v1 — in scope, **its own phase** (after Phase 1). Companion to [`training-redesign-plan.md`](training-redesign-plan.md) and [`training-plan-mode-spec.md`](training-plan-mode-spec.md).
+> **Status**: **landed** with the Week · Plan rebuild (multi-sport rows, `lib/training/sessionGroups.ts`, backend + integration tests). Originally v1 — in scope, its own phase. [`training-redesign-plan.md`](training-redesign-plan.md) and [`training-plan-mode-spec.md`](training-plan-mode-spec.md).
 > **Goal**: a single plan date may hold **more than one session** (e.g. a morning ride + an evening lift). Rare, but supported.
 
 ---

@@ -5,7 +5,7 @@
 
 ## 0. Precedence
 
-Tracks: data-correctness (I1–I8), reliability (R1–R7), UX polish, maintainability, steering-poison P1–P10. Background: `plans/2026-10-01-data-integrity-integration-plan.md` (Waves 0–4, §1-ships-last), AGENTS.md pitfalls 1–43. Where tracks conflict, §7 resolutions rule. Runtime posture is fail-OPEN with signal; gate posture is fail-CLOSED. Never confuse the two.
+Tracks: data-correctness (I1–I8), reliability (R1–R7), UX polish, maintainability, steering-poison P1–P10. Background: `plans/2026-10-01-data-integrity-integration-plan.md` (Waves 0–4, §1-ships-last), `docs/PITFALLS.md` 1–43. Where tracks conflict, §7 resolutions rule. Runtime posture is fail-OPEN with signal; gate posture is fail-CLOSED. Never confuse the two.
 
 ## 1. Sequencing — data-correctness first, §1 verdict last
 

@@ -308,8 +308,8 @@ The `ALLOWED_EMAILS` env var controls who can log in. It's enforced in **two lay
 
 | Layer | File | What it does |
 |-------|------|-------------|
-| **Frontend** (NextAuth) | [`frontend/src/lib/auth.ts`](frontend/src/lib/auth.ts:11) | Rejects sign-in before calling backend. Returns `false` from `signIn` callback. |
-| **Backend** (sync-user + OAuth) | [`backend/app/api/auth.py`](backend/app/api/auth.py:55) | Returns HTTP 403 if email not in allowlist. Defense-in-depth. |
+| **Frontend** (NextAuth) | `frontend/src/lib/auth.ts:91` | Rejects sign-in before calling backend. Returns `false` from `signIn` callback. |
+| **Backend** (sync-user + OAuth) | `backend/app/api/auth.py:79` | Returns HTTP 403 if email not in allowlist. Defense-in-depth. |
 
 To add more users, update `.env`:
 ```env
@@ -426,9 +426,7 @@ regression to "fix":
   Scraped by Prometheus over a private network / SSH tunnel only. Do **not**
   place it behind the public Caddy vhost — Prometheus must reach it directly.
 
-Everything else is under `/api/v1/*` and **requires a JWT**. Every data-plane
-router is mounted with FastAPI's `get_current_user` dependency, so a request
-with no (or expired) bearer token gets `401` regardless of method or path.
+Everything else is under `/api/v1/*` and **requires a JWT** — with two deliberate exceptions: the auth bridge (`/auth/sync-user` uses `X-Internal-Secret`; OAuth callbacks use signed state) and provider webhooks (HMAC/signature verified). Every other data-plane router is mounted with FastAPI's `get_current_user` dependency, so a request with no (or expired) bearer token gets `401` regardless of method or path.
 
 ⚠️ `/api/v1/metrics` (the *health-data* readiness / sleep / weight / alerts
 router, tag `metrics`) is **not** the Prometheus endpoint — it lives under the

@@ -1,6 +1,6 @@
 # Ride / Course Split — Linkage Model Redesign
 
-> Status: **Phases 0–4 complete** (2026-09-30). Ph. 5 dropped — see §10.
+> Status: **superseded** by the shipped Course → Route → Ride model (migrations 117–119, PR #436). Originally Phases 0–4 complete (2026-09-30), Ph. 5 dropped — see §10.
 
 ## Executive summary — what changed
 

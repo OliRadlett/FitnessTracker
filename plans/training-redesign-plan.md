@@ -1,6 +1,6 @@
 # Training Page Redesign Plan
 
-> **Status**: v4 — implementation-ready spec; **no open questions**. Collaboratively evolved with the user (2026-10-12).
+> **Status**: **shipped** (Phases 0–4 + S1–S4; migrations 099/101/102) — this is the delivered record, not an open spec. Originally v4 — implementation-ready spec; **no open questions**. Collaboratively evolved with the user (2026-10-12).
 > **Supersedes**: [`v3-planning-2026-10-12.md`](v3-planning-2026-10-12.md) (widget-level pass on an unchanged page).
 > **Goal**: Turn `/training` into a **plan-first workspace**: the plan is the persistent spine; one editor edits any day of it instantly; evidence and peaks are their own surfaces; and the two-editor split that made editing confusing is **removed**.
 > **Backend is in scope** for this plan (user, 2026-10-12). The editor primitives it needs are small and additive; the training *loops* are sequenced later (§11) but no longer deferred because of a frontend-only constraint.
@@ -472,7 +472,7 @@ The single place listing what is **not yet built** across the training workstrea
 - **`/training` E2E guard** — a Playwright spec (mode switching, `?mode=` reload, `?plan=&day=`, Plans surface) lands **before** Phase 1.
 - **Zones reference → `/cycling`** — the `WorkoutPlanner` zone table moves to the cycling page rather than being dropped.
 - **Create consolidation** — Plan mode's "no plan" state links to the Plans surface; the create forms live only there.
-- **Reconcile `.dsh/` into `main`** — dedicated chore PR (the bundle is `prod`-only today, so the branches are permanently non-identical; tooling-only, harmless).
+- ~~**Reconcile `.dsh/` into `main`**~~ — done 2026-11-06: `.dsh/` is tracked on `main` (skills + plugin), so the branches are no longer permanently non-identical.
 
 ### Known defects to fix during the build (this plan §12 + companion §4.3)
 1. `StrengthSuggestionsCard.handleApplyAll` overwrites the day's exercise list with a single entry (last wins) → Phase 2.

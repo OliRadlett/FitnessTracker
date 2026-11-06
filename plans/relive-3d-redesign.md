@@ -1,7 +1,7 @@
 # Relive — 3D Ride Viewer Redesign
 
 > **Status**: ✅ Complete (2026-09-30) — all five phases shipped + Broadcast v2 polish.
-> See [next-level plan](plans/relive-3d-next-level.md) for the centerpiece roadmap.
+> See [next-level plan](relive-3d-next-level.md) for the centerpiece roadmap.
 > **Supersedes**: the archived `3d-ride-view-enhancements.md` (Phases A–E shipped the
 > technical scaffold; this plan replaces the *experience*).
 > **Parent spec**: `plans/future-enhancements.md` §3.16.

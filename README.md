@@ -12,6 +12,7 @@ A personal fitness tracker that aggregates data from **Strava**, **Whoop**, **Wa
 | Cache/Broker | Redis 7 |
 | Background Jobs | Celery + Celery Beat |
 | Auth | NextAuth.js (Google + GitHub OAuth) |
+| Android | Kotlin + Jetpack Compose (native client, `android/`) |
 | Deployment | Docker Compose + Caddy reverse proxy |
 
 ## Project Structure
@@ -158,11 +159,10 @@ Once the backend is running, visit:
 ## Features
 
 ### Dashboard
-- **Today / Weekly / Monthly tabs** — Switch between daily snapshot, weekly trends, and monthly/yearly review
+- **Today / Trends / History** — act, review, and the record (`?view=`); legacy `?tab=` bookmarks are mapped
 - **Summary cards** — TSS, volume, distance, recovery, HRV, strain, sleep, training load (CTL/ATL/TSB)
 - **Health Monitor** — Composite analysis for overtraining, injury risk, and illness detection
 - **AI Performance Analysis** — Weekly Gemini-powered cycling analysis with personalized recommendations
-- **Suggested Training Cycle** — 7-day training recommendations based on recovery and training load
 
 ### Activities
 - **Multi-provider sync** — Strava, Wahoo, Komoot activity and route sync with intelligent deduplication
@@ -183,12 +183,12 @@ Once the backend is running, visit:
 - **Training load** — CTL/ATL/TSB computation with EWMA model
 - **Power analysis** — Power curve, power zones, normalized power, variability index
 - **VO2max estimation** — FRIEND power formula + Uth HR formula
-- **Decoupling analysis** — Cardiac drift detection for rides >60min
+- **Decoupling analysis** — Cardiac drift detection for rides ≥20 min (history gate ≥60 min)
 - **Power vs HR** — Power-to-heart-rate correlation analysis
 
 ### Routes
 - **Multi-provider sync** — Strava, Komoot, Wahoo route sync with deduplication
-- **Route matching** — Automatic linking of activities to routes
+- **Route matching** — Course suggestions and confirmed ride links
 - **GPX import/export** — Upload and download GPX files
 - **Surface breakdown** — Surface type analysis for routes
 
@@ -213,6 +213,13 @@ Once the backend is running, visit:
 - **CSV export** — Lifting sessions, activities, personal records
 - **PDF reports** — Formatted training reports
 - **Database backup** — Weekly automated pg_dump with 30-day retention
+
+## Working on this repo with an AI agent
+
+The canonical agent context is [`AGENTS.md`](AGENTS.md) — DSH injects it into
+every session. DSH setup, tools and delegation: [`docs/DSH.md`](docs/DSH.md);
+commands and environment: [`docs/RUNNING.md`](docs/RUNNING.md); known traps:
+[`docs/PITFALLS.md`](docs/PITFALLS.md); active work: [`plans/README.md`](plans/README.md).
 
 ## License
 

@@ -1,5 +1,8 @@
 # Dashboard — diagnosis (Phase 0)
 
+> **Historical (2026-11-04):** the dashboard overhaul has since shipped
+> (Today · Trends · History); this file records the pre-build diagnosis.
+
 **Feature:** dashboard analysis and overhaul · **Surface:** page (`/dashboard`)
 **Owner:** agent (artifact, evidence, decision trail) · Oli (taste, acceptance)
 **Fixture:** the owner's production database, read-only, 2026-11-04 15:52 UTC

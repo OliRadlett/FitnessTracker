@@ -1,6 +1,6 @@
 # Jev Decision Layer — Implementation Plan (2026-09-27)
 
-> **Status**: Implementation plan — no code yet. The "why/what" lives in
+> **Status**: **implemented** — migration 081, `services/jev_client.py`, `jev_tagging.py`, `jev_classification.py` are on `main`; this is the delivered plan. Originally: no code yet. The "why/what" lives in
 > [`plans/jev-decision-layer.md`](jev-decision-layer.md) (design proposal). This doc is the
 > "how/when": verified touchpoints, exact files, migration numbers, tests, and PR sequence.
 >
@@ -17,15 +17,15 @@
 
 | Concern | Location (current) | Notes |
 |---|---|---|
-| Optional-integration diagnostic | [`config.py:235`](../../backend/app/config.py) `_warn_optional_integrations` | dict of `name → (id, secret)`; add a Jev entry |
-| AI budget/lock guard | [`services/llm_base.py:104`](../../backend/app/services/llm_base.py) `ai_generation_guard(user_id, kind, target)` | async context manager; **raises `HTTPException(429)`** — must be wrapped for Jev |
-| Lifting session fields | [`models/lifting.py:50-61`](../../backend/app/models/lifting.py) | `program_name`, `focus`, `total_volume_kg`, `rpe_session`, `notes` (`String(2000)`) |
-| Activity JSONB bucket | [`models/activity.py:102`](../../backend/app/models/activity.py) `context` | reuse under a `"tags"` key — no migration |
-| Injury analysis | [`services/health_analysis.py:440`](../../backend/app/services/health_analysis.py) `analyze_injury_risk` | composite of `_volume_spike_signal`, `_rest_day_signal`, … |
-| Activity↔session link matcher | [`services/strava/linking.py`](../../backend/app/services/strava/linking.py) — `_focus_overlap_score:69`, `_match_score:94`, `MATCH_THRESHOLD = 0.55:141` | keyword lists `_EXERCISE_KEYWORDS:30` |
-| Activity dedup | [`services/merge_service.py:141`](../../backend/app/services/merge_service.py) `find_duplicate_activity` | single gate `settings.activity_merge_threshold`; near-miss log `:193` |
-| Route dedup | [`services/route_service.py:132`](../../backend/app/services/route_service.py) `_compute_match_score`, `:125 _name_score`, `:966 find_potential_duplicates`, `:608 merge_routes` | **already two-tier**: `route_match_threshold=0.55` (review floor) / `route_match_auto_threshold=0.82` (auto-merge); response carries `tier` + `requires_confirmation` |
-| Search (ILIKE only) | [`api/search.py:106`](../../backend/app/api/search.py) | `LiftingSession.notes.ilike(...)` |
+| Optional-integration diagnostic | [`config.py:235`](../backend/app/config.py) `_warn_optional_integrations` | dict of `name → (id, secret)`; add a Jev entry |
+| AI budget/lock guard | [`services/llm_base.py:104`](../backend/app/services/llm_base.py) `ai_generation_guard(user_id, kind, target)` | async context manager; **raises `HTTPException(429)`** — must be wrapped for Jev |
+| Lifting session fields | [`models/lifting.py:50-61`](../backend/app/models/lifting.py) | `program_name`, `focus`, `total_volume_kg`, `rpe_session`, `notes` (`String(2000)`) |
+| Activity JSONB bucket | [`models/activity.py:102`](../backend/app/models/activity.py) `context` | reuse under a `"tags"` key — no migration |
+| Injury analysis | [`services/health_analysis.py:440`](../backend/app/services/health_analysis.py) `analyze_injury_risk` | composite of `_volume_spike_signal`, `_rest_day_signal`, … |
+| Activity↔session link matcher | [`services/strava/linking.py`](../backend/app/services/strava/linking.py) — `_focus_overlap_score:69`, `_match_score:94`, `MATCH_THRESHOLD = 0.55:141` | keyword lists `_EXERCISE_KEYWORDS:30` |
+| Activity dedup | [`services/merge_service.py:141`](../backend/app/services/merge_service.py) `find_duplicate_activity` | single gate `settings.activity_merge_threshold`; near-miss log `:193` |
+| Route dedup | [`services/route_service.py:132`](../backend/app/services/route_service.py) `_compute_match_score`, `:125 _name_score`, `:966 find_potential_duplicates`, `:608 merge_routes` | **already two-tier**: `route_match_threshold=0.55` (review floor) / `route_match_auto_threshold=0.82` (auto-merge); response carries `tier` + `requires_confirmation` |
+| Search (ILIKE only) | [`api/search.py:106`](../backend/app/api/search.py) | `LiftingSession.notes.ilike(...)` |
 | Migration head | `080` | new migration is **`081_add_lifting_ai_tags`** |
 
 **Design refinement discovered:** routes are **already** a two-tier matcher (`0.55` review →
@@ -63,7 +63,7 @@ Add to `_warn_optional_integrations()`: `"TypeSafe Jev": (self.typesafe_api_key,
 
 ### 2.2 Dependency
 Add `typesafe-sdk` to `backend/requirements.txt` (or `pyproject`). **Rebuild the backend image**
-(AGENTS pitfall #10) — the running container won't have it until then.
+(see `docs/RUNNING.md` → hot reload) — the running container won't have it until then.
 
 ### 2.3 Client (`backend/app/integrations/jev_client.py`)
 

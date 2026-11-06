@@ -13,7 +13,7 @@ passes a five-second read at 1440 and at 390.
 
 ## 1. This project's `/lifting` overhaul — the bar we already cleared
 
-- **Frame:** [`prototype/lifting/qa/out/contact-sheet.png`](../lifting/qa/out/contact-sheet.png)
+- **Frame:** `prototype/lifting/qa/out/contact-sheet.png` (not committed)
 - **Link:** in-repo · approved 2026-11-03 · same design system, same house rules
 - **Steal:** the whole shape. One hero (`Squat day` + its four numbers clustered, one `Continue`
   button). A `Jump to` action row. Recent sessions as **rows**, not cards. One trend with a

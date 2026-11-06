@@ -88,16 +88,16 @@ client cannot be created from a shell:
 - The API the Console itself uses, `clientauthconfig.googleapis.com`, returns
   **404** to a normal access token — it is not public.
 - `iap.googleapis.com/v1/projects/…/brands` returns **403** on this project.
-- `docs/GCP-AUDIT.md` §"Cannot be checked by any CLI" reached the same
-  conclusion for the list endpoint.
+- An earlier local GCP audit (not committed) reached the same conclusion for the
+  list endpoint.
 
 Registering package + SHA-1 is therefore the one irreducibly manual step.
 
 ## Deploying the backend
 
-The endpoint ships with the branch; `prod` deploys from `prod`. Until it is
-released, the app gets **404** from `/auth/mobile/google` (verified: prod returns
-404 while `/auth/me` returns 401, so the router is there and the route is not).
+The endpoint ships with the branch; `prod` deploys from `prod`. If the deployed
+branch predates the endpoint, the app gets **404** from `/auth/mobile/google`
+(the router exists, the route does not).
 For local testing point `apiBaseUrl` at your machine — `http://10.0.2.2:8000/api/v1`
 from an emulator, or the LAN IP from a phone.
 
@@ -130,7 +130,8 @@ Services. Common failures and what they mean:
 
 - No refresh token is stored: when the 30-day JWT expires the app will ask you
   to sign in again. Silent renewal is a follow-up.
-- Sign-in currently grants nothing but the token — there is no sync yet. The
-  gym flow is deliberately usable without signing in.
+- After sign-in the app pulls lifting history (`GET /lifting/sessions`) and
+  uploads finished sessions; the gym flow is still deliberately usable without
+  signing in (see [`docs/ANDROID.md`](ANDROID.md)).
 - The endpoint is rate-limited to 10 attempts/minute per client IP (fail-open on
   a Redis outage).

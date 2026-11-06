@@ -1,6 +1,6 @@
 # Routes atlas — production change (2026-11-05)
 
-Status: **implemented on the feature branch; not merged.** Supersedes the IA in
+Status: **shipped** — merged to `main` and deployed to `prod` (commits `e690345c`/`eb691630`). Supersedes the IA in
 [`routes-redesign.md`](routes-redesign.md) (which stays as the historical plan).
 
 ## Why
@@ -9,7 +9,7 @@ The old page was a CRUD console: 100 % chrome above the first route on mobile,
 a map with pins and no lines, 7 tabs in a 243 px strip, and intelligence
 (quality/terrain/surface/segments) with **0/86 rows** behind it. The evidence,
 baseline frames and the lab that proved the replacement live in
-[`prototype/routes/`](../prototype/routes/README.md).
+`prototype/routes/` (not committed).
 
 ## What shipped
 

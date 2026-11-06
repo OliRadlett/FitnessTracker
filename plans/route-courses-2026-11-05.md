@@ -1,7 +1,6 @@
 # Route courses — production plan (Course → Route → Ride)
 
-> Status: **migrations 117–119, course service/API and the `/courses` surface
-> implemented on `feature/route-courses`; not deployed.** The API is
+> Status: **shipped** — migrations 117–119 and the `/courses` surface are on `main` and `prod` (PR #436, `595993a3`). The API is
 > `GET/POST /api/v1/courses`, `GET /uncoursed`, `GET /suggestions` (review-tier
 > pairs from `route_similarity`), `GET /merge-candidates` (same-name below-floor
 > pairs), group/ungroup under
