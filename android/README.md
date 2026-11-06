@@ -43,6 +43,21 @@ against those decisions.
   estimated 1RM), the best set in each rep range, and a per-exercise e1RM line
   over the last 20 sessions. Computed from the cached history, so it works
   signed out and without a signal.
+- **Analytics**: also on Progress — eight weeks of volume as bars, where the work
+  went (volume by focus, with an "Other" tail) and the lifts trained most.
+  Computed from the same history: no `/charts` calls, warm-ups excluded.
+- **Records**: the server's `GET /lifting/prs` list, including the manual PRs
+  that have no session behind them, shown above the computed bests with a
+  "manual" badge; `+ Add` types one in. The finish summary also lists the records
+  the session just set — a lift you have never logged counts, an equal estimate
+  does not, and warm-ups or bodyweight sets never do.
+- **Today's verdict**: the server's `/dashboard/today` headline and its reasons,
+  with TSB and recovery, as the first card on Today. No verdict is no card.
+- **AI analysis**: the session detail reads the cached analysis and can ask for
+  a fresh one, showing the model that wrote it.
+- **Week**: Train → **Week** lists the active plan's current week with
+  completed/partial/missed/rest and today marked. A strength day carries its
+  prescription, and tapping it starts that session with last time's load.
 - **Session detail**: every set, grouped by exercise, with warm-ups flagged,
   AMRAP badges, per-set notes, the session note and the session's own RPE.
   Tapping a set edits it inline (weight, reps, RPE, warm-up/AMRAP, note); a set
