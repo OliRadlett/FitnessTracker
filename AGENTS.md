@@ -260,9 +260,9 @@ Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
 **Route courses** — [`plans/route-courses-2026-11-05.md`](plans/route-courses-2026-11-05.md).
 The model is **Course → Route → Ride**: `Course` is the identity, `Route` is a
 concrete variant (geometry, direction, start/end, provider sources), `Activity`
-is the ride. Migration **107** adds `courses` + `routes.course_id` +
+is the ride. Migration **116** adds `courses` + `routes.course_id` +
 `course_link_log` and backfills **one course per existing route** (1:1); it does
-not group variants or delete routes. Migration **108** adds
+not group variants or delete routes. Migration **117** adds
 `activities.route_link_status/source/confidence/confirmed_at`; every existing
 ride→route link is backfilled **`suggested` + `legacy`** because those links
 came from the WIP matcher. Course history/PRs must read `confirmed` only.

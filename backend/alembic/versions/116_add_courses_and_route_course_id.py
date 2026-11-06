@@ -1,7 +1,7 @@
 """Add Course identity above Route variants.
 
-Revision ID: 107
-Revises: 106
+Revision ID: 116
+Revises: 115
 
 A route is a concrete variant; a course is the tolerant identity above it.
 This migration is additive and reversible:
@@ -24,8 +24,8 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
-revision = "107"
-down_revision = "106"
+revision = "116"
+down_revision = "115"
 branch_labels = None
 depends_on = None
 

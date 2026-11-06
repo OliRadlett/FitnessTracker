@@ -83,13 +83,13 @@ def test_activity_link_trust_columns_and_check():
 
 
 def test_migration_chain_is_linear():
-    migration_107 = _load_migration("107_add_courses_and_route_course_id.py")
-    migration_108 = _load_migration("108_add_activity_route_link_trust.py")
-    migration_109 = _load_migration("109_add_course_suggestion_dismissals.py")
+    migration_116 = _load_migration("116_add_courses_and_route_course_id.py")
+    migration_117 = _load_migration("117_add_activity_route_link_trust.py")
+    migration_118 = _load_migration("118_add_course_suggestion_dismissals.py")
 
-    assert migration_107.revision == "107"
-    assert migration_107.down_revision == "106"
-    assert migration_108.revision == "108"
-    assert migration_108.down_revision == "107"
-    assert migration_109.revision == "109"
-    assert migration_109.down_revision == "108"
+    assert migration_116.revision == "116"
+    assert migration_116.down_revision == "115"
+    assert migration_117.revision == "117"
+    assert migration_117.down_revision == "116"
+    assert migration_118.revision == "118"
+    assert migration_118.down_revision == "117"

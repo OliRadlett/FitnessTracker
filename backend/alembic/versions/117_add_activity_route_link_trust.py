@@ -1,7 +1,7 @@
 """Add ride -> route link trust to activities.
 
-Revision ID: 108
-Revises: 107
+Revision ID: 117
+Revises: 116
 
 The existing ``activities.route_id`` links came from a work-in-progress
 matcher; they are evidence, not ground truth. This migration keeps the links
@@ -17,8 +17,8 @@ import sqlalchemy as sa
 
 from alembic import op
 
-revision = "108"
-down_revision = "107"
+revision = "117"
+down_revision = "116"
 branch_labels = None
 depends_on = None
 
