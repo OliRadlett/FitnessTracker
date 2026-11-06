@@ -45,6 +45,7 @@ import uk.oli.fittrack.domain.PlateMath
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.domain.SetEntry
+import uk.oli.fittrack.domain.WarmupTemplate
 import uk.oli.fittrack.ui.BottomAction
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.PrimaryButton
@@ -69,6 +70,8 @@ fun LiveScreen(
     restUntil: Long?,
     now: Long,
     history: List<FinishedSession>,
+    warmupTemplates: List<WarmupTemplate> = emptyList(),
+    onApplyWarmup: (WarmupTemplate) -> Unit = {},
     onLog: (SetEntry) -> Unit,
     onUndo: () -> Unit,
     onAdjustRest: (Int) -> Unit,
@@ -96,6 +99,7 @@ fun LiveScreen(
     // RPE is collapsed by default, as it is on the website: most sets do not
     // need one, and the instrument has a 360 × 804 dp budget.
     var rpeOpen by remember(exercise.name) { mutableStateOf(false) }
+    var warmupOpen by remember(session.id) { mutableStateOf(false) }
     // Which bar is on the rack. A calculator that assumes 20 kg is wrong half
     // the time in a gym with a 15 kg women's bar.
     var barKg by remember(session.id) { mutableFloatStateOf(PlateMath.DEFAULT_BAR_KG.toFloat()) }
@@ -209,7 +213,20 @@ fun LiveScreen(
             }
 
             Spacer(Modifier.height(20.dp))
-            SetRows(session, exercise, setNumber, onUndo)
+            SetRows(
+                session = session,
+                exercise = exercise,
+                setNumber = setNumber,
+                templates = if (warmupOpen) warmupTemplates else emptyList(),
+                hasTemplates = warmupTemplates.isNotEmpty(),
+                warmupOpen = warmupOpen,
+                onToggleWarmups = { warmupOpen = !warmupOpen },
+                onApplyWarmup = {
+                    onApplyWarmup(it)
+                    warmupOpen = false
+                },
+                onUndo = onUndo
+            )
             Spacer(Modifier.weight(1f))
             SetFlags(
                 warmup = warmup,
@@ -494,6 +511,11 @@ private fun SetRows(
     session: SessionState,
     exercise: PlanExercise,
     setNumber: Int,
+    templates: List<WarmupTemplate>,
+    hasTemplates: Boolean,
+    warmupOpen: Boolean,
+    onToggleWarmups: () -> Unit,
+    onApplyWarmup: (WarmupTemplate) -> Unit,
     onUndo: () -> Unit
 ) {
     // Done rows must show what was actually logged, not what the plan asked for.
@@ -506,6 +528,19 @@ private fun SetRows(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label("THIS EXERCISE")
             Spacer(Modifier.weight(1f))
+            // A saved ramp is one tap, and it lands as flagged warm-ups rather
+            // than as sets the plan has to count.
+            if (hasTemplates) {
+                Text(
+                    "Warm-ups",
+                    fontSize = 13.sp,
+                    color = if (warmupOpen) Tokens.Accent else Tokens.Muted,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onToggleWarmups() }
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
             // A fat-finger at the gym must be recoverable, not permanent.
             if (session.sets.isNotEmpty()) {
                 Text(
@@ -520,6 +555,28 @@ private fun SetRows(
             }
         }
         Spacer(Modifier.height(4.dp))
+        if (warmupOpen) {
+            templates.forEach { template ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onApplyWarmup(template) }
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(template.name, fontSize = 14.sp, color = Tokens.Fg, modifier = Modifier.weight(1f))
+                    Text(
+                        "${template.steps.size} steps · " +
+                            "${formatWeight(template.steps.first().weightKg)}–" +
+                            "${formatWeight(template.steps.last().weightKg)} kg",
+                        fontSize = 12.sp,
+                        color = Tokens.Muted
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
+        }
         warmups.forEachIndexed { index, set ->
             Row(
                 Modifier.fillMaxWidth().height(34.dp),

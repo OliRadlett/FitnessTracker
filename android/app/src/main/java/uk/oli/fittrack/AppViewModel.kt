@@ -117,6 +117,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _syncError.value = null
                 _syncedAt.value = System.currentTimeMillis()
                 loadTodayPlan(token)
+                loadWarmupTemplates(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -219,6 +220,90 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val _restDay = MutableStateFlow(false)
     val restDay: StateFlow<Boolean> = _restDay.asStateFlow()
+
+    /** Saved warm-up templates, offered on the Live screen. */
+    private val _warmupTemplates = MutableStateFlow<List<uk.oli.fittrack.domain.WarmupTemplate>>(emptyList())
+    val warmupTemplates: StateFlow<List<uk.oli.fittrack.domain.WarmupTemplate>> =
+        _warmupTemplates.asStateFlow()
+
+    /** Activities the open session could be linked to (only fetched on demand). */
+    private val _linkCandidates = MutableStateFlow<List<uk.oli.fittrack.domain.LinkedActivity>>(emptyList())
+    val linkCandidates: StateFlow<List<uk.oli.fittrack.domain.LinkedActivity>> =
+        _linkCandidates.asStateFlow()
+
+    fun loadLinkableActivities(sessionId: String) {
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to link an activity."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                _linkCandidates.value = liftingApi.linkableActivities(token, sessionId)
+                if (_linkCandidates.value.isEmpty()) {
+                    _syncError.value = "No Strava activities to link."
+                }
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not load activities."
+            }
+        }
+    }
+
+    fun clearLinkCandidates() {
+        _linkCandidates.value = emptyList()
+    }
+
+    /** Link (or unlink, with a null [activity]) and put it back if the server refuses. */
+    fun linkActivity(sessionId: String, activity: uk.oli.fittrack.domain.LinkedActivity?) {
+        val session = _history.value.firstOrNull { it.id == sessionId } ?: return
+        val old = session.linkedActivity
+        if (old == activity) return
+        replaceSession(session, session.copy(linkedActivity = activity))
+        _linkCandidates.value = emptyList()
+
+        if (!session.synced) return
+        val token = _auth.value.token
+        if (token == null) {
+            replaceSession(session.copy(linkedActivity = activity), session)
+            _syncError.value = "Sign in to change the link."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                try {
+                    liftingApi.linkActivity(token, sessionId, activity?.id)
+                    _syncError.value = null
+                } catch (e: Exception) {
+                    replaceSession(session.copy(linkedActivity = activity), session)
+                    _syncError.value = e.message ?: "Could not change the link."
+                }
+            }
+        }
+    }
+
+    private suspend fun loadWarmupTemplates(token: String) {
+        runCatching { liftingApi.warmupTemplates(token) }
+            .getOrNull()
+            ?.let { _warmupTemplates.value = it }
+    }
+
+    /**
+     * Log a template's steps as warm-ups for the current exercise. Local-only by
+     * design: the session is not on the server until it is finished, so this
+     * works with no signal at all.
+     */
+    fun applyWarmupTemplate(template: uk.oli.fittrack.domain.WarmupTemplate) {
+        val current = _session.value ?: return
+        val exercise = template.exercise ?: currentExerciseName(current)
+        val updated = uk.oli.fittrack.domain.SessionEngine.addWarmups(
+            current,
+            exercise,
+            template.steps,
+            System.currentTimeMillis()
+        )
+        if (updated === current) return
+        _session.value = updated
+        store.save(updated)
+    }
 
     fun updatePlan(newPlan: uk.oli.fittrack.domain.Plan) {
         _plan.value = newPlan

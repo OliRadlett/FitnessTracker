@@ -10,7 +10,9 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import uk.oli.fittrack.domain.FinishedSession
+import uk.oli.fittrack.domain.LinkedActivity
 import uk.oli.fittrack.domain.LoggedSet
+import uk.oli.fittrack.domain.SessionLabels
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -37,8 +39,34 @@ private data class SessionDto(
     val duration_seconds: Int? = null,
     val started_at: String? = null,
     val ended_at: String? = null,
+    val session_split: String? = null,
+    val session_lift: String? = null,
+    val session_class: String? = null,
+    val linked_activity: LinkedActivityDto? = null,
     val sets: List<SetDto> = emptyList()
 )
+
+@Serializable
+private data class LinkedActivityDto(
+    val id: String,
+    val name: String = "",
+    val source: String = "strava",
+    val start_date: String? = null,
+    val duration_seconds: Int? = null
+)
+
+@Serializable
+private data class ActivityDto(
+    val id: String,
+    val name: String = "",
+    val source: String = "strava",
+    val start_date: String? = null,
+    val duration_seconds: Int? = null
+)
+
+/** `PUT /sessions/{id}/link` body; a null id unlinks. */
+@Serializable
+internal data class LinkBody(val activity_id: String?)
 
 @Serializable
 private data class SetDto(
@@ -63,6 +91,19 @@ object LiftingJson {
     /** One set as the append endpoint returns it (a `LiftingSetRead`). */
     fun decodeSet(body: String, at: Long = System.currentTimeMillis()): LoggedSet? =
         runCatching { json.decodeFromString<SetDto>(body).toLoggedSet(at) }.getOrNull()
+
+    /** `GET /sessions/{id}/linkable-activities` returns full `ActivityRead`s; a subset is enough. */
+    fun decodeActivities(body: String): List<LinkedActivity> = runCatching {
+        json.decodeFromString<List<ActivityDto>>(body).map {
+            LinkedActivity(
+                id = it.id,
+                name = it.name.ifBlank { "Activity" },
+                source = it.source,
+                startAt = parseInstant(it.start_date) ?: 0L,
+                durationSeconds = it.duration_seconds
+            )
+        }
+    }.getOrDefault(emptyList())
 
     private fun SessionDto.toFinished(): FinishedSession? {
         val start = parseInstant(started_at) ?: parseDate(session_date) ?: return null
@@ -89,12 +130,25 @@ object LiftingJson {
             // It came from the server; pushing it back would be a loop.
             synced = true,
             note = notes?.takeIf { it.isNotBlank() },
-            rpeSession = rpe_session
+            rpeSession = rpe_session,
+            labels = SessionLabels(
+                split = session_split?.takeIf { it.isNotBlank() },
+                lift = session_lift?.takeIf { it.isNotBlank() },
+                klass = session_class?.takeIf { it.isNotBlank() }
+            ).takeIf { it.any },
+            linkedActivity = linked_activity?.let {
+                LinkedActivity(
+                    id = it.id,
+                    name = it.name.ifBlank { "Linked activity" },
+                    source = it.source,
+                    startAt = parseInstant(it.start_date) ?: 0L,
+                    durationSeconds = it.duration_seconds
+                )
+            }
         )
     }
 
-    private fun SetDto.toLoggedSet(at: Long) = LoggedSet(
-        // Trimmed at the boundary: the server has held "Legs " and
+    private fun SetDto.toLoggedSet(at: Long) = LoggedSet(        // Trimmed at the boundary: the server has held "Legs " and
         // "Bench Press " (a trailing space survives the website's form), and an
         // untrimmed name silently splits a lift's history in two.
         exercise = exercise_name.trim(),
@@ -149,6 +203,59 @@ class LiftingApi(private val baseUrl: String) {
                     throw ApiException(response.code, "Could not load lifting history (${response.code})")
                 }
                 LiftingJson.decode(body)
+            }
+        }
+
+    /** Strava activities that could be the ride/class behind a session. */
+    suspend fun linkableActivities(token: String, sessionId: String): List<LinkedActivity> =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId/linkable-activities")
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not load linkable activities (${response.code})")
+                }
+                LiftingJson.decodeActivities(body)
+            }
+        }
+
+    /** Link the session to an activity, or unlink it with a null id. */
+    suspend fun linkActivity(token: String, sessionId: String, activityId: String?) =
+        withContext(Dispatchers.IO) {
+            val payload = LiftingPatchJson.encodeToString(LinkBody(activityId))
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId/link")
+                .header("Authorization", "Bearer $token")
+                .put(payload.toRequestBody(jsonMedia))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not update the link (${response.code})")
+                }
+            }
+        }
+
+    /** The saved warm-up templates (the website's Templates tab). */
+    suspend fun warmupTemplates(token: String): List<uk.oli.fittrack.domain.WarmupTemplate> =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/warmup-templates")
+                .header("Authorization", "Bearer $token")
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not load warm-up templates (${response.code})")
+                }
+                WarmupJson.decode(body)
             }
         }
 
@@ -281,6 +388,52 @@ data class SessionPatch(
     val duration_seconds: Int
 )
 
+/** A saved warm-up template, as `GET /lifting/warmup-templates` returns it. */
+@Serializable
+private data class WarmupTemplateDto(
+    val id: String,
+    val name: String = "",
+    val exercise_name: String? = null,
+    val steps: List<WarmupStepDto> = emptyList()
+)
+
+@Serializable
+private data class WarmupStepDto(
+    val step_number: Int = 0,
+    val weight_kg: Double = 0.0,
+    val reps: Int = 0,
+    val notes: String? = null
+)
+
+object WarmupJson {
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun decode(body: String): List<uk.oli.fittrack.domain.WarmupTemplate> =
+        runCatching {
+            json.decodeFromString<List<WarmupTemplateDto>>(body).mapNotNull { dto ->
+                val steps = dto.steps
+                    .sortedBy { it.step_number }
+                    .filter { it.reps > 0 && it.weight_kg >= 0.0 }
+                    .map {
+                        uk.oli.fittrack.domain.WarmupStep(
+                            weightKg = it.weight_kg,
+                            reps = it.reps,
+                            note = it.notes?.takeIf { note -> note.isNotBlank() }
+                        )
+                    }
+                // A template with no usable steps cannot be applied, so it is
+                // not offered.
+                if (steps.isEmpty()) return@mapNotNull null
+                uk.oli.fittrack.domain.WarmupTemplate(
+                    id = dto.id,
+                    name = dto.name.trim().ifBlank { "Warm-up" },
+                    exercise = dto.exercise_name?.trim()?.takeIf { it.isNotBlank() },
+                    steps = steps
+                )
+            }
+        }.getOrDefault(emptyList())
+}
 /** One set to append, in the wire's names. `order_index` is the server's to assign. */
 @Serializable
 data class NewSetBody(

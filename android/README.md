@@ -69,11 +69,10 @@ against those decisions.
 - **Offline plan**: today's session comes from the training plan when signed in
   (`GET /training/plans`). Signed out — or before the first sync — the app
   prescribes the seeded push day from `data/SessionStore.kt › SeedPlan`.
-- **Lifting parity is in progress** — the phase list P0–P8 in
+- **Lifting parity is in progress** — the phase list P0–P9 in
   [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md) is
   complete and has been run on a real phone (OnePlus 11, 360×804 dp) against
-  prod. Still on the matrix: session labels/AI tags, a linked Strava activity,
-  manual PRs, and warm-up templates.
+  prod. Still on the matrix: manual PRs (a PR with no session behind it).
 - No widgets, Health Connect, background sync or notifications.
 - Sign-in is not a gate — the gym flow works before you authenticate. Logging a
   set must never wait on a network round trip.

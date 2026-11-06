@@ -55,6 +55,22 @@ data class SetEntry(
     val isAmrap: Boolean = false
 )
 
+/** One step of a warm-up template: a load and a rep count, not a working set. */
+@Serializable
+data class WarmupStep(val weightKg: Double, val reps: Int, val note: String? = null)
+
+/** A saved ramp, as the website's Templates tab holds it. */
+@Serializable
+data class WarmupTemplate(
+    val id: String,
+    val name: String,
+    /** Null means "whatever exercise is current". */
+    val exercise: String? = null,
+    val steps: List<WarmupStep> = emptyList()
+) {
+    val totalReps: Int get() = steps.sumOf { it.reps }
+}
+
 /** A session in progress. Persisted after every set, so the process dying mid-workout costs nothing. */
 @Serializable
 data class SessionState(
@@ -149,6 +165,34 @@ object SessionEngine {
     /** Clamp a rest adjustment into something a gym actually uses. */
     fun restTarget(currentSeconds: Int, deltaSeconds: Int): Int =
         (currentSeconds + deltaSeconds).coerceIn(MIN_REST_SECONDS, MAX_REST_SECONDS)
+
+    /**
+     * Log a template's steps as warm-ups for one exercise. Warm-ups do not count
+     * towards the plan, so this cannot skip a working set — it only fills in the
+     * ramp you were going to do anyway.
+     */
+    fun addWarmups(
+        state: SessionState,
+        exercise: String,
+        steps: List<WarmupStep>,
+        at: Long
+    ): SessionState {
+        if (steps.isEmpty()) return state
+        val name = exercise.trim().ifBlank { return state }
+        return state.copy(
+            sets = state.sets + steps.map {
+                LoggedSet(
+                    exercise = name,
+                    weightKg = it.weightKg,
+                    reps = it.reps,
+                    rpe = null,
+                    at = at,
+                    isWarmup = true,
+                    note = it.note?.takeIf { note -> note.isNotBlank() }
+                )
+            }
+        )
+    }
 
     /**
      * Turn a session in progress into history. The session's own RPE and note
