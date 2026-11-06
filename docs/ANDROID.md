@@ -195,6 +195,17 @@ web UI: its decisions come from [`prototype/android/`](../prototype/android/READ
   [`net/ActivitiesApi.kt`](../android/app/src/main/java/uk/oli/fittrack/net/ActivitiesApi.kt);
   reached from You → Activities. The website's comparison mode and replay
   theatre are deliberately absent.
+- **Notifications page**: [`ui/notifications/NotificationsScreen.kt`](../android/app/src/main/java/uk/oli/fittrack/ui/notifications/NotificationsScreen.kt)
+  lists what the server wants to tell you, unread first and raised, read ones
+  flat and muted, with the type in words ("Health", "Record", …) and an age that
+  reads as a clock time today, "Yesterday", a weekday, then a date. Tapping one
+  marks it read locally and on the server; "Mark all read" becomes "Refresh"
+  when nothing is unread. Data in
+  [`net/NotificationsApi.kt`](../android/app/src/main/java/uk/oli/fittrack/net/NotificationsApi.kt)
+  (`/notifications`, `/summary`, `PATCH /{id}/read`, `POST /read-all`). The
+  website's type filters and preference grid stay on the website — a phone reads
+  a notification, it does not configure one. Reached from You, which shows the
+  unread count.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md)), the
