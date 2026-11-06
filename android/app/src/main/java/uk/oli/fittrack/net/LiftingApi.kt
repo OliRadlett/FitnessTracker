@@ -11,7 +11,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.LoggedSet
-import uk.oli.fittrack.domain.SessionEngine
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -367,7 +366,7 @@ internal data class CreateSetBody(
     val set_number: Int,
     val weight_kg: Double,
     val reps: Int,
-    val rpe: Double,
+    val rpe: Double?,
     val is_warmup: Boolean,
     val is_amrap: Boolean,
     val notes: String? = null,
@@ -394,7 +393,7 @@ internal object LiftingPush {
                 set_number = number,
                 weight_kg = set.weightKg,
                 reps = set.reps,
-                rpe = set.rpe ?: SessionEngine.DEFAULT_RPE.toDouble(),
+                rpe = set.rpe,
                 is_warmup = set.isWarmup,
                 is_amrap = set.isAmrap,
                 notes = set.note,

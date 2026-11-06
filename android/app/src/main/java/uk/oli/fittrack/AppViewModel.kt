@@ -229,22 +229,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return true
     }
 
-    fun logSet(weightKg: Double, reps: Int, rpe: Int) {
+    fun logSet(entry: uk.oli.fittrack.domain.SetEntry) {
         val current = _session.value ?: return
         val next = current.withSet(
             LoggedSet(
                 exercise = current.plan.exercises
                     .first { it.name == currentExerciseName(current) }
                     .name,
-                weightKg = weightKg,
-                reps = reps,
-                rpe = rpe.toDouble(),
-                at = System.currentTimeMillis()
+                weightKg = entry.weightKg,
+                reps = entry.reps,
+                rpe = entry.rpe,
+                at = System.currentTimeMillis(),
+                isWarmup = entry.isWarmup,
+                isAmrap = entry.isAmrap
             )
         )
         _session.value = next
         store.save(next)
-        startRest()
+        // A ramp-up is not a working set: the full rest belongs to the work.
+        if (!entry.isWarmup) startRest()
     }
 
     /**

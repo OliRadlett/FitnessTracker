@@ -45,6 +45,16 @@ data class LoggedSet(
     val clientId: String? = null
 )
 
+/** What the instrument is about to log. */
+data class SetEntry(
+    val weightKg: Double,
+    val reps: Int,
+    /** Null is a legitimate answer: the website logs sets without an RPE. */
+    val rpe: Double?,
+    val isWarmup: Boolean = false,
+    val isAmrap: Boolean = false
+)
+
 /** A session in progress. Persisted after every set, so the process dying mid-workout costs nothing. */
 @Serializable
 data class SessionState(

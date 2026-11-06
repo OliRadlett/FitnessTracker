@@ -67,8 +67,15 @@ the end, because installing per-fix wastes the only real screen we have.
   (`SessionEngine.planFrom`). Warm-ups are not copied — they are something you
   ramp through, not a set the plan owes you. Refused, with the reason on the
   button, while another session is in progress.
-- [ ] **P4 — live-flow fidelity.** Warm-up toggle, AMRAP, optional RPE,
-  per-set notes, editable rest target, plate calculator.
+- [x] **P4 — set flags and RPE.** A Warm-up toggle logs a set that is kept,
+  flagged and excluded from the plan, the volume and the prefill — and starts no
+  rest. AMRAP flags a set the same way. RPE is optional (`—`) and can be a half
+  point (6.0–10.0 by 0.5) instead of the five whole-number chips. A warm-up is
+  pushed with `is_warmup`, an AMRAP set with `is_amrap`, and a set with no RPE
+  is sent as `null` rather than the old invented 7.
+- [ ] **P4b — rest target and plates.** Editable rest target (the website's is
+  readiness-derived; the app's is a fixed 2:30 countdown) and the plate
+  calculator.
 - [ ] **P5 — progress.** PRs (`GET /lifting/prs`), best-by-rep-range, and an
   exercise-progress view driven by `GET /charts/exercise_progress`; weekly
   volume and estimated-1RM history from `/charts/*` rather than re-derived.

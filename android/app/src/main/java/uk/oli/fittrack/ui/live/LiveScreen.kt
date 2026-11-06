@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -41,6 +43,7 @@ import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.PlanExercise
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
+import uk.oli.fittrack.domain.SetEntry
 import uk.oli.fittrack.ui.BottomAction
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.PrimaryButton
@@ -65,7 +68,7 @@ fun LiveScreen(
     restUntil: Long?,
     now: Long,
     history: List<FinishedSession>,
-    onLog: (Double, Int, Int) -> Unit,
+    onLog: (SetEntry) -> Unit,
     onUndo: () -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit
@@ -83,7 +86,14 @@ fun LiveScreen(
 
     var weight by remember(exercise.name, setNumber) { mutableFloatStateOf(prefill.weightKg.toFloat()) }
     var reps by remember(exercise.name, setNumber) { mutableIntStateOf(prefill.reps) }
-    var rpe by remember(exercise.name, setNumber) { mutableIntStateOf(prefill.rpe) }
+    var rpe by remember(exercise.name, setNumber) { mutableStateOf<Double?>(prefill.rpe.toDouble()) }
+    // A ramp-up is usually several sets in a row, so the toggle survives a log;
+    // it resets when the exercise does.
+    var warmup by remember(exercise.name) { mutableStateOf(false) }
+    var amrap by remember(exercise.name) { mutableStateOf(false) }
+    // RPE is collapsed by default, as it is on the website: most sets do not
+    // need one, and the instrument has a 360 × 804 dp budget.
+    var rpeOpen by remember(exercise.name) { mutableStateOf(false) }
 
     // The VM only ticks while resting; the session clock has to run all the time.
     var clock by remember { mutableLongStateOf(session.startedAt) }
@@ -165,16 +175,95 @@ fun LiveScreen(
             Spacer(Modifier.height(20.dp))
             SetRows(session, exercise, setNumber, onUndo)
             Spacer(Modifier.weight(1f))
-            RpeRow(rpe) { rpe = it }
-            Spacer(Modifier.height(18.dp))
+            SetFlags(
+                warmup = warmup,
+                amrap = amrap,
+                rpe = rpe,
+                rpeOpen = rpeOpen,
+                onWarmup = { warmup = !warmup },
+                onAmrap = { amrap = !amrap },
+                onRpeToggle = { rpeOpen = !rpeOpen }
+            )
+            if (rpeOpen) {
+                Spacer(Modifier.height(8.dp))
+                RpeRow(rpe) {
+                    rpe = it
+                    rpeOpen = false
+                }
+            }
+            Spacer(Modifier.height(14.dp))
         }
 
         BottomAction {
             PrimaryButton(
-                if (resting) "Log set $setNumber" else "Log set",
-                onClick = { onLog(weight.toDouble(), reps, rpe) }
+                when {
+                    warmup -> "Log warm-up"
+                    resting -> "Log set $setNumber"
+                    else -> "Log set"
+                },
+                onClick = { onLog(SetEntry(weight.toDouble(), reps, rpe, warmup, amrap)) }
             )
         }
+    }
+}
+
+/** Warm-up and AMRAP are set properties, not afterthoughts: flag them as you log. */
+@Composable
+private fun SetFlags(
+    warmup: Boolean,
+    amrap: Boolean,
+    rpe: Double?,
+    rpeOpen: Boolean,
+    onWarmup: () -> Unit,
+    onAmrap: () -> Unit,
+    onRpeToggle: () -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FlagChip("Warm-up", warmup, onWarmup)
+        Spacer(Modifier.width(8.dp))
+        FlagChip("AMRAP", amrap, onAmrap)
+        Spacer(Modifier.weight(1f))
+        // Collapsed by default, as on the website; tapping opens the grid.
+        Text(
+            "RPE ${formatRpe(rpe)}",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (rpeOpen) Tokens.Accent else Tokens.Fg,
+            modifier = Modifier
+                .clip(RoundedCornerShape(10.dp))
+                .background(Tokens.Surface)
+                .testTag("rpe-pill")
+                .clickable { onRpeToggle() }
+                .padding(horizontal = 12.dp, vertical = 11.dp)
+        )
+    }
+    if (warmup) {
+        Spacer(Modifier.height(4.dp))
+        Text("warm-up · does not count", fontSize = 12.sp, color = Tokens.Muted)
+    }
+}
+
+@Composable
+private fun FlagChip(text: String, selected: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .height(40.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) Tokens.Accent.copy(alpha = 0.12f) else Tokens.Surface)
+            .then(
+                if (selected) Modifier.border(1.5.dp, Tokens.Accent, RoundedCornerShape(12.dp))
+                else Modifier
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 14.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) Tokens.Accent else Tokens.Muted
+        )
     }
 }
 
@@ -211,7 +300,9 @@ private fun Chevron() {
 
 @Composable
 private fun LastSetCard(session: SessionState, exercise: PlanExercise) {
-    val last = session.sets.lastOrNull { it.exercise == exercise.name }
+    // The card is the reference for the next *working* set, so a ramp-up never
+    // becomes the thing the instrument is quoting back at you.
+    val last = session.sets.lastOrNull { it.exercise == exercise.name && !it.isWarmup }
     Row(
         Modifier
             .fillMaxWidth()
@@ -337,7 +428,11 @@ private fun SetRows(
     onUndo: () -> Unit
 ) {
     // Done rows must show what was actually logged, not what the plan asked for.
+    // Warm-ups get their own muted rows: they are real sets, but the plan's
+    // numbering belongs to working sets alone.
     val logged = session.sets.filter { it.exercise == exercise.name }
+    val warmups = logged.filter { it.isWarmup }
+    val working = logged.filterNot { it.isWarmup }
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Label("THIS EXERCISE")
@@ -356,8 +451,31 @@ private fun SetRows(
             }
         }
         Spacer(Modifier.height(4.dp))
+        warmups.forEachIndexed { index, set ->
+            Row(
+                Modifier.fillMaxWidth().height(34.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(Modifier.width(4.dp).height(16.dp))
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    "W${index + 1}",
+                    fontSize = 13.sp,
+                    color = Tokens.Muted,
+                    modifier = Modifier.width(60.dp)
+                )
+                Text(
+                    "${formatWeight(set.weightKg)} × ${set.reps}",
+                    fontSize = 14.sp,
+                    color = Tokens.Muted,
+                    style = Tabular
+                )
+                Spacer(Modifier.weight(1f))
+                Text("warm-up", fontSize = 12.sp, color = Tokens.Muted)
+            }
+        }
         for (i in 1..exercise.sets) {
-            val record = logged.getOrNull(i - 1)
+            val record = working.getOrNull(i - 1)
             val done = record != null
             val current = i == setNumber
             Row(
@@ -389,6 +507,10 @@ private fun SetRows(
                     style = Tabular
                 )
                 Spacer(Modifier.weight(1f))
+                if (record?.isAmrap == true) {
+                    Text("AMRAP", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Tokens.Accent)
+                    Spacer(Modifier.width(6.dp))
+                }
                 if (done) Text("✓", fontSize = 14.sp, color = Tokens.Accent)
             }
         }
@@ -396,34 +518,44 @@ private fun SetRows(
 }
 
 @Composable
-private fun RpeRow(selected: Int, onSelect: (Int) -> Unit) {
+private fun RpeRow(selected: Double?, onSelect: (Double?) -> Unit) {
+    // Half points matter: "8.5" is a real answer, and the website can log it.
+    // Two rows of five fit where ten chips in one row do not.
+    val options = listOf<Double?>(null, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0)
     Column {
-        Label("RPE")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Label("RPE")
+            Spacer(Modifier.weight(1f))
+            Text("optional · half points", fontSize = 12.sp, color = Tokens.Muted)
+        }
         Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(6, 7, 8, 9, 10).forEach { value ->
-                val isSelected = value == selected
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (isSelected) Tokens.Accent.copy(alpha = 0.12f) else Tokens.Surface)
-                        .then(
-                            if (isSelected) Modifier.border(1.5.dp, Tokens.Accent, RoundedCornerShape(14.dp))
-                            else Modifier
+        options.chunked(5).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { value ->
+                    val isSelected = value == selected
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSelected) Tokens.Accent.copy(alpha = 0.12f) else Tokens.Surface)
+                            .then(
+                                if (isSelected) Modifier.border(1.5.dp, Tokens.Accent, RoundedCornerShape(12.dp))
+                                else Modifier
+                            )
+                            .clickable { onSelect(value) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            value?.let { formatRpe(it) } ?: "—",
+                            fontSize = 14.sp,
+                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isSelected) Tokens.Accent else Tokens.Muted
                         )
-                        .clickable { onSelect(value) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        value.toString(),
-                        fontSize = 15.sp,
-                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (isSelected) Tokens.Accent else Tokens.Muted
-                    )
+                    }
                 }
             }
+            Spacer(Modifier.height(6.dp))
         }
     }
 }

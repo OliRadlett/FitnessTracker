@@ -15,6 +15,11 @@ against those decisions.
 - Live: prefilled weight/reps/RPE from the set you just did, ± steppers, RPE
   chips, rest timer, and a per-exercise set list showing what you actually
   logged.
+- Live set flags: **Warm-up** logs a ramp-up set (kept and flagged, but it does
+  not count towards the plan, the volume or the next prefill, and starts no
+  rest), **AMRAP** flags a set as all-out, and RPE is optional and can be a half
+  point (6.0–10.0 by 0.5). All three travel to the API as `is_warmup`,
+  `is_amrap` and a nullable `rpe`.
 - Done: volume, sets, duration and top set, computed from the log.
 - Process death costs nothing: the session is written to disk after every set.
 - **History**: finishing a session (early or complete) writes it to

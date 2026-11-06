@@ -537,32 +537,33 @@ private fun SetEditor(
         Spacer(Modifier.height(12.dp))
         Label("RPE")
         Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            // A half-point RPE pulled from the website is preserved untouched;
-            // the chips offer whole numbers plus "none", which is what the app
-            // itself can log.
-            (listOf(null) + listOf(6.0, 7.0, 8.0, 9.0, 10.0)).forEach { option ->
-                val selected = option == rpe
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(if (selected) Tokens.Accent.copy(alpha = 0.12f) else Tokens.Surface)
-                        .then(
-                            if (selected) Modifier.border(1.5.dp, Tokens.Accent, RoundedCornerShape(10.dp))
-                            else Modifier
+        val options = listOf<Double?>(null, 6.0, 6.5, 7.0, 7.5, 8.0, 8.5, 9.0, 9.5, 10.0)
+        options.chunked(5).forEach { row ->
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                row.forEach { option ->
+                    val selected = option == rpe
+                    Box(
+                        Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selected) Tokens.Accent.copy(alpha = 0.12f) else Tokens.Surface)
+                            .then(
+                                if (selected) Modifier.border(1.5.dp, Tokens.Accent, RoundedCornerShape(10.dp))
+                                else Modifier
+                            )
+                            .clickable { rpe = option },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            option?.let { formatRpe(it) } ?: "—",
+                            fontSize = 13.sp,
+                            color = if (selected) Tokens.Accent else Tokens.Muted
                         )
-                        .clickable { rpe = option },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        option?.let { formatRpe(it) } ?: "—",
-                        fontSize = 13.sp,
-                        color = if (selected) Tokens.Accent else Tokens.Muted
-                    )
+                    }
                 }
             }
+            Spacer(Modifier.height(6.dp))
         }
 
         Spacer(Modifier.height(12.dp))
