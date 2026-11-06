@@ -34,6 +34,7 @@ import uk.oli.fittrack.domain.LoggedSet
 import uk.oli.fittrack.domain.Plan
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
+import uk.oli.fittrack.net.TodayBrief
 import uk.oli.fittrack.ui.BottomAction
 import uk.oli.fittrack.ui.BottomNav
 import uk.oli.fittrack.ui.Label
@@ -63,6 +64,8 @@ fun TodayScreen(
     planFromServer: Boolean = false,
     plannedPlanName: String? = null,
     restDay: Boolean = false,
+    brief: TodayBrief? = null,
+    onRefreshBrief: () -> Unit = {},
     onEditPlan: () -> Unit,
     onOpenSession: (String) -> Unit,
     onSignIn: () -> Unit,
@@ -116,6 +119,11 @@ fun TodayScreen(
                 color = Tokens.Fg
             )
             Spacer(Modifier.height(20.dp))
+            val shownBrief = brief
+            if (shownBrief != null) {
+                BriefCard(shownBrief)
+                Spacer(Modifier.height(16.dp))
+            }
             if (restDay && session == null) {
                 // The plan asked for a rest day; say so rather than
                 // prescribing the seeded push day.
@@ -178,6 +186,43 @@ fun TodayScreen(
             }
         }
         BottomNav(NavKind.Today, onTab)
+    }
+}
+
+/**
+ * The day's verdict, from the server. It is deliberately the first thing on the
+ * screen and deliberately short: one sentence, the reasons that matter, and the
+ * two numbers people ask about.
+ */
+@Composable
+private fun BriefCard(brief: TodayBrief) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(Tokens.Surface)
+            .padding(16.dp)
+    ) {
+        Label("TODAY")
+        Spacer(Modifier.height(6.dp))
+        Text(
+            brief.headline,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = if (brief.shouldRest) Tokens.Accent else Tokens.Fg
+        )
+        brief.reasons.forEach { reason ->
+            Spacer(Modifier.height(4.dp))
+            Text("· $reason", fontSize = 13.sp, color = Tokens.Muted)
+        }
+        val numbers = buildList {
+            brief.tsb?.let { add("TSB ${it.toInt()}") }
+            brief.recovery?.let { add("recovery ${it.toInt()}%") }
+        }
+        if (numbers.isNotEmpty()) {
+            Spacer(Modifier.height(8.dp))
+            Text(numbers.joinToString("  ·  "), fontSize = 12.sp, color = Tokens.Muted)
+        }
     }
 }
 

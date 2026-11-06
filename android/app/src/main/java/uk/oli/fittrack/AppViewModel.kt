@@ -64,6 +64,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val liftingApi = LiftingApi(BuildConfig.API_BASE_URL)
     private val planApi = uk.oli.fittrack.net.PlanApi(BuildConfig.API_BASE_URL)
     private val prApi = uk.oli.fittrack.net.PrApi(BuildConfig.API_BASE_URL)
+    private val todayApi = uk.oli.fittrack.net.TodayApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -121,6 +122,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadWarmupTemplates(token)
                 loadPlanWeek(token)
                 loadRecords(token)
+                loadBrief(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -196,6 +198,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _planWeek.value = null
         _warmupTemplates.value = emptyList()
         _records.value = emptyList()
+        _brief.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -226,6 +229,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     private val _restDay = MutableStateFlow(false)
     val restDay: StateFlow<Boolean> = _restDay.asStateFlow()
+
+    /** The day's brief from `/dashboard/today`; null when signed out or offline. */
+    private val _brief = MutableStateFlow<uk.oli.fittrack.net.TodayBrief?>(null)
+    val brief: StateFlow<uk.oli.fittrack.net.TodayBrief?> = _brief.asStateFlow()
+
+    private suspend fun loadBrief(token: String) {
+        runCatching { todayApi.brief(token) }.getOrNull()?.let { _brief.value = it }
+    }
+
+    /** The Today screen asks for a fresh brief when it opens. */
+    fun refreshBrief() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadBrief(token) }
+    }
 
     /** Analyses already fetched this session, by session id. */
     private val _analyses =

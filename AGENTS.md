@@ -149,6 +149,11 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   current plan alone rather than inventing a rest day. `SeedPlan` is only the
   fallback when signed out or offline, and the phone's plan editor is hidden
   while a server plan is showing.
+- **Today's verdict**: `/dashboard/today` → the unified verdict card at the top
+  of Today ([`net/TodayApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/TodayApi.kt)):
+  the server's headline, up to three reasons, and TSB/recovery. It shows the
+  server's sentence rather than composing one, keeps an unavailable engine in
+  the list as "unavailable", and renders nothing at all when there is no verdict.
 - **AI analysis**: the session detail asks for the cached analysis (`GET
   /lifting/sessions/{id}/ai-analysis`, JSON `null` before one exists) and can
   generate one (`POST`, on a 120 s client because a model is reading the

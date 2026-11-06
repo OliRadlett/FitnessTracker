@@ -55,6 +55,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val records by vm.records.collectAsStateWithLifecycle()
     val analyses by vm.analyses.collectAsStateWithLifecycle()
     val analysisBusy by vm.analysisBusy.collectAsStateWithLifecycle()
+    val brief by vm.brief.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -77,6 +78,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 planFromServer = planFromServer,
                 plannedPlanName = plannedPlanName,
                 restDay = restDay,
+                brief = brief,
+                onRefreshBrief = vm::refreshBrief,
                 onEditPlan = { nav.navigate(Routes.PLAN_EDIT) },
                 onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                 onSignIn = { nav.navigate(Routes.SIGNIN) },

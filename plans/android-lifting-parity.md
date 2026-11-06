@@ -161,6 +161,14 @@ the end, because installing per-fix wastes the only real screen we have.
   its model and a "Run again", and an unset key surfaces as `501` on the button
   rather than a silent nothing.
 
+- [x] **P15 — today's verdict.** `GET /dashboard/today` carries the unified
+  verdict (headline, `should_rest`, reasons, per-engine consensus) plus TSB and
+  recovery. The app shows it as the first card on Today — the server's sentence,
+  not one the phone composed — with up to three reasons and the two numbers.
+  A silent engine is reported as "unavailable" rather than dropped (a list that
+  omits it reads as agreement), and no verdict at all is no card, so the screen
+  falls back to the plan alone.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates
