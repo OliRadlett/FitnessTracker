@@ -524,6 +524,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Start a session from a planned day — including one that is not today, so
+     * you can look at Thursday and start it.
+     *
+     * Refuses while another session is in progress, and returns whether it
+     * started, so the caller can navigate only when there is something to open.
+     */
+    fun startFromDay(day: uk.oli.fittrack.net.PlanDaySummary): Boolean {
+        if (_session.value != null) {
+            _syncError.value = "Finish the session in progress first."
+            return false
+        }
+        if (!day.canStart) return false
+        val plan = uk.oli.fittrack.domain.Plan(
+            title = day.focus ?: "Planned session",
+            exercises = day.exercises.map { exercise ->
+                // Last time's load is the only sensible target a planned entry
+                // can have: the plan says sets and reps, not kilos.
+                val last = uk.oli.fittrack.domain.HistoryEngine.lastSetFor(
+                    _history.value,
+                    exercise.name
+                )
+                exercise.copy(weightKg = last?.weightKg ?: 0.0)
+            }
+        )
+        val fresh = emptySession(plan)
+        _session.value = fresh
+        store.save(fresh)
+        return true
+    }
+
     fun startSession() {
         if (_session.value != null) return
         val fresh = emptySession(_plan.value)

@@ -202,6 +202,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     planWeek = planWeek,
                     records = records,
                     onAddRecord = vm::addRecord,
+                    onStartDay = { day -> if (vm.startFromDay(day)) nav.navigate(Routes.LIVE) },
                     onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                     onRefreshWeek = vm::refreshPlanWeek,
                     onTab = nav::switchTab

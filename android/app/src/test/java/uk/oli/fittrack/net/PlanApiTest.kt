@@ -97,7 +97,7 @@ class PlanApiTest {
         assertEquals("completed", week.days[0].status)
         assertEquals("rest", week.days[1].status)
         assertEquals("legs", week.days[2].focus)
-        assertEquals(1, week.days[2].exercises)
+        assertEquals(1, week.days[2].exercises.size)
         // The 6th is the fixture's "today".
         assertEquals(listOf(false, false, true), week.days.map { it.isToday })
 

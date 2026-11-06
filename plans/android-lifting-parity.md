@@ -169,6 +169,13 @@ the end, because installing per-fix wastes the only real screen we have.
   omits it reads as agreement), and no verdict at all is no card, so the screen
   falls back to the plan alone.
 
+- [x] **P16 — start a day from the Week.** The Week view carried only a count of
+  exercises; now each day carries its prescription, so tapping a strength day
+  starts that session — including a day that is not today, which is what a week
+  view is *for*. The load is last time's, because a planned entry says sets and
+  reps, not kilos. A run/rest/empty day is not clickable, and starting is refused
+  while another session is in progress rather than throwing away logged sets.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

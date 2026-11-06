@@ -144,9 +144,12 @@ data class PlanDaySummary(
     val sport: String,
     val focus: String?,
     val status: String,
-    val exercises: Int,
+    /** The day's prescription, ready to become a session (empty on a rest day). */
+    val exercises: List<PlanExercise>,
     val isToday: Boolean
-)
+) {
+    val canStart: Boolean get() = sport == "strength" && exercises.isNotEmpty()
+}
 
 /** The week around today, from the active plan. */
 data class PlanWeek(
@@ -183,12 +186,21 @@ object WeekJson {
         val week = runCatching { json.decodeFromString<WeekDto>(body) }.getOrNull() ?: return null
         val days = week.days.mapNotNull { day ->
             val date = day.day_date ?: return@mapNotNull null
+            // A planned entry carries no load, so the weight starts at zero and
+            // the view model fills it in from what you lifted last time.
+            val exercises = day.planned_exercises.orEmpty().mapNotNull { planned ->
+                val name = planned.exercise.trim()
+                if (name.isEmpty() || planned.sets <= 0 || planned.reps <= 0) {
+                    return@mapNotNull null
+                }
+                PlanExercise(name = name, sets = planned.sets, reps = planned.reps, weightKg = 0.0)
+            }
             PlanDaySummary(
                 date = date,
                 sport = day.sport ?: "rest",
                 focus = day.planned_focus?.trim()?.takeIf { it.isNotBlank() },
                 status = if (day.completed) "completed" else day.day_status,
-                exercises = day.planned_exercises.orEmpty().size,
+                exercises = exercises,
                 isToday = date == today.toString()
             )
         }

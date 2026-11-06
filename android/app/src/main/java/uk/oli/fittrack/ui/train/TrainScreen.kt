@@ -54,6 +54,7 @@ fun TrainScreen(
     planWeek: PlanWeek?,
     records: List<uk.oli.fittrack.domain.PersonalRecord> = emptyList(),
     onAddRecord: (String, Double, Int, String?) -> Unit = { _, _, _, _ -> },
+    onStartDay: (PlanDaySummary) -> Unit = {},
     onOpenSession: (String) -> Unit,
     onRefreshWeek: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -97,7 +98,7 @@ fun TrainScreen(
             when (mode) {
                 0 -> LogScreen(history, onOpenSession)
                 1 -> ProgressScreen(history, records, onAddRecord)
-                else -> WeekPlan(planWeek, onRefreshWeek)
+                else -> WeekPlan(planWeek, onRefreshWeek, onStartDay)
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -133,7 +134,11 @@ private fun ModePills(mode: Int, onSelect: (Int) -> Unit) {
  * the phone's job here is to tell you what is coming, not to rewrite it.
  */
 @Composable
-private fun WeekPlan(week: PlanWeek?, onRefresh: () -> Unit) {
+private fun WeekPlan(
+    week: PlanWeek?,
+    onRefresh: () -> Unit,
+    onStartDay: (PlanDaySummary) -> Unit
+) {
     if (week == null) {
         Text("No plan loaded.", fontSize = 15.sp, color = Tokens.Fg)
         Spacer(Modifier.height(6.dp))
@@ -168,12 +173,12 @@ private fun WeekPlan(week: PlanWeek?, onRefresh: () -> Unit) {
             color = Tokens.Muted
         )
         Spacer(Modifier.height(10.dp))
-        week.days.forEach { day -> DayRow(day) }
+        week.days.forEach { day -> DayRow(day, onStartDay) }
     }
 }
 
 @Composable
-private fun DayRow(day: PlanDaySummary) {
+private fun DayRow(day: PlanDaySummary, onStartDay: (PlanDaySummary) -> Unit) {
     val date = runCatching { LocalDate.parse(day.date) }.getOrNull()
     val title = day.focus?.let { humaniseLabel(it) }
         ?: when (day.sport) {
@@ -187,6 +192,7 @@ private fun DayRow(day: PlanDaySummary) {
             .padding(vertical = 2.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (day.isToday) Tokens.Surface else Tokens.Bg)
+            .clickable(enabled = day.canStart) { onStartDay(day) }
             .padding(horizontal = 10.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -214,8 +220,12 @@ private fun DayRow(day: PlanDaySummary) {
                 color = if (day.sport == "rest") Tokens.Muted else Tokens.Fg,
                 modifier = Modifier.weight(1f)
             )
-            if (day.exercises > 0) {
-                Text("${day.exercises} ex", fontSize = 12.sp, color = Tokens.Muted)
+            if (day.exercises.isNotEmpty()) {
+                Text(
+                    "${day.exercises.size} ex" + if (day.canStart) " ›" else "",
+                    fontSize = 12.sp,
+                    color = if (day.canStart) Tokens.Accent else Tokens.Muted
+                )
                 Spacer(Modifier.width(10.dp))
             }
             Text(

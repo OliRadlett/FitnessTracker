@@ -123,9 +123,10 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
 - **Train tab**: [`ui/train/TrainScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/train/TrainScreen.kt)
   holds Sessions · Progress · **Week** (the active plan's current week from
   `GET /training-plans/{id}/week/{n}`, Monday-numbered from the plan's start,
-  with completed/partial/missed/rest and today marked). Today is today-only; the
-  two tabs stay different things. The week is read-only — the editor is the
-  website's.
+  with completed/partial/missed/rest and today marked). A strength day carries
+  its prescription, so tapping it starts that session (load = last time's) —
+  `AppViewModel.startFromDay`, refused while one is already in progress. Today is
+  today-only; the two tabs stay different things.
 - **Labels, templates, links**: the session detail shows the classifier's
   split/lift/class chips and any linked Strava activity (link/unlink through
   `/sessions/{id}/linkable-activities` and `PUT /sessions/{id}/link`); the Live
