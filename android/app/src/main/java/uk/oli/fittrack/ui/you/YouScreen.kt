@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -62,7 +64,12 @@ fun YouScreen(
             .background(Tokens.Bg)
             .statusBarsPadding()
     ) {
-        Column(Modifier.weight(1f).padding(horizontal = 20.dp)) {
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+        ) {
             Spacer(Modifier.height(18.dp))
             Label("ACCOUNT")
             Spacer(Modifier.height(10.dp))
@@ -92,7 +99,7 @@ fun YouScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     if (auth.signedIn) {
-                        "Sync is not wired up yet — the log is still local."
+                        "Your log syncs both ways: sets logged here go up, history comes down."
                     } else {
                         "Sign in with Google to be ready for sync."
                     },

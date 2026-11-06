@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -55,7 +56,9 @@ fun GoalsScreen(
     metrics: List<GoalMetric>,
     checkIns: Map<String, List<GoalCheckIn>>,
     busy: Boolean,
+    loading: Boolean = false,
     message: String?,
+    onRefresh: () -> Unit = {},
     onCreate: (metric: String, target: Double, date: String?, note: String?) -> Unit,
     onCheckIn: (id: String, value: Double, note: String?) -> Unit,
     onStatus: (id: String, status: String) -> Unit,
@@ -106,7 +109,30 @@ fun GoalsScreen(
             }
 
             when {
-                goals == null -> Text("Loading goals…", fontSize = 14.sp, color = Tokens.Muted)
+                // A failed load is not a load in progress: showing both reads
+                // as a contradiction ("Could not load" above "Loading…").
+                goals == null && loading -> {
+                    Text("Loading goals…", fontSize = 14.sp, color = Tokens.Muted)
+                }
+                goals == null -> {
+                    Text("Goals are unavailable.", fontSize = 15.sp, color = Tokens.Fg)
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "The list could not be loaded. Your goals are still on the server.",
+                        fontSize = 13.sp,
+                        color = Tokens.Muted
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Box(
+                        Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Tokens.Surface)
+                            .clickable { onRefresh() }
+                            .padding(horizontal = 14.dp, vertical = 10.dp)
+                    ) {
+                        Text("Try again", fontSize = 13.sp, color = Tokens.Accent)
+                    }
+                }
                 goals.isEmpty() -> {
                     Text("No goals yet.", fontSize = 15.sp, color = Tokens.Fg)
                     Spacer(Modifier.height(6.dp))
@@ -338,16 +364,19 @@ private fun NewGoalForm(
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         pair.forEach { option ->
                             val selected = option.key == metric
-                            Text(
-                                option.label,
-                                fontSize = 12.sp,
-                                color = if (selected) Tokens.Bg else Tokens.Fg,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selected) Tokens.Accent else Tokens.Bg)
-                                    .clickable { metric = option.key }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp)
-                            )
+                        Text(
+                            option.label,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                            color = if (selected) Tokens.Bg else Tokens.Fg,
+                            modifier = Modifier
+                                .widthIn(max = 168.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (selected) Tokens.Accent else Tokens.Bg)
+                                .clickable { metric = option.key }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
                         }
                     }
                     Spacer(Modifier.height(6.dp))

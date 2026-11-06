@@ -126,24 +126,47 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _syncError.value = null
                 _syncedAt.value = System.currentTimeMillis()
-                loadTodayPlan(token)
-                loadWarmupTemplates(token)
-                loadPlanWeek(token)
-                loadRecords(token)
-                loadBrief(token)
-                loadWeight(token)
-                loadRides(token)
-                loadCycling(token)
-                loadDashboard(token)
-                loadGoals(token)
-                loadRoutes(token)
-                loadHealth(token)
-                loadCalendar(token)
+                // Each section fails alone. On device a single slow endpoint
+                // ("History sync failed: timeout") used to abort this whole
+                // sequence, so goals, routes, health and the calendar stayed
+                // empty even though their own endpoints were healthy.
+                attempt { loadTodayPlan(token) }
+                attempt { loadWarmupTemplates(token) }
+                attempt { loadPlanWeek(token) }
+                attempt { loadRecords(token) }
+                attempt { loadBrief(token) }
+                attempt { loadWeight(token) }
+                attempt { loadRides(token) }
+                attempt { loadCycling(token) }
+                attempt { loadDashboard(token) }
+                attempt { loadGoals(token) }
+                attempt { loadRoutes(token) }
+                attempt { loadHealth(token) }
+                attempt { loadCalendar(token) }
+                if (_syncError.value == null && firstFailure != null) {
+                    // The history itself is fine; say which section lagged
+                    // rather than claiming the whole sync failed.
+                    _syncError.value = "Some sections could not load: $firstFailure"
+                }
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
                 syncing = false
             }
+        }
+    }
+
+    /**
+     * Runs one section of the sync and remembers the first failure without
+     * letting it stop the others.
+     */
+    private var firstFailure: String? = null
+
+    private suspend fun attempt(block: suspend () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            if (firstFailure == null) firstFailure = e.message ?: e::class.simpleName
         }
     }
 
@@ -701,7 +724,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     sport = sport,
                     focus = focus,
                     notes = notes,
-                    exercises = if (sport == "strength") exercises else emptyList()
+                    // A rest day keeps whatever prescription was written: the
+                    // server leaves omitted fields alone, and a mis-tapped Rest
+                    // must not delete six exercises.
+                    exercises = if (sport == "strength") exercises else null
                 )
                 when (val result = planApi.saveDay(token, planId, dayId, edit)) {
                     is uk.oli.fittrack.net.PlanDaySave.Saved -> {
@@ -747,12 +773,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _goalMessage = MutableStateFlow<String?>(null)
     val goalMessage: StateFlow<String?> = _goalMessage.asStateFlow()
 
+    /** True while the first goals load is in flight. */
+    private val _goalLoading = MutableStateFlow(false)
+    val goalLoading: StateFlow<Boolean> = _goalLoading.asStateFlow()
+
     private val _goalBusy = MutableStateFlow(false)
     val goalBusy: StateFlow<Boolean> = _goalBusy.asStateFlow()
 
     private suspend fun loadGoals(token: String) {
+        _goalLoading.value = _goalList.value == null
         val snapshot = goalsApi.snapshot(token)
+        if (snapshot.goalsFailed) {
+            // Keep whatever we had: an empty list here would claim the account
+            // has no goals, which is exactly what a failure looked like on
+            // device ("I just created one").
+            _goalMessage.value = snapshot.failureCode?.let { "Could not load goals (HTTP $it)." }
+                ?: "Could not load goals — check the connection."
+            _goalLoading.value = false
+            if (snapshot.metrics.isNotEmpty()) _goalMetrics.value = snapshot.metrics
+            return
+        }
         _goalList.value = snapshot.goals
+        _goalLoading.value = false
         if (snapshot.metrics.isNotEmpty()) _goalMetrics.value = snapshot.metrics
         // The dashboard card reads the same goals, so it cannot go stale.
         _dashboard.value = _dashboard.value?.copy(goals = snapshot.goals)
@@ -761,6 +803,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshGoals() {
         val token = _auth.value.token ?: return
         viewModelScope.launch { loadGoals(token) }
+    }
+
+    /** Clears a failure message once the user has seen it. */
+    fun clearGoalMessage() {
+        _goalMessage.value = null
     }
 
     fun loadGoalCheckIns(goalId: String) {
@@ -777,7 +824,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             _goalBusy.value = true
             try {
                 val created = goalsApi.create(token, metric, target, date, note)
-                _goalMessage.value = if (created != null) null else "Could not create that goal."
+                if (created != null) {
+                    // Show it immediately. The list refresh can lag or fail on
+                    // its own — on device it returned 500 right after a POST,
+                    // and a goal that exists but never appears is the worst of
+                    // both worlds.
+                    _goalList.value = (_goalList.value.orEmpty() + created)
+                        .distinctBy { it.id }
+                    _goalMessage.value = null
+                } else {
+                    _goalMessage.value = "Could not create that goal."
+                }
                 loadGoals(token)
             } finally {
                 _goalBusy.value = false
@@ -811,8 +868,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteGoal(id: String) {
         val token = _auth.value.token ?: return
         viewModelScope.launch {
-            runCatching { goalsApi.delete(token, id) }
-            _goalCheckIns.value = _goalCheckIns.value - id
+            val ok = runCatching { goalsApi.delete(token, id) }.getOrDefault(false)
+            if (ok) {
+                // Remove it locally too: the list refresh may be the very thing
+                // that is broken (see createGoal).
+                _goalList.value = _goalList.value?.filterNot { it.id == id }
+                _goalCheckIns.value = _goalCheckIns.value - id
+            } else {
+                _goalMessage.value = "Could not delete that goal."
+            }
             loadGoals(token)
         }
     }
