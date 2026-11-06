@@ -147,9 +147,15 @@ class AppFlowTest {
         // a flat line through a single point.
         compose.onNodeWithText("Two sessions of an exercise and the line appears.").assertExists()
 
+        // Analytics, from the same history: volume by week, balance by focus,
+        // and the lifts trained most.
+        compose.onNodeWithText("VOLUME · 8 WEEKS").performScrollTo().assertExists()
+        compose.onNodeWithText("BALANCE").performScrollTo().assertExists()
+        compose.onNodeWithText("MOST TRAINED").performScrollTo().assertExists()
+
         // The week is a network read: signed out it says so rather than
         // pretending the plan is empty.
-        compose.onNodeWithText("Week").performClick()
+        compose.onNodeWithText("Week").performScrollTo().performClick()
         compose.waitForIdle()
         save("app-8d-week")
         compose.onNodeWithText("No plan loaded.").assertExists()

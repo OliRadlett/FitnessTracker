@@ -130,8 +130,23 @@ the end, because installing per-fix wastes the only real screen we have.
   things rather than two paths to the same list. The week is read-only on
   purpose: the editor is the website's job, the phone's is to say what is
   coming.
-- [ ] **P11 — manual PRs.** The one matrix row left: a PR with no session behind
-  it needs `GET /lifting/prs`, whose payload has never been captured.
+- [x] **P11 — the records book.** Progress could only show what the phone could
+  prove from its own history, which by definition excludes a PR with no session
+  behind it. `GET /lifting/prs` is now read (names trimmed, Brzycki filled in
+  when the server has no estimate, `manual` when `session_id` is null),
+  `POST /lifting/prs` types one in, and Progress shows RECORDS above the
+  computed bests with a "manual" badge — kept apart on purpose, because a
+  number you typed and a number the log proves should not look the same.
+- [x] **P12 — analytics from the log.** The website's Analytics tab, computed
+  locally instead of from `/charts/*` (`domain/Analytics.kt`): eight
+  Monday-based weeks of volume (zero-filled, because the gap is the point),
+  volume by focus with an "Other" tail, and the lifts trained most. Warm-ups
+  never count. The same reasoning as Progress — the screen cannot disagree with
+  the log it is drawn from, and it works on a dead signal.
+
+The lifting matrix is now complete: every row the website's `/lifting` surface
+has, the app has, except plan *editing* (deliberately the website's job — the
+app's Week view is read-only).
 - [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
   @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:
   34 real sessions pulled, the log with its filters, Progress computed from that

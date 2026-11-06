@@ -35,10 +35,12 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import uk.oli.fittrack.domain.AnalyticsEngine
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.PersonalBest
 import uk.oli.fittrack.domain.PersonalRecord
 import uk.oli.fittrack.domain.ProgressEngine
+import uk.oli.fittrack.domain.WeekVolume
 import uk.oli.fittrack.domain.recordsByExercise
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.formatWeight
@@ -272,6 +274,152 @@ private fun ComputedProgress(history: List<FinishedSession>, bests: List<Persona
         }
         Spacer(Modifier.height(10.dp))
         ProgressChart(series)
+
+        Spacer(Modifier.height(24.dp))
+        VolumeSection(history)
+
+        Spacer(Modifier.height(24.dp))
+        BalanceSection(history)
+
+        Spacer(Modifier.height(24.dp))
+        TrainedSection(history)
+    }
+}
+
+/** Eight weeks of work, as bars. A gap is a zero bar, not a missing week. */
+@Composable
+private fun VolumeSection(history: List<FinishedSession>) {
+    val now = remember { System.currentTimeMillis() }
+    val weeks = remember(history, now) { AnalyticsEngine.weeklyVolume(history, now) }
+    if (weeks.isEmpty()) return
+
+    val total = weeks.sumOf { it.volumeKg }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Label("VOLUME · ${weeks.size} WEEKS")
+        Spacer(Modifier.weight(1f))
+        Text(
+            "${formatWeight(total)} kg",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = Tokens.Accent,
+            style = TextStyle(fontFeatureSettings = "tnum")
+        )
+    }
+    Spacer(Modifier.height(10.dp))
+    VolumeBars(weeks)
+    Spacer(Modifier.height(6.dp))
+    Row {
+        Text(shortDate(weeks.first().weekStart), fontSize = 11.sp, color = Tokens.Muted)
+        Spacer(Modifier.weight(1f))
+        Text(
+            "${weeks.sumOf { it.sessions }} ${if (weeks.sumOf { it.sessions } == 1) "session" else "sessions"}",
+            fontSize = 11.sp,
+            color = Tokens.Muted
+        )
+        Spacer(Modifier.weight(1f))
+        Text("this week", fontSize = 11.sp, color = Tokens.Muted)
+    }
+}
+
+@Composable
+private fun VolumeBars(weeks: List<WeekVolume>) {
+    val max = weeks.maxOf { it.volumeKg }.coerceAtLeast(1.0)
+    Canvas(
+        Modifier
+            .fillMaxWidth()
+            .height(96.dp)
+    ) {
+        val slot = size.width / weeks.size
+        // Bars do not need to fill the slot: at eight weeks a full-width bar is
+        // a column chart, and a zero week should read as an empty slot.
+        val barWidth = minOf(slot * 0.55f, 44.dp.toPx())
+        val baseline = size.height
+        drawLine(
+            color = Tokens.Muted.copy(alpha = 0.25f),
+            start = Offset(0f, baseline),
+            end = Offset(size.width, baseline),
+            strokeWidth = 1f
+        )
+        weeks.forEachIndexed { index, week ->
+            val centre = slot * (index + 0.5f)
+            val ratio = (week.volumeKg / max).toFloat()
+            val barHeight = (baseline - 6f) * ratio
+            drawRoundRect(
+                color = Tokens.Accent,
+                topLeft = Offset(centre - barWidth / 2f, baseline - barHeight.coerceAtLeast(2f)),
+                size = androidx.compose.ui.geometry.Size(barWidth, barHeight.coerceAtLeast(2f)),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f)
+            )
+        }
+    }
+}
+
+/** Where the work went, by focus, over the same eight weeks. */
+@Composable
+private fun BalanceSection(history: List<FinishedSession>) {
+    val now = remember { System.currentTimeMillis() }
+    val slices = remember(history, now) { AnalyticsEngine.balance(history, now) }
+    if (slices.isEmpty()) return
+
+    val total = slices.sumOf { it.volumeKg }
+    Label("BALANCE")
+    Spacer(Modifier.height(10.dp))
+    slices.forEach { slice ->
+        val share = if (total <= 0.0) 0f else (slice.volumeKg / total).toFloat()
+        Column(Modifier.padding(bottom = 10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(slice.label, fontSize = 14.sp, color = Tokens.Fg, modifier = Modifier.weight(1f))
+                Text(
+                    "${(share * 100).toInt()}% · ${formatWeight(slice.volumeKg)} kg",
+                    fontSize = 12.sp,
+                    color = Tokens.Muted,
+                    style = TextStyle(fontFeatureSettings = "tnum")
+                )
+            }
+            Spacer(Modifier.height(5.dp))
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(Tokens.Muted.copy(alpha = 0.18f))
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(share.coerceIn(0f, 1f))
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Tokens.Accent)
+                )
+            }
+        }
+    }
+}
+
+/** What got trained, and how much of it. */
+@Composable
+private fun TrainedSection(history: List<FinishedSession>) {
+    val now = remember { System.currentTimeMillis() }
+    val lifts = remember(history, now) { AnalyticsEngine.mostTrained(history, now) }
+    if (lifts.isEmpty()) return
+
+    Label("MOST TRAINED")
+    Spacer(Modifier.height(8.dp))
+    lifts.forEach { lift ->
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(lift.exercise, fontSize = 14.sp, color = Tokens.Fg, modifier = Modifier.weight(1f))
+            Text(
+                "${plural(lift.sets, "set")} · ${plural(lift.sessions, "session")}",
+                fontSize = 12.sp,
+                color = Tokens.Muted,
+                style = TextStyle(fontFeatureSettings = "tnum")
+            )
+        }
     }
 }
 

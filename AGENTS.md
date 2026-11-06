@@ -147,11 +147,20 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   current plan alone rather than inventing a rest day. `SeedPlan` is only the
   fallback when signed out or offline, and the phone's plan editor is hidden
   while a server plan is showing.
-- **Not built yet**: the Ride and Body tabs (explicit "not built yet" screens),
-  and one parity row: manual PRs (a PR with no session behind it needs
-  `GET /lifting/prs`, whose payload has never been captured). The phase list
-  P0–P10 in [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
-  is complete and the device pass has run.
+- **Records**: `GET /lifting/prs` is read ([`net/PrApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/PrApi.kt)),
+  including the manual PRs that have no session behind them, and `POST
+  /lifting/prs` types one in. Progress lists them above the computed bests with
+  a "manual" badge — a typed number and a proven one must not look the same.
+- **Analytics**: [`domain/Analytics.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Analytics.kt)
+  computes eight Monday-based weeks of volume, volume by focus (with an "Other"
+  tail) and the most-trained lifts from the cached history — no `/charts` calls,
+  no network, warm-ups excluded. Same rule as Progress: it cannot disagree with
+  the log it is drawn from.
+- **Not built yet**: the Ride and Body tabs (explicit "not built yet" screens).
+  The lifting matrix is otherwise complete — the phase list P0–P12 in
+  [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md) is done
+  and the device pass has run, with plan *editing* deliberately left to the
+  website.
 
 ## Architecture
 
