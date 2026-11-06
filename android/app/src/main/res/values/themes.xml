@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+      The API-26 baseline. windowLightNavigationBar lives in values-v27 because
+      it needs 27; everything else here works at 26.
+    -->
     <style name="Theme.FitTrack" parent="android:Theme.Material.NoActionBar">
         <item name="android:windowBackground">#090E0E</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">false</item>
-        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>

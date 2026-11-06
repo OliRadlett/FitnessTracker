@@ -202,7 +202,8 @@ the end, because installing per-fix wastes the only real screen we have.
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates
-tab's job).
+tab's job). The end-to-end device checklist that proves it lives in
+[`android-device-pass.md`](android-device-pass.md).
 - [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
   @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:
   34 real sessions pulled, the log with its filters, Progress computed from that
