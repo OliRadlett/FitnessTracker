@@ -1,0 +1,54 @@
+---
+name: feature-quality
+description: Use when a feature needs rebuilding to a quality bar instead of being patched — diagnose why current quality is capped, agree a quality contract, build one artifact, look at it, then decide production/iterate/kill.
+---
+
+# Feature quality
+
+Runs the **Generic Feature Quality Prompt** for one feature. The prompt is the
+asset and lives in this repository:
+
+```
+.dsh/plugins/feature-quality/prompt.md
+```
+
+Read it and follow it. Do not restate it, summarise it, or improve it — the text
+is the proven part, and this skill exists only to get it in front of the work.
+
+## Do this
+
+1. **Read the prompt** with `read .dsh/plugins/feature-quality/prompt.md`.
+
+2. **Fill its Inputs block** from the user's request — `FEATURE`, `SURFACE`,
+   `USER JOB`, `CURRENT STATE`, `REAL FIXTURE`, `REFERENCES`,
+   `ANTI-REFERENCES`, `EXTERNAL SOURCES`, `PRODUCTION LIMITS`, `FIRST LOOK`,
+   `OWNER`. Keep the block's 20-column gutter, one line per field.
+
+   Anything you do not know keeps its bracketed default, and the block gains one
+   line naming what is missing:
+
+   ```
+   UNFILLED:           REFERENCES, FIRST LOOK, OWNER
+   ```
+
+   That line is data, not instruction. The prompt's own *"When to ask, and when
+   not to"* section decides what to do about them; do not add a rule of your own.
+
+3. **Deliver the filled prompt as the working brief** and run it in order:
+   Phase 0 diagnosis, Phase 1 contract, sign-off, bounded lab, one artifact,
+   first look, production/iterate/kill.
+
+4. **Stop at Phase 1.** No code before the contract is agreed. That gate is the
+   whole point of the prompt; a goal or a long session is not a reason to cross it.
+
+## If the bundle is installed
+
+`/quality` and the composer control do steps 1–3 for you, including starting a
+fresh session. Prefer them where they exist; use this skill where the bundle is
+not installed in the profile.
+
+## Notes
+
+- The delivery rule — the prompt is byte-identical outside its Inputs block — is
+  enforced by `node .dsh/plugins/feature-quality/eval/harness.mjs`.
+- `eval/REPORT.md` records why that rule exists, and what was rejected.
