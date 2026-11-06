@@ -115,6 +115,17 @@ class AppFlowTest {
         save("app-8-log")
         compose.onNodeWithText("1 session").assertExists()
 
+        // The log filters on what the website filters on: free text first, with
+        // the chip filters behind one tap.
+        compose.onNodeWithTag("log-search").performTextInput("zzz")
+        compose.waitForIdle()
+        compose.onNodeWithText("No sessions match.").assertExists()
+        compose.onNodeWithText("0 of 1 session").assertExists()
+        save("app-8c-log-filter")
+        compose.onNodeWithText("Clear").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("1 session").assertExists()
+
         // Progress is computed from the same sets: a PR, a rep-range strip and
         // an estimated-1RM line, with no network in the path.
         compose.onNodeWithText("Progress").performClick()
