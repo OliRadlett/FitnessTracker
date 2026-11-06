@@ -74,6 +74,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val routesApi = uk.oli.fittrack.net.RoutesApi(BuildConfig.API_BASE_URL)
     private val healthApi = uk.oli.fittrack.net.HealthApi(BuildConfig.API_BASE_URL)
     private val activitiesApi = uk.oli.fittrack.net.ActivitiesApi(BuildConfig.API_BASE_URL)
+    private val notificationsApi = uk.oli.fittrack.net.NotificationsApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -145,6 +146,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 attempt { loadHealth(token) }
                 attempt { loadCalendar(token) }
                 attempt { loadActivities(token) }
+                attempt { loadNotifications(token) }
                 if (_syncError.value == null && firstFailure != null) {
                     // The history itself is fine; say which section lagged
                     // rather than claiming the whole sync failed.
@@ -251,6 +253,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _calendarDays.value = null
         _activities.value = null
         _activityDetail.value = null
+        _notifications.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -689,6 +692,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshCalendar() {
         val token = _auth.value.token ?: return
         viewModelScope.launch { loadCalendar(token) }
+    }
+
+    /** Notifications: the list, and how many are unread. */
+    private val _notifications =
+        MutableStateFlow<List<uk.oli.fittrack.domain.Notification>?>(null)
+    val notifications: StateFlow<List<uk.oli.fittrack.domain.Notification>?> =
+        _notifications.asStateFlow()
+
+    private suspend fun loadNotifications(token: String) {
+        _notifications.value = notificationsApi.list(token)
+    }
+
+    fun refreshNotifications() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadNotifications(token) }
+    }
+
+    fun markNotificationRead(id: String) {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            runCatching { notificationsApi.markRead(token, id) }
+            // Move it to read locally too: a list that needs a reload to look
+            // read is a list that looks broken.
+            _notifications.value = _notifications.value?.map {
+                if (it.id == id) it.copy(read = true) else it
+            }
+            loadNotifications(token)
+        }
+    }
+
+    fun markAllNotificationsRead() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            runCatching { notificationsApi.markAllRead(token) }
+            _notifications.value = _notifications.value?.map { it.copy(read = true) }
+            loadNotifications(token)
+        }
     }
 
     /** The activities feed, and whichever activity is open. */

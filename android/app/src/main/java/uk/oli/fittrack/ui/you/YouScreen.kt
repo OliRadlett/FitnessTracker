@@ -56,6 +56,8 @@ fun YouScreen(
     onOpenCalendar: () -> Unit = {},
     activityCount: Int = 0,
     onOpenActivities: () -> Unit = {},
+    unread: Int = 0,
+    onOpenNotifications: () -> Unit = {},
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -157,6 +159,10 @@ fun YouScreen(
             Spacer(Modifier.height(8.dp))
             NavRow(if (activityCount > 0) "$activityCount in the feed" else "Activities") {
                 onOpenActivities()
+            }
+            Spacer(Modifier.height(8.dp))
+            NavRow(if (unread > 0) "Notifications · $unread unread" else "Notifications") {
+                onOpenNotifications()
             }
 
             Spacer(Modifier.height(24.dp))

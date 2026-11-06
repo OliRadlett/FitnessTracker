@@ -340,6 +340,14 @@ the end, because installing per-fix wastes the only real screen we have.
   the website's comparison mode and replay theatre — the detail says streams
   exist and points at the website for the replay. Reached from You → Activities.
 
+- [x] **P30 — notifications.** `/notifications` as a list: unread first and
+  raised, read ones flat, the type in words, an age that reads as a clock time
+  today / "Yesterday" / a weekday / a date. Tapping marks one read (locally and
+  on the server); "Mark all read" flips to "Refresh" when nothing is unread. The
+  You screen carries the unread count. Type filters and the preference grid stay
+  on the website. Data: `/notifications`, `/summary`, `PATCH /{id}/read`,
+  `POST /read-all`.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

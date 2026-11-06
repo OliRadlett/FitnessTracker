@@ -17,6 +17,7 @@ import uk.oli.fittrack.ui.activities.ActivitiesScreen
 import uk.oli.fittrack.ui.goals.GoalsScreen
 import uk.oli.fittrack.ui.health.CalendarScreen
 import uk.oli.fittrack.ui.health.HealthScreen
+import uk.oli.fittrack.ui.notifications.NotificationsScreen
 import uk.oli.fittrack.ui.routes.RoutesScreen
 import uk.oli.fittrack.ui.train.PlanDayEditScreen
 import uk.oli.fittrack.ui.ride.RideScreen
@@ -44,6 +45,7 @@ object Routes {
     const val HEALTH = "health"
     const val CALENDAR = "calendar"
     const val ACTIVITIES = "activities"
+    const val NOTIFICATIONS = "notifications"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -95,6 +97,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val activityDetailLoading by vm.activityDetailLoading.collectAsStateWithLifecycle()
     val activitySportValue by vm.activitySport.collectAsStateWithLifecycle()
     val activityWindowValue by vm.activityWindow.collectAsStateWithLifecycle()
+    val notifications by vm.notifications.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -235,6 +238,16 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.NOTIFICATIONS) {
+            NotificationsScreen(
+                items = notifications,
+                onRead = vm::markNotificationRead,
+                onReadAll = vm::markAllNotificationsRead,
+                onRefresh = vm::refreshNotifications,
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.HEALTH) {
             HealthScreen(
                 health = health,
@@ -327,6 +340,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onOpenCalendar = { nav.navigate(Routes.CALENDAR) },
                     activityCount = activityFeed?.size ?: 0,
                     onOpenActivities = { nav.navigate(Routes.ACTIVITIES) },
+                    unread = notifications?.count { !it.read } ?: 0,
+                    onOpenNotifications = { nav.navigate(Routes.NOTIFICATIONS) },
                     onSignIn = { nav.navigate(Routes.SIGNIN) },
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab
