@@ -263,6 +263,38 @@ receipt is not seen in that case because the control remounts inside the new
 session; its own run badge (`run 0/7`) is what appears instead.
 
 
+## v5 — the tools
+
+Every quality run was rebuilding the same two things: a contract shaped like the
+prompt's Phase 1 block, and a way to look at more than one frame. That is the
+work the tools take over.
+
+| Tool | What it is for |
+|---|---|
+| `quality.mjs new` | Writes `CONTRACT.md`, `REFERENCE.md`, `DECISIONS.md` and the lab harness, slugged from the feature, with the owner filled. |
+| `quality.mjs check` | The mechanical gate: eight contract fields filled, reference and decisions present, one artifact rendered. Exit 1 otherwise. |
+| `quality.mjs status` | The same scan `/quality-status` prints, for a shell. |
+| `contact-sheet.mjs` | Frames in, one labelled page out — laid out by a real browser, so no image library and no per-run screenshot script. |
+| `templates/states.mjs` | Per-feature states, shared plumbing: URL, viewports, naming, sheet. |
+
+What they deliberately are not: not an MCP server (the plugin is in-process
+already), not a visual-regression service (the gate is a human look), not a
+wrapper that calls the model, and not a harness that knows the app — every
+feature's states are its own.
+
+**F16 — the gate demanded `PRODUCTION.md`.** It is Phase 6 and exists only when a
+run passes, so the first version of `check` could never go green: a gate that is
+red until the end is a gate nobody reads. It is now reported and not gated, which
+matches the prompt's own definition of done.
+
+**F17 — `repoRoot()` was one level short.** From `tools/` it walked three
+directories up, landing in `.dsh` instead of the repository; every browser tool
+failed with "Playwright is not installed" while it sat in `frontend/node_modules`.
+Found by running the contact sheet, not by reading it.
+
+The CLI's paths come from `lib/state.mjs` — the module the plugin's own scan
+uses — so the two cannot disagree, and `eval/tools.mjs` asserts it.
+
 ## Rejected
 
 - **Keep the preamble and document it as an exception.** Rejected: the model

@@ -211,6 +211,51 @@ removing any phase:
 The Inputs block did not grow: it is the interface, and the eval gate depends on
 its shape.
 
+## Tools
+
+Three commands, because a quality run otherwise re-invents the same scaffolding
+and re-derives the same evidence on every pass.
+
+```bash
+# Scaffold a run: contract, references, decisions, and a lab harness
+node .dsh/plugins/feature-quality/tools/quality.mjs new "Route quality badge" \
+  --surface page --owner Oli --job "decide which ride to repeat"
+
+# The mechanical gate
+node .dsh/plugins/feature-quality/tools/quality.mjs check [slug] [--json]
+
+# Where the run stands (the same scan as /quality-status)
+node .dsh/plugins/feature-quality/tools/quality.mjs status [slug]
+
+# One labelled page from frames you already rendered
+node .dsh/plugins/feature-quality/tools/contact-sheet.mjs \
+  --out prototype/<slug>/qa/contact-sheet.png --columns 2 shots/*.png
+```
+
+`new` writes only the Phase 1/2 deliverables — `CONTRACT.md`, `REFERENCE.md`,
+`DECISIONS.md` and `prototype/<slug>/qa/states.mjs`. It does **not** create
+`FIRST-LOOK.md` or `PRODUCTION.md`, because a file created before the work would
+tick a gate that has not been passed.
+
+`check` exits 1 unless: every one of the eight contract fields is filled, the
+reference and decisions exist, and at least one artifact is in the lab's `qa/`.
+`PRODUCTION.md` is reported but **not** gated — it is Phase 6 and exists only if
+the run passes; a gate that is red until the end is a gate nobody reads.
+
+`states.mjs` is the per-feature harness: edit its `STATES`, then one command
+renders each one and builds the contact sheet. `contact-sheet.mjs` lays the
+frames out with a real browser (no image library) and keeps the generated HTML
+beside the PNG.
+
+Two invariants the labs enforce: the CLI's deliverable paths come from
+`lib/state.mjs`, the same module `/quality-status` reads, so they cannot drift;
+and the tools are covered by `eval/tools.mjs`.
+
+⚠️ The repository's `.gitignore` ignores `qa/` (device-pass captures stay out of
+the repo). That applies to a lab's `qa/` too: screenshots and the generated sheet
+are local evidence, not commits. The harness (`states.mjs`) is ignored with them
+— move it up a level if you want it versioned.
+
 ## Editing the prompt
 
 `prompt.md` is the prompt. It is prose plus eleven `{{FIELD}}` tokens in its
@@ -224,27 +269,35 @@ CRLF checkout delivers the same text as an LF one.
 ```bash
 node .dsh/plugins/feature-quality/eval/harness.mjs   # delivery, placeholders, CRLF, contract
 node .dsh/plugins/feature-quality/eval/wiring.mjs    # commands, routes, scan, client interaction
+node .dsh/plugins/feature-quality/eval/tools.mjs     # quality.mjs new/check/status, contact sheet
 ```
 
-Both exit non-zero on failure. The first is the gate that keeps the delivered
+All three exit non-zero on failure. The first is the gate that keeps the delivered
 prompt identical to the asset outside its Inputs block; the second drives
-`apply()`, all three routes, the evidence scan, and the control through a hook
-runtime (open, fill, preview, submit, refusal, bad-route answer).
+`apply()`, all four routes, the evidence scan, presets, opening the created
+session, and the control through a hook runtime; the third scaffolds a run in a
+temp directory and gates it, including the paths agreeing with the plugin's own
+scan.
 
 ## Layout
 
 | File | Purpose |
 |---|---|
-| `index.js` | Host half: parse, validate, fill, submit, record; serves the three routes |
+| `index.js` | Host half: parse, validate, fill, submit, record; serves the four routes |
 | `lib/template.mjs` | The Inputs block: normalise, split, append — shared with the labs |
 | `lib/state.mjs` | Run records, slug, deliverable scan, `/quality-status` text |
 | `client.js` | Client half: the control above the composer |
 | `defaults.json` | Preset inputs, loaded by the host and served to the control |
 | `prompt.md` | The prompt itself, with `{{FIELD}}` tokens |
+| `tools/quality.mjs` | Scaffold a run, gate it, read it |
+| `tools/contact-sheet.mjs` | Frames in, one labelled page out |
+| `tools/playwright.mjs` | Browser resolution shared by the tools and the lab harness |
+| `templates/` | What `quality.mjs new` writes: contract, references, decisions, `states.mjs` |
 | `eval/harness.mjs` | The delivery lab |
 | `eval/wiring.mjs` | The wiring and interaction lab |
-| `eval/screenshots/` | Rendered states of the control: filled, optional, dark, collapsed |
-| `eval/REPORT.md` | The evaluation: why the delivery rule exists, and v2/v3 |
+| `eval/tools.mjs` | The tools lab |
+| `eval/screenshots/` | Rendered states of the control: filled, optional, dark, collapsed, presets |
+| `eval/REPORT.md` | The evaluation: why the delivery rule exists, and v2–v5 |
 | `cordis.patch.yml` | Inserts the `feature-quality` row |
 | `locale/en.json` | Plugin Manager / Settings title and description |
 | `icon.svg` | Plugin icon |
