@@ -110,6 +110,12 @@ export function FormMode({ profile, metrics, load, ramp, rides, buckets, onOpenR
                 />
                 <Metric label="Best 20 min" value={`${num(metrics?.best_20min_power)} W`} sub="last 90 days" />
               </div>
+              <Link
+                href="/settings"
+                className="mt-2 inline-flex min-h-[44px] items-center gap-1 text-[12px] font-medium text-accent"
+              >
+                Edit thresholds <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+              </Link>
             </div>
 
             <div className="h-px bg-surface-light/40" />

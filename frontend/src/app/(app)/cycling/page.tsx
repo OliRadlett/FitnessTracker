@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { UnderlineTabs } from '@/components/ui/UnderlineTabs';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Card } from '@/components/ui/Card';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -49,7 +49,6 @@ export default function CyclingPage() {
   const selectedRide = getParam('ride');
   const more = getParam('more') === '1';
 
-  const ctl = load.data?.current_ctl;
   const tsb = load.data?.current_tsb;
   const wkg = metrics.data?.power_to_weight;
   const subtitle = [
@@ -70,22 +69,9 @@ export default function CyclingPage() {
         subtitle={subtitle || 'Fitness, rides and power — the three questions this page answers'}
       />
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <SegmentedControl
-          options={TABS}
-          value={tab}
-          onChange={(next) => changeTab(next as CyclingMode)}
-          ariaLabel="Cycling views"
-        />
-        {ctl != null && (
-          <p className="text-[12px] text-muted">
-            Fitness <span className="tabular-nums text-foreground">{num(ctl, 1)}</span> · form{' '}
-            <span className="tabular-nums text-foreground">
-              {tsb != null ? `${tsb > 0 ? '+' : ''}${tsb.toFixed(1)}` : '—'}
-            </span>
-          </p>
-        )}
-      </div>
+      {/* Same section switch as /lifting: full-width rule, accent underline,
+          roving tabindex — one component, two pages. */}
+      <UnderlineTabs options={TABS} value={tab} onChange={(next) => changeTab(next)} ariaLabel="Cycling sections" />
 
       <ErrorState variant="inline" show={coreError} message="Some cycling data failed to load." />
 
