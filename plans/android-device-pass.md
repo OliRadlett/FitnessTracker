@@ -131,6 +131,93 @@ screenshot — the earlier pass learned that the hard way (the Start button was
 - [ ] Sign out → plan reverts to `SeedPlan`, records/analytics/verdict/weight
       disappear rather than going stale.
 
+# Pass 2 — the pages added after the first pass
+
+The first pass covered the lifting matrix. Everything below was merged
+afterwards and has **only** been seen at 360×804 in Robolectric, never against
+prod. Same preconditions and capture commands as above.
+
+## 9. Today — the dashboard (#460)
+
+- [ ] **LOAD** card: CTL/ATL/TSB, the form in words, the 7-day change, and a CTL
+      line that is not flat (a flat line means the history is too short, not a
+      bug — say which).
+- [ ] **THIS WEEK** (lifts, volume, rides, km, TSS) and the 28-day line agree with
+      Train › Progress and Ride.
+- [ ] **TODAY SO FAR** appears only when something has been done today.
+- [ ] **READINESS**: with Whoop connected, score/HRV/RHR; without, the server's
+      own "no data" sentence rather than a zero.
+- [ ] **GOALS**: three active, and tapping the card opens the goals page.
+- [ ] **RECENT**: the last four, lifts and rides merged newest-first.
+- Shots: `p2-today-load`, `p2-today-goals`.
+
+## 10. Ride — the cycling page (#461)
+
+- [ ] Seven-day tiles match the website's cycling page, including the trend
+      arrows (↑/↓ only where the server sends one).
+- [ ] **POWER**: 5s/1min/5min/20min/60min, plus CP/W'/Pmax when the model has
+      fitted. A missing duration is absent, not zero.
+- [ ] **TIME IN ZONES · 30 DAYS**: percentages add up to ~100.
+- [ ] **FITNESS**: FTP, the change since the first entry, and VO2max.
+- [ ] The time tile shows a decimal (`3.4h`), not `3h` — that was a real fix.
+- Shots: `p2-ride`, `p2-ride-mid`.
+
+## 11. Goals (#462)
+
+- [ ] You → **Goals**: every goal, active first, progress **from the starting
+      value** (92 → 80 kg at 88.9 reads 25.8%, not 111%).
+- [ ] Check in a value → the percentage moves, the check-in appears, and the
+      dashboard's GOALS card agrees.
+- [ ] Create a goal: the chips offer only metrics the phone can fill in — `Squat`
+      is absent because it wants an exercise name.
+- [ ] Mark achieved → the chip appears and the goal drops below active ones.
+- [ ] Delete a goal you created for the test.
+- Shots: `p2-goals`, `p2-goals-expanded`, `p2-goals-new`.
+
+## 12. Routes (#463)
+
+- [ ] You → **Routes**: real 90-point shapes, not the 3-point fixture — a loop
+      reads as a loop.
+- [ ] Filters narrow the list (Loops / Unridden / Favourites).
+- [ ] Tapping a route adds locality, loop vs point-to-point, surface, quality and
+      favourite state.
+- [ ] A route with no `preview_polyline` shows the placeholder rather than a
+      broken line.
+- Shots: `p2-routes`, `p2-routes-open`.
+
+## 13. Train → Week → edit a day (#464)
+
+- [ ] A day row carries `edit`; tapping it opens the day as written (focus,
+      exercises with sets/reps/kg, notes).
+- [ ] Change the focus and save → the week row updates, and Today's plan changes
+      if it is today.
+- [ ] Add an exercise, remove another, save → the server's `planned_exercises`
+      reflect it (check the website).
+- [ ] Switch a day to **Rest** → the exercise list disappears from the editor and
+      the week shows Rest.
+- [ ] A refused edit (a sport clash on a date that already holds that sport) shows
+      the server's sentence above the button and **does not** pop the screen.
+- [ ] Cancel: leave without saving → nothing changed on the website.
+- Shots: `p2-plan-day`, `p2-plan-day-saved`.
+
+## 14. Health and calendar (#465)
+
+- [ ] You → **Health**: recovery, sleep debt, sleep timing (score, spread,
+      average bedtime), breathing described against its baseline.
+- [ ] The recovery numbers match the dashboard's readiness card exactly.
+- [ ] You → **Calendar**: the current month with lift dots, ride dots and a
+      recovery tint; `‹ This month ›` pages and reloads.
+- [ ] A day with a session opens with its entries and recovery/sleep/HRV/RHR.
+- [ ] A metrics-only day (recovery, no activity) still draws a tinted cell.
+- Shots: `p2-health`, `p2-calendar`, `p2-calendar-day`.
+
+## 15. What "done" means here
+
+The pass is done when every box above is either ticked or explained, the
+screenshots exist under `qa/`, and anything written to prod during it has been
+removed. Record the result in `plans/android-lifting-parity.md` (P20 for the
+first pass, P28 for this one), including what failed and the fix that followed.
+
 ## Cleanup after the pass
 
 Anything written to prod during the pass must be removed or corrected:
@@ -140,6 +227,10 @@ Anything written to prod during the pass must be removed or corrected:
 - [ ] An activity linked by mistake — **Unlink**.
 - [ ] A session started and abandoned — finish it with no sets (it is discarded)
       or delete it from the detail screen.
+- [ ] A goal created for the goals test — delete it.
+- [ ] A plan day edited for the plan test — restore its original focus,
+      exercises and notes.
+
 
 ## Recording the result
 
