@@ -15,6 +15,7 @@ import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.body.BodyScreen
 import uk.oli.fittrack.ui.goals.GoalsScreen
 import uk.oli.fittrack.ui.routes.RoutesScreen
+import uk.oli.fittrack.ui.train.PlanDayEditScreen
 import uk.oli.fittrack.ui.ride.RideScreen
 import uk.oli.fittrack.ui.done.DoneScreen
 import uk.oli.fittrack.ui.live.LiveScreen
@@ -36,6 +37,7 @@ object Routes {
     const val PLAN_EDIT = "plan-edit"
     const val GOALS = "goals"
     const val ROUTES = "routes"
+    const val PLAN_DAY = "plan-day"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -74,6 +76,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val goalBusy by vm.goalBusy.collectAsStateWithLifecycle()
     val goalMessage by vm.goalMessage.collectAsStateWithLifecycle()
     val routesList by vm.routes.collectAsStateWithLifecycle()
+    val editingDay by vm.editingDay.collectAsStateWithLifecycle()
+    val planEditBusy by vm.planEditBusy.collectAsStateWithLifecycle()
+    val planEditError by vm.planEditError.collectAsStateWithLifecycle()
+    val planDaySaved by vm.planDaySaved.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -85,6 +91,15 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
     val route = backStack?.destination?.route
+
+    // A saved plan day closes its own screen; the week behind it has already
+    // been reloaded, so going back shows the new prescription.
+    LaunchedEffect(planDaySaved) {
+        if (planDaySaved) {
+            vm.clearPlanDaySaved()
+            nav.popBackStack()
+        }
+    }
 
     NavHost(navController = nav, startDestination = Routes.TODAY) {
         composable(Routes.TODAY) {
@@ -190,6 +205,21 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.PLAN_DAY) {
+            // The day is handed over through the view model, which is where the
+            // week it came from already lives: a nav argument would be a copy.
+            PlanDayEditScreen(
+                day = editingDay,
+                busy = planEditBusy,
+                error = planEditError,
+                onSave = vm::savePlanDay,
+                onBack = {
+                    vm.clearPlanDaySaved()
+                    nav.popBackStack()
+                }
+            )
+        }
+
         composable(Routes.PLAN_EDIT) {
             PlanEditorScreen(
                 plan = plan,
@@ -255,6 +285,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     records = records,
                     onAddRecord = vm::addRecord,
                     onStartDay = { day -> if (vm.startFromDay(day)) nav.navigate(Routes.LIVE) },
+                onEditDay = { day ->
+                    vm.beginPlanDayEdit(day)
+                    nav.navigate(Routes.PLAN_DAY)
+                },
                     weekOffset = weekOffset,
                     onShiftWeek = vm::shiftWeek,
                     onThisWeek = vm::thisWeek,

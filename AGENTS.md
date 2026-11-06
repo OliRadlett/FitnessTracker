@@ -223,6 +223,16 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   [`net/RoutesApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/RoutesApi.kt).
   Reached from You → Routes. The web's map, segments and duplicate-maintenance
   screen are deliberately not here.
+- **Editing a plan day**: Train › Week rows carry `edit` for any day the server
+  gave an id to, opening [`ui/train/PlanDayEditScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/train/PlanDayEditScreen.kt):
+  sport, focus, the exercise list (name / sets / reps / kg, add and remove) and
+  notes, saved as **one** `PATCH /training-plans/{id}/days/{day}` through
+  `PlanApi.saveDay`. Only the changed fields go in the body, so a focus edit
+  cannot rewrite the prescription. A refusal (409 — the date already holds
+  another session of that sport) is shown verbatim above the button; success
+  reloads the week and today and pops the screen. This is the phone's only
+  writing surface into a plan: the website keeps the full editor, program matrix
+  and block tools.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the

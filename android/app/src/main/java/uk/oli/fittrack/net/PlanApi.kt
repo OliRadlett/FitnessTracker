@@ -4,8 +4,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.Plan
@@ -50,6 +57,7 @@ internal data class PlannedExerciseDto(
     val exercise: String = "",
     val sets: Int = 0,
     val reps: Int = 0,
+    val weight_kg: Double? = null,
     val rpe: Double? = null
 )
 
@@ -169,9 +177,13 @@ data class PlanDaySummary(
     val status: String,
     /** The day's prescription, ready to become a session (empty on a rest day). */
     val exercises: List<PlanExercise>,
-    val isToday: Boolean
+    val isToday: Boolean,
+    /** The server's day id; null when the week did not carry one, so no edit. */
+    val id: String? = null,
+    val notes: String? = null
 ) {
     val canStart: Boolean get() = sport == "strength" && exercises.isNotEmpty()
+    val canEdit: Boolean get() = id != null
 }
 
 /** The week around today, from the active plan. */
@@ -184,7 +196,9 @@ data class PlanWeek(
     /** The week containing today, so a pager can tell how far it has moved. */
     val thisWeekNumber: Int = weekNumber,
     /** The plan's last week; paging past it would ask for a week that is not there. */
-    val totalWeeks: Int = weekNumber
+    val totalWeeks: Int = weekNumber,
+    /** The plan's id, so a day can be edited back to the server. */
+    val planId: String? = null
 ) {
     val canPageBack: Boolean get() = weekNumber > 1
     val canPageForward: Boolean get() = weekNumber < totalWeeks
@@ -192,6 +206,7 @@ data class PlanWeek(
 
 @Serializable
 private data class WeekDto(
+    val plan_id: String? = null,
     val week_number: Int = 0,
     val week_start: String? = null,
     val week_end: String? = null,
@@ -200,11 +215,13 @@ private data class WeekDto(
 
 @Serializable
 private data class WeekDayDto(
+    val id: String? = null,
     val day_date: String? = null,
     val sport: String? = null,
     val planned_focus: String? = null,
     val day_status: String = "pending",
     val planned_exercises: List<PlannedExerciseDto>? = null,
+    val notes: String? = null,
     val completed: Boolean = false
 )
 
@@ -223,7 +240,12 @@ object WeekJson {
                 if (name.isEmpty() || planned.sets <= 0 || planned.reps <= 0) {
                     return@mapNotNull null
                 }
-                PlanExercise(name = name, sets = planned.sets, reps = planned.reps, weightKg = 0.0)
+                PlanExercise(
+                    name = name,
+                    sets = planned.sets,
+                    reps = planned.reps,
+                    weightKg = planned.weight_kg ?: 0.0
+                )
             }
             PlanDaySummary(
                 date = date,
@@ -231,7 +253,9 @@ object WeekJson {
                 focus = day.planned_focus?.trim()?.takeIf { it.isNotBlank() },
                 status = if (day.completed) "completed" else day.day_status,
                 exercises = exercises,
-                isToday = date == today.toString()
+                isToday = date == today.toString(),
+                id = day.id,
+                notes = day.notes?.takeIf { it.isNotBlank() }
             )
         }
         if (days.isEmpty()) return null
@@ -240,7 +264,8 @@ object WeekJson {
             weekNumber = week.week_number,
             weekStart = week.week_start ?: days.first().date,
             weekEnd = week.week_end ?: days.last().date,
-            days = days
+            days = days,
+            planId = week.plan_id
         )
     }
 }
@@ -324,4 +349,70 @@ class PlanApi(private val baseUrl: String) {
             return body
         }
     }
+
+    /**
+     * Writes a day back. Only the fields in [edit] are sent, so a focus change
+     * cannot overwrite the prescription and vice versa.
+     */
+    suspend fun saveDay(
+        token: String,
+        planId: String,
+        dayId: String,
+        edit: PlanDayEdit
+    ): PlanDaySave = withContext(Dispatchers.IO) {
+        val payload = buildJsonObject {
+            edit.sport?.let { put("sport", it) }
+            edit.focus?.let { put("planned_focus", it) }
+            edit.notes?.let { put("notes", it) }
+            edit.exercises?.let { exercises ->
+                put(
+                    "planned_exercises",
+                    buildJsonArray {
+                        exercises.forEach { exercise ->
+                            add(
+                                buildJsonObject {
+                                    put("exercise", exercise.name)
+                                    put("sets", exercise.sets)
+                                    put("reps", exercise.reps)
+                                    if (exercise.weightKg > 0.0) {
+                                        put("weight_kg", exercise.weightKg)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                )
+            }
+        }
+
+        val request = Request.Builder()
+            .url("$baseUrl/training-plans/$planId/days/$dayId")
+            .header("Authorization", "Bearer $token")
+            .patch(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+
+        client.newCall(request).execute().use { response ->
+            val body = response.body?.string().orEmpty()
+            if (response.isSuccessful) return@withContext PlanDaySave.Saved
+            // A 409 means the date already holds another session of that sport:
+            // the server's sentence explains it better than a code would.
+            val detail = runCatching {
+                json.parseToJsonElement(body).jsonObject["detail"]?.jsonPrimitive?.content
+            }.getOrNull()
+            PlanDaySave.Refused(detail ?: "The plan refused that change (${response.code}).")
+        }
+    }
+}
+
+/** What a day edit can change; every field is optional and only one may be set. */
+data class PlanDayEdit(
+    val sport: String? = null,
+    val focus: String? = null,
+    val notes: String? = null,
+    val exercises: List<PlanExercise>? = null
+)
+
+sealed interface PlanDaySave {
+    data object Saved : PlanDaySave
+    data class Refused(val message: String) : PlanDaySave
 }
