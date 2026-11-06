@@ -131,6 +131,28 @@ object SessionEngine {
     fun isComplete(state: SessionState): Boolean =
         state.plan.exercises.all { doneFor(state, it.name) >= it.sets }
 
+    /**
+     * The plan a repeat of a finished session should prescribe: the same
+     * exercises in the same order, the same number of **working** sets, and the
+     * last working set's load and reps as the target.
+     *
+     * Warm-ups are deliberately not part of the plan — they are something you
+     * ramp through, not a set the session owes you.
+     */
+    fun planFrom(session: FinishedSession): Plan = Plan(
+        title = session.planTitle,
+        exercises = groupedByExercise(session.sets).mapNotNull { group ->
+            val working = group.workingSets
+            val last = working.lastOrNull() ?: return@mapNotNull null
+            PlanExercise(
+                name = group.exercise,
+                sets = working.size,
+                reps = last.reps,
+                weightKg = last.weightKg
+            )
+        }
+    )
+
     const val DEFAULT_RPE = 7
 }
 

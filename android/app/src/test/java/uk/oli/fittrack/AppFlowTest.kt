@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -139,6 +140,14 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-15-add-exercise")
         compose.onNodeWithText("Leg Press").assertExists()
+
+        // Repeat it: today's session comes back with the same exercises and the
+        // same working-set counts, starting at the first one.
+        compose.onNodeWithText("Repeat this session").performScrollTo().performClick()
+        compose.waitForIdle()
+        save("app-16-repeat")
+        compose.onNodeWithText("Bench Press").assertExists()
+        compose.onNodeWithText("set 1 of 2", substring = true).assertExists()
     }
 
     private fun save(name: String) {

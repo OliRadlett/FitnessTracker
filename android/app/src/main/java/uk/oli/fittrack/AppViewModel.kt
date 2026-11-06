@@ -211,6 +211,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         store.save(fresh)
     }
 
+    /**
+     * Start today from a session that already happened: same exercises, same
+     * working-set count, last time's load and reps as the target.
+     *
+     * Refuses while another session is in progress — a repeat must never throw
+     * away sets you have already logged — and returns whether it started.
+     */
+    fun repeatSession(sessionId: String): Boolean {
+        if (_session.value != null) return false
+        val source = _history.value.firstOrNull { it.id == sessionId } ?: return false
+        val plan = uk.oli.fittrack.domain.SessionEngine.planFrom(source)
+        if (plan.exercises.isEmpty()) return false
+        val fresh = emptySession(plan)
+        _session.value = fresh
+        store.save(fresh)
+        return true
+    }
+
     fun logSet(weightKg: Double, reps: Int, rpe: Int) {
         val current = _session.value ?: return
         val next = current.withSet(

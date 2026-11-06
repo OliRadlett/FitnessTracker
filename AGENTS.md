@@ -101,13 +101,15 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   silently diverges from the website. Local-only rows edit in place. `PATCH`
   bodies use `LiftingPatchJson` (`encodeDefaults` + `explicitNulls`) so a cleared
   RPE is sent as `null` rather than omitted; a day move uses `plusDays` on a
-  zoned time so an 18:00 session stays 18:00 across a DST boundary.
+  zoned time so an 18:00 session stays 18:00 across a DST boundary. "Repeat this
+  session" starts today from a finished one (`SessionEngine.planFrom`), copying
+  working sets only.
 - **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
   holds the website-versus-app matrix and the phase list (P0–P7, device pass at
   the end).
 - **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens), and parity phases P3–P6 — repeat a
-  session, warm-up logging, PRs/progress, browse filters.
+  tabs (explicit "not built yet" screens), and parity phases P4–P6 — warm-up
+  logging, PRs/progress, browse filters.
 
 ## Architecture
 
