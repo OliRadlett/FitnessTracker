@@ -69,6 +69,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val ridesApi = uk.oli.fittrack.net.RidesApi(BuildConfig.API_BASE_URL)
     private val dashboardApi = uk.oli.fittrack.net.DashboardApi(BuildConfig.API_BASE_URL)
     private val cyclingApi = uk.oli.fittrack.net.CyclingApi(BuildConfig.API_BASE_URL)
+    private val goalsApi = uk.oli.fittrack.net.GoalsApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -131,6 +132,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadRides(token)
                 loadCycling(token)
                 loadDashboard(token)
+                loadGoals(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -211,6 +213,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _rides.value = null
         _cycling.value = null
         _dashboard.value = null
+        _goalList.value = null
+        _goalCheckIns.value = emptyMap()
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -601,6 +605,91 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _dashboardLoading = MutableStateFlow(false)
     val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
+
+    /** The goals page: the goals themselves and the metric registry. */
+    private val _goalList = MutableStateFlow<List<uk.oli.fittrack.domain.Goal>?>(null)
+    val goalList: StateFlow<List<uk.oli.fittrack.domain.Goal>?> = _goalList.asStateFlow()
+
+    private val _goalMetrics = MutableStateFlow<List<uk.oli.fittrack.domain.GoalMetric>>(emptyList())
+    val goalMetrics: StateFlow<List<uk.oli.fittrack.domain.GoalMetric>> = _goalMetrics.asStateFlow()
+
+    private val _goalCheckIns =
+        MutableStateFlow<Map<String, List<uk.oli.fittrack.domain.GoalCheckIn>>>(emptyMap())
+    val goalCheckIns: StateFlow<Map<String, List<uk.oli.fittrack.domain.GoalCheckIn>>> =
+        _goalCheckIns.asStateFlow()
+
+    private val _goalMessage = MutableStateFlow<String?>(null)
+    val goalMessage: StateFlow<String?> = _goalMessage.asStateFlow()
+
+    private val _goalBusy = MutableStateFlow(false)
+    val goalBusy: StateFlow<Boolean> = _goalBusy.asStateFlow()
+
+    private suspend fun loadGoals(token: String) {
+        val snapshot = goalsApi.snapshot(token)
+        _goalList.value = snapshot.goals
+        if (snapshot.metrics.isNotEmpty()) _goalMetrics.value = snapshot.metrics
+        // The dashboard card reads the same goals, so it cannot go stale.
+        _dashboard.value = _dashboard.value?.copy(goals = snapshot.goals)
+    }
+
+    fun refreshGoals() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadGoals(token) }
+    }
+
+    fun loadGoalCheckIns(goalId: String) {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            val entries = runCatching { goalsApi.checkIns(token, goalId) }.getOrDefault(emptyList())
+            _goalCheckIns.value = _goalCheckIns.value + (goalId to entries)
+        }
+    }
+
+    fun createGoal(metric: String, target: Double, date: String?, note: String?) {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            _goalBusy.value = true
+            try {
+                val created = goalsApi.create(token, metric, target, date, note)
+                _goalMessage.value = if (created != null) null else "Could not create that goal."
+                loadGoals(token)
+            } finally {
+                _goalBusy.value = false
+            }
+        }
+    }
+
+    fun addGoalCheckIn(id: String, value: Double, note: String?) {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            _goalBusy.value = true
+            try {
+                val ok = goalsApi.addCheckIn(token, id, value, note)
+                _goalMessage.value = if (ok) null else "The check-in did not save."
+                loadGoals(token)
+                loadGoalCheckIns(id)
+            } finally {
+                _goalBusy.value = false
+            }
+        }
+    }
+
+    fun setGoalStatus(id: String, status: String) {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            runCatching { goalsApi.setStatus(token, id, status) }
+            loadGoals(token)
+        }
+    }
+
+    fun deleteGoal(id: String) {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            runCatching { goalsApi.delete(token, id) }
+            _goalCheckIns.value = _goalCheckIns.value - id
+            loadGoals(token)
+        }
+    }
 
     /** Recent rides, for the Ride tab. Null until fetched. */
     private val _rides = MutableStateFlow<List<uk.oli.fittrack.domain.Ride>?>(null)

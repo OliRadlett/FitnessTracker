@@ -261,6 +261,15 @@ the end, because installing per-fix wastes the only real screen we have.
   the weather analysis, the LLM card and the profile editor — the first two are
   desktop reading, and a phone should not edit an FTP it cannot verify.
 
+- [x] **P24 — the goals page.** `/goals` on the phone: every goal (active first,
+  then by target date) with progress measured **from its starting value**, a
+  check-in form and the last five check-ins per goal, status changes
+  (achieved / archived / reactivate), delete, and a create form whose metric
+  chips come from `GET /goals/metrics` — a metric that needs a filter is not
+  offered, because the phone cannot fill one in. `Goal` replaced the dashboard's
+  `GoalProgress` so one model answers for both surfaces. Reached from You ("N
+  active goals") and from the dashboard's GOALS card.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

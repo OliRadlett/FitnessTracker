@@ -50,7 +50,7 @@ class DashboardTest {
         val week = (1..8).map { day ->
             point("2026-10-${(30 + day).toString().padStart(2, '0')}", 10.0, tsb = day.toDouble())
         }
-        // Last point is tsb 8; eight points back is tsb 1 → +7.
+        // Last point is tsb 8; eight points back is tsb 1 â†’ +7.
         assertEquals(7.0, load(tsb = 8.0, points = week).tsbDelta7d()!!, 0.001)
         assertEquals(LoadTrend.Rising, load(tsb = 8.0, points = week).trend)
     }
@@ -72,7 +72,7 @@ class DashboardTest {
     @Test
     fun `goal progress is measured from the starting value`() {
         // 92 → 80 kg, now 88.9: 3.1 of 12 kg done = 25.8%.
-        val weight = GoalProgress(
+        val weight = Goal(
             id = "g", metric = "weight_kg", target = 80.0, current = 88.9, starting = 92.0
         )
 
@@ -82,23 +82,23 @@ class DashboardTest {
 
     @Test
     fun `a goal with no starting value falls back to value over target`() {
-        val ctl = GoalProgress(id = "g", metric = "ctl", target = 60.0, current = 45.0)
+        val ctl = Goal(id = "g", metric = "ctl", target = 60.0, current = 45.0)
 
         assertEquals(75.0, ctl.progressPct!!, 0.001)
     }
 
     @Test
     fun `progress is clamped and a met goal is entirely done`() {
-        val past = GoalProgress(id = "g", metric = "ctl", target = 60.0, current = 80.0)
+        val past = Goal(id = "g", metric = "ctl", target = 60.0, current = 80.0)
         assertEquals(100.0, past.progressPct!!, 0.001)
 
-        val behind = GoalProgress(id = "g", metric = "ctl", target = 60.0, current = -4.0)
+        val behind = Goal(id = "g", metric = "ctl", target = 60.0, current = -4.0)
         assertEquals(0.0, behind.progressPct!!, 0.001)
     }
 
     @Test
     fun `a server percentage wins over the app's arithmetic`() {
-        val goal = GoalProgress(
+        val goal = Goal(
             id = "g", metric = "ctl", target = 60.0, current = 45.0, serverProgressPct = 41.0
         )
 
@@ -108,11 +108,11 @@ class DashboardTest {
     @Test
     fun `active goals are soonest first and capped`() {
         val goals = listOf(
-            GoalProgress("a", "weight_kg", 80.0, targetDate = "2026-12-31"),
-            GoalProgress("b", "ctl", 60.0, targetDate = "2026-11-30"),
-            GoalProgress("c", "ftp_watts", 300.0, targetDate = null),
-            GoalProgress("d", "archived", 1.0, status = "archived"),
-            GoalProgress("e", "squat_kg", 180.0, targetDate = "2027-01-31")
+            Goal("a", "weight_kg", 80.0, targetDate = "2026-12-31"),
+            Goal("b", "ctl", 60.0, targetDate = "2026-11-30"),
+            Goal("c", "ftp_watts", 300.0, targetDate = null),
+            Goal("d", "archived", 1.0, status = "archived"),
+            Goal("e", "squat_kg", 180.0, targetDate = "2027-01-31")
         )
 
         val shown = activeGoals(goals)
@@ -139,7 +139,7 @@ class DashboardTest {
 
         assertEquals(2, week.sessions)
         assertEquals(2, week.rides)
-        // 100×5 + 140×3 (the warm-up does not count) = 500 + 420.
+        // 100Ã—5 + 140Ã—3 (the warm-up does not count) = 500 + 420.
         assertEquals(920.0, week.volumeKg, 0.001)
         assertEquals(60.0, week.distanceKm, 0.001)
         assertEquals(80.0, week.tss, 0.001)

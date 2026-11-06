@@ -1,7 +1,9 @@
 package uk.oli.fittrack.ui.you
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +46,8 @@ fun YouScreen(
     auth: AuthUiState,
     syncedAt: Long? = null,
     syncError: String? = null,
+    goalCount: Int = 0,
+    onOpenGoals: () -> Unit = {},
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -115,11 +120,33 @@ fun YouScreen(
             }
 
             Spacer(Modifier.height(24.dp))
+            Label("GOALS")
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Tokens.Surface)
+                    .clickable { onOpenGoals() }
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    if (goalCount > 0) "$goalCount active goal${if (goalCount == 1) "" else "s"}"
+                    else "Set a goal",
+                    fontSize = 14.sp,
+                    color = Tokens.Fg,
+                    modifier = Modifier.weight(1f)
+                )
+                Text("›", fontSize = 16.sp, color = Tokens.Muted)
+            }
+
+            Spacer(Modifier.height(24.dp))
             Label("THIS BUILD")
             Spacer(Modifier.height(8.dp))
             Text(
-                "Today, live logging and the summary. Plan sync, history and the " +
-                    "Train/Ride/Body tabs are next; prototype/android/PARITY.md has the map.",
+                "The dashboard, the lifting log and the cycling page; goals, routes, " +
+                    "plan editing, health and the calendar are next.",
                 fontSize = 13.sp,
                 color = Tokens.Muted
             )

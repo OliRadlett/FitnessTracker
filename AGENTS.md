@@ -201,6 +201,17 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   six independent fetches that each fail alone, so a rider with no power meter
   still gets the summary and the list. Read-only — a ride comes from Strava or
   Komoot, and the phone is not where it gets edited.
+- **Goals page**: [`ui/goals/GoalsScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/goals/GoalsScreen.kt)
+  replicates `/goals` — every goal with progress from its starting value, a
+  check-in form and history per goal, status changes (achieved/archived/
+  reactivate), delete, and a create form whose metric chips come from
+  `GET /goals/metrics` (a metric that needs a filter is not offered, because the
+  phone cannot fill one in). Data and writes live in
+  [`net/GoalsApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/GoalsApi.kt).
+  Reached from You and from the dashboard's GOALS card. **One goal model**:
+  [`domain/Goals.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Goals.kt)
+  `Goal` is what both the dashboard card and this page use, so their percentages
+  cannot disagree.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the
