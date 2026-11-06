@@ -52,6 +52,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val warmupTemplates by vm.warmupTemplates.collectAsStateWithLifecycle()
     val linkCandidates by vm.linkCandidates.collectAsStateWithLifecycle()
     val planWeek by vm.planWeek.collectAsStateWithLifecycle()
+    val records by vm.records.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -188,6 +189,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 "train" -> TrainScreen(
                     history = history,
                     planWeek = planWeek,
+                    records = records,
+                    onAddRecord = vm::addRecord,
                     onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                     onRefreshWeek = vm::refreshPlanWeek,
                     onTab = nav::switchTab

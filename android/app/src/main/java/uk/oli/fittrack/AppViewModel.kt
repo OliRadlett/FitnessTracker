@@ -63,6 +63,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val authApi = AuthApi(BuildConfig.API_BASE_URL)
     private val liftingApi = LiftingApi(BuildConfig.API_BASE_URL)
     private val planApi = uk.oli.fittrack.net.PlanApi(BuildConfig.API_BASE_URL)
+    private val prApi = uk.oli.fittrack.net.PrApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -119,6 +120,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadTodayPlan(token)
                 loadWarmupTemplates(token)
                 loadPlanWeek(token)
+                loadRecords(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -193,6 +195,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _restDay.value = false
         _planWeek.value = null
         _warmupTemplates.value = emptyList()
+        _records.value = emptyList()
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -238,6 +241,52 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshPlanWeek() {
         val token = _auth.value.token ?: return
         viewModelScope.launch { loadPlanWeek(token) }
+    }
+
+    /** The server's records, including manual ones with no session behind them. */
+    private val _records = MutableStateFlow<List<uk.oli.fittrack.domain.PersonalRecord>>(emptyList())
+    val records: StateFlow<List<uk.oli.fittrack.domain.PersonalRecord>> = _records.asStateFlow()
+
+    private suspend fun loadRecords(token: String) {
+        runCatching { prApi.prs(token) }.getOrNull()?.let { _records.value = it }
+    }
+
+    /**
+     * Type in a record for a session the phone never saw. The server is the only
+     * place manual PRs can live, so this needs a token and a signal; it reverts
+     * nothing because it never touched local history.
+     */
+    fun addRecord(exercise: String, weightKg: Double, reps: Int, note: String?) {
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to add a record."
+            return
+        }
+        val name = exercise.trim()
+        if (name.isEmpty() || weightKg <= 0.0 || reps <= 0) {
+            _syncError.value = "A record needs an exercise, a weight and reps."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val saved = prApi.addPr(
+                    token,
+                    name,
+                    weightKg,
+                    reps,
+                    java.time.LocalDate.now(),
+                    note
+                )
+                if (saved != null) {
+                    _records.value = (_records.value + saved).distinctBy { it.id }
+                        .sortedByDescending { it.e1rm }
+                    _syncError.value = null
+                }
+                // Re-read so the server's own e1RM and ordering win.
+                loadRecords(token)
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not save the record."
+            }
+        }
     }
 
     /** Saved warm-up templates, offered on the Live screen. */

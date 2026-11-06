@@ -52,6 +52,8 @@ import java.util.Locale
 fun TrainScreen(
     history: List<FinishedSession>,
     planWeek: PlanWeek?,
+    records: List<uk.oli.fittrack.domain.PersonalRecord> = emptyList(),
+    onAddRecord: (String, Double, Int, String?) -> Unit = { _, _, _, _ -> },
     onOpenSession: (String) -> Unit,
     onRefreshWeek: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -94,7 +96,7 @@ fun TrainScreen(
 
             when (mode) {
                 0 -> LogScreen(history, onOpenSession)
-                1 -> ProgressScreen(history)
+                1 -> ProgressScreen(history, records, onAddRecord)
                 else -> WeekPlan(planWeek, onRefreshWeek)
             }
             Spacer(Modifier.height(20.dp))

@@ -99,8 +99,7 @@ class ProgressEngineTest {
     }
 
     @Test
-    fun `at equal weight the rep range prefers more reps`() {
-        val history = listOf(
+    fun `at equal weight the rep range prefers more reps`() {        val history = listOf(
             session("2026-11-01", set("Bench Press", 100.0, 4), set("Bench Press", 100.0, 6))
         )
 
@@ -184,5 +183,21 @@ class ProgressEngineTest {
         )
 
         assertEquals(listOf("Bench Press", "Squat"), ProgressEngine.exerciseNames(history))
+    }
+
+    @Test
+    fun `records collapse to one row per lift, best first`() {
+        val records = listOf(
+            PersonalRecord("a", "Bench Press", 100.0, 5, e1rm = 116.0),
+            PersonalRecord("b", "Bench Press ", 120.0, 3, e1rm = 132.0),
+            PersonalRecord("c", "Back Squat", 150.0, 5, e1rm = 174.0, manual = true)
+        )
+
+        val rows = recordsByExercise(records)
+
+        assertEquals(listOf("Back Squat", "Bench Press"), rows.map { it.exercise })
+        // The trimmed names are one lift, and the stronger row wins.
+        assertEquals(132.0, rows[1].e1rm, 0.001)
+        assertTrue(rows[0].manual)
     }
 }
