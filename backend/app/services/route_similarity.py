@@ -230,8 +230,16 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
         review = settings.route_match_threshold
         gate = settings.route_match_gate
 
+        from app.services.route_quarantine import active_routes_clause
+
         routes = (
-            (await db.execute(select(Route).where(Route.user_id == user_id)))
+            (
+                await db.execute(
+                    select(Route).where(
+                        Route.user_id == user_id, active_routes_clause()
+                    )
+                )
+            )
             .scalars()
             .all()
         )
