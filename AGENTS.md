@@ -115,10 +115,17 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   longest **session** record, not the strongest lift — a one-off PR has no line
   to draw.
 - **Browsing the log**: Today's Log segment filters on free text (focus, note,
-  exercise names), focus, exercise and a date window
+  exercise names), focus, exercise, a date window and the classifier's TYPE
+  (split) and CLASS
   ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
   all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
   better than the website's months.
+- **Labels, templates, links**: the session detail shows the classifier's
+  split/lift/class chips and any linked Strava activity (link/unlink through
+  `/sessions/{id}/linkable-activities` and `PUT /sessions/{id}/link`); the Live
+  screen offers saved warm-up templates (`/lifting/warmup-templates`) that log
+  their steps as flagged warm-ups for the current exercise, locally, with no
+  signal.
 - **Names are trimmed at the boundary**: the server has held both `Legs` and
   `Legs `, and an untrimmed name silently splits a lift's history in two. The
   decoder trims, and every grouping/comparison trims, so one lift is one row.
@@ -135,11 +142,10 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   fallback when signed out or offline, and the phone's plan editor is hidden
   while a server plan is showing.
 - **Not built yet**: the Train/Ride/Body tabs (explicit "not built yet"
-  screens), and parity gaps still on the matrix: session labels/AI tags, a linked
-  Strava activity, manual PRs (needs `GET /lifting/prs`, never captured) and
-  warm-up templates. The phase list P0–P8 in
-  [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md) is
-  complete and the device pass has run.
+  screens), and one parity row: manual PRs (a PR with no session behind it needs
+  `GET /lifting/prs`, whose payload has never been captured). The phase list
+  P0–P9 in [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
+  is complete and the device pass has run.
 
 ## Architecture
 

@@ -107,8 +107,22 @@ the end, because installing per-fix wastes the only real screen we have.
   button instead of prescribing the seeded push day, and a failed request leaves
   the existing plan alone rather than inventing a rest day. The phone's own plan
   editor remains for offline/demo use and is hidden while the server plan shows.
-- [ ] **P9 — warm-up templates, labels and the linked activity.** The matrix's
-  remaining rows.
+- [x] **P9 — labels, templates and the linked activity.** The three matrix rows
+  that were still open:
+  - **Session labels**: `session_split`/`session_lift`/`session_class` are
+    decoded and shown as chips on the detail, and the log can filter by TYPE
+    (split) and CLASS, which is what the website's browser offers. Unlabelled
+    sessions match neither rather than leaking through.
+  - **Warm-up templates**: `GET /lifting/warmup-templates` on sync, offered on
+    the Live screen — one tap logs the template's steps as flagged warm-ups for
+    the current exercise. Local-only, so it works with no signal; warm-ups never
+    advance the plan.
+  - **Linked Strava activity**: the link is decoded and shown on the detail with
+    its duration, with Unlink and a picker backed by
+    `GET /sessions/{id}/linkable-activities` → `PUT /sessions/{id}/link`. Both
+    are optimistic and revert with a reason if the server refuses.
+- [ ] **P10 — manual PRs.** The one matrix row left: a PR with no session behind
+  it needs `GET /lifting/prs`, whose payload has never been captured.
 - [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
   @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:
   34 real sessions pulled, the log with its filters, Progress computed from that

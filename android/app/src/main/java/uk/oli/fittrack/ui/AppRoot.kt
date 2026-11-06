@@ -48,6 +48,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val planFromServer by vm.planFromServer.collectAsStateWithLifecycle()
     val plannedPlanName by vm.plannedPlanName.collectAsStateWithLifecycle()
     val restDay by vm.restDay.collectAsStateWithLifecycle()
+    val warmupTemplates by vm.warmupTemplates.collectAsStateWithLifecycle()
+    val linkCandidates by vm.linkCandidates.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -103,6 +105,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     restUntil = restUntil,
                     now = now,
                     history = history,
+                    warmupTemplates = warmupTemplates,
+                    onApplyWarmup = vm::applyWarmupTemplate,
                     onLog = vm::logSet,
                     onUndo = vm::undoLastSet,
                     onAdjustRest = vm::adjustRest,
@@ -156,6 +160,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     },
                     onEditSession = { days, focus, note -> vm.editSession(finished.id, days, focus, note) },
                     onAddSets = { exercise, specs -> vm.addSets(finished.id, exercise, specs) },
+                    linkCandidates = linkCandidates,
+                    onLoadLinkable = { vm.loadLinkableActivities(finished.id) },
+                    onLinkActivity = { activity -> vm.linkActivity(finished.id, activity) },
+                    onCancelLink = vm::clearLinkCandidates,
                     canRepeat = session == null,
                     onRepeat = {
                         if (vm.repeatSession(finished.id)) nav.navigate(Routes.LIVE)

@@ -110,6 +110,41 @@ class LiftingWriteTest {
     }
 
     @Test
+    fun `linkable activities come from the session's own path`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"id":"act-9","name":"Evening weights","source":"strava",
+                     "start_date":"2026-11-04T18:00:00+00:00","duration_seconds":3600}]"""
+            )
+        )
+
+        val candidates = runBlocking { api.linkableActivities("tok", "sess-7") }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("GET", request.method)
+        assertEquals("/lifting/sessions/sess-7/linkable-activities", request.path)
+        assertEquals("act-9", candidates.single().id)
+        assertEquals("Evening weights", candidates.single().name)
+    }
+
+    @Test
+    fun `linking sends the activity id and unlinking sends null`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        runBlocking { api.linkActivity("tok", "sess-7", "act-9") }
+
+        val link = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("PUT", link.method)
+        assertEquals("/lifting/sessions/sess-7/link", link.path)
+        assertTrue(link.body.readUtf8().contains("\"activity_id\":\"act-9\""))
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        runBlocking { api.linkActivity("tok", "sess-7", null) }
+
+        val unlink = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertTrue(unlink.body.readUtf8().contains("\"activity_id\":null"))
+    }
+
+    @Test
     fun `deleting a session hits the session path`() {
         server.enqueue(MockResponse().setResponseCode(204))
 

@@ -3,6 +3,7 @@ package uk.oli.fittrack.domain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -175,6 +176,32 @@ class SessionEngineTest {
         )
 
         assertTrue(SessionEngine.planFrom(session).exercises.isEmpty())
+    }
+
+    @Test
+    fun `a warm-up template logs flagged sets that do not advance the plan`() {
+        val state = started()
+
+        val updated = SessionEngine.addWarmups(
+            state,
+            "Back Squat",
+            listOf(WarmupStep(60.0, 8), WarmupStep(80.0, 5, "paused")),
+            at = 1_000L
+        )
+
+        assertEquals(2, updated.sets.size)
+        assertTrue(updated.sets.all { it.isWarmup })
+        assertEquals("paused", updated.sets[1].note)
+        // Warm-ups never count, so the plan is still on set 1.
+        assertEquals(0, SessionEngine.doneFor(updated, "Back Squat"))
+        assertEquals(1, SessionEngine.setNumber(updated, PlanExercise("Back Squat", 2, 4, 90.0)))
+    }
+
+    @Test
+    fun `an empty template changes nothing`() {
+        val state = started()
+
+        assertSame(state, SessionEngine.addWarmups(state, "Back Squat", emptyList(), at = 1_000L))
     }
 
     @Test
