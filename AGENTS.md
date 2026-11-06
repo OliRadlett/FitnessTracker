@@ -111,19 +111,26 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   per-exercise estimated-1RM line from the cached history
   ([`domain/Progress.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Progress.kt)),
   with no network in the path. Warm-ups never count; empty rep ranges are shown
-  as empty rather than omitted.
+  as empty rather than omitted. The chart defaults to the exercise with the
+  longest **session** record, not the strongest lift — a one-off PR has no line
+  to draw.
 - **Browsing the log**: Today's Log segment filters on free text (focus, note,
   exercise names), focus, exercise and a date window
   ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
   all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
   better than the website's months.
+- **Names are trimmed at the boundary**: the server has held both `Legs` and
+  `Legs `, and an untrimmed name silently splits a lift's history in two. The
+  decoder trims, and every grouping/comparison trims, so one lift is one row.
 - **Finishing**: the summary asks for the session's own RPE and a note, and
   `SessionEngine.finished()` turns the session in progress into history with
   both. A blank note is null, not an empty string.
 - **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens). Parity phase P7 (the device pass) is
-  next. A manual PR (one with no session behind it) would need
-  `GET /lifting/prs`, which has never been captured.
+  tabs (explicit "not built yet" screens), and parity gaps still on the matrix:
+  session labels/AI tags, a linked Strava activity, manual PRs (needs
+  `GET /lifting/prs`, never captured) and warm-up templates. The phase list
+  P0–P7 in [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
+  is complete and the device pass has run.
 
 ## Architecture
 

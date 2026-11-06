@@ -45,7 +45,9 @@ object ProgressEngine {
     fun personalBests(history: List<FinishedSession>): List<PersonalBest> =
         history.flatMap { it.sets }
             .filterNot { it.isWarmup }
-            .groupBy { it.exercise }
+            // Trim: a set logged with "Bench Press " is the same lift, and two
+            // PR rows for one lift would be a lie about your progress.
+            .groupBy { it.exercise.trim() }
             .mapNotNull { (name, sets) ->
                 sets.maxByOrNull { estimated1rm(it.weightKg, it.reps) }
                     ?.let { PersonalBest(name, it.weightKg, it.reps, it.at) }
@@ -62,7 +64,7 @@ object ProgressEngine {
         exercise: String
     ): List<Pair<RepRange, PersonalBest?>> {
         val sets = history.flatMap { it.sets }
-            .filter { it.exercise == exercise && !it.isWarmup }
+            .filter { it.exercise.trim() == exercise && !it.isWarmup }
         return REP_RANGES.map { range ->
             val best = sets.filter { range.contains(it.reps) }
                 // Heaviest wins; at equal weight, more reps is the better set.
@@ -82,21 +84,33 @@ object ProgressEngine {
             .take(limit)
             .mapNotNull { session ->
                 val best = session.sets
-                    .filter { it.exercise == exercise && !it.isWarmup }
+                    .filter { it.exercise.trim() == exercise && !it.isWarmup }
                     .maxByOrNull { estimated1rm(it.weightKg, it.reps) }
                     ?: return@mapNotNull null
                 session.endedAt to estimated1rm(best.weightKg, best.reps)
             }
             .reversed()
 
-    /** Exercises seen in history, most-frequent first. */
-    fun exerciseNames(history: List<FinishedSession>, limit: Int = 8): List<String> =
-        history.flatMap { it.sets }
-            .filterNot { it.isWarmup }
-            .groupingBy { it.exercise }
-            .eachCount()
-            .entries
-            .sortedByDescending { it.value }
-            .map { it.key }
-            .take(limit)
+    /**
+     * Exercises seen in history, the ones with the longest record first.
+     *
+     * Ordered by **sessions**, not sets: the progress chart needs two sessions
+     * before it can draw, so the default exercise must be one that has a history
+     * rather than the one with the most volume in a single session.
+     */
+    fun exerciseNames(history: List<FinishedSession>, limit: Int = 8): List<String> {
+        val sessionsPer = mutableMapOf<String, Int>()
+        val setsPer = mutableMapOf<String, Int>()
+        for (session in history) {
+            for ((name, sets) in session.sets.filterNot { it.isWarmup }.groupBy { it.exercise.trim() }) {
+                sessionsPer[name] = (sessionsPer[name] ?: 0) + 1
+                setsPer[name] = (setsPer[name] ?: 0) + sets.size
+            }
+        }
+        return sessionsPer.keys.sortedWith(
+            compareByDescending<String> { sessionsPer[it] ?: 0 }
+                .thenByDescending { setsPer[it] ?: 0 }
+                .thenBy { it }
+        ).take(limit)
+    }
 }

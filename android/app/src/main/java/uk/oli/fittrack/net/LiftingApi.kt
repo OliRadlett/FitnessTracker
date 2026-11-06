@@ -76,8 +76,8 @@ object LiftingJson {
 
         return FinishedSession(
             id = id,
-            planTitle = focus?.takeIf { it.isNotBlank() }
-                ?: program_name?.takeIf { it.isNotBlank() }
+            planTitle = focus?.trim()?.takeIf { it.isNotBlank() }
+                ?: program_name?.trim()?.takeIf { it.isNotBlank() }
                 ?: "Lifting",
             startedAt = start,
             endedAt = end,
@@ -94,7 +94,10 @@ object LiftingJson {
     }
 
     private fun SetDto.toLoggedSet(at: Long) = LoggedSet(
-        exercise = exercise_name,
+        // Trimmed at the boundary: the server has held "Legs " and
+        // "Bench Press " (a trailing space survives the website's form), and an
+        // untrimmed name silently splits a lift's history in two.
+        exercise = exercise_name.trim(),
         weightKg = weight_kg,
         reps = reps,
         // Null stays null: the website shows an empty RPE, so inventing a 7 here
