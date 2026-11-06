@@ -34,6 +34,7 @@ import uk.oli.fittrack.domain.LoggedSet
 import uk.oli.fittrack.domain.Plan
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.SessionState
+import uk.oli.fittrack.domain.weekSummary
 import uk.oli.fittrack.net.TodayBrief
 import uk.oli.fittrack.ui.BottomAction
 import uk.oli.fittrack.ui.BottomNav
@@ -66,6 +67,10 @@ fun TodayScreen(
     restDay: Boolean = false,
     brief: TodayBrief? = null,
     onRefreshBrief: () -> Unit = {},
+    dashboard: uk.oli.fittrack.net.DashboardSnapshot? = null,
+    dashboardLoading: Boolean = false,
+    onRefreshDashboard: () -> Unit = {},
+    rides: List<uk.oli.fittrack.domain.Ride> = emptyList(),
     onEditPlan: () -> Unit,
     onOpenSession: (String) -> Unit,
     onSignIn: () -> Unit,
@@ -75,6 +80,9 @@ fun TodayScreen(
 ) {
     val active = session?.plan ?: plan
     val now = remember { System.currentTimeMillis() }
+    // Refresh the dashboard sections when Today comes back into view: finishing
+    // a session changes the numbers above.
+    androidx.compose.runtime.LaunchedEffect(Unit) { onRefreshDashboard() }
     val dateLabel = remember {
         LocalDate.now().format(DateTimeFormatter.ofPattern("EEE d MMMM", Locale.UK))
             .uppercase(Locale.UK)
@@ -156,6 +164,66 @@ fun TodayScreen(
             } else if (history.isNotEmpty()) {
                 Spacer(Modifier.height(18.dp))
                 WeekStrip(strip, weekVolume)
+            }
+
+            // The dashboard's numbers sit below the plan on purpose: Today's job
+            // is to say what you are doing, and review belongs under act.
+            val snapshot = dashboard
+            if (snapshot != null) {
+                val loaded = snapshot.load
+                if (loaded != null && loaded.points.isNotEmpty()) {
+                    Spacer(Modifier.height(18.dp))
+                    LoadCard(loaded)
+                }
+                val week = remember(history, rides, dashboard, now) {
+                    weekSummary(
+                        history = history,
+                        rides = rides,
+                        load = loaded,
+                        today = LocalDate.now()
+                    )
+                }
+                val month = remember(history, rides, now) {
+                    weekSummary(
+                        history = history,
+                        rides = rides,
+                        load = null,
+                        today = LocalDate.now(),
+                        days = 28
+                    )
+                }
+                if (!week.isEmpty || !month.isEmpty) {
+                    Spacer(Modifier.height(12.dp))
+                    WeekCard(week, month)
+                }
+                val done = brief?.done
+                if (done != null && !done.isEmpty) {
+                    Spacer(Modifier.height(12.dp))
+                    TodayDoneCard(done)
+                }
+                if (snapshot.readiness != null || snapshot.sleepDebt != null) {
+                    Spacer(Modifier.height(12.dp))
+                    ReadinessCard(
+                        readiness = snapshot.readiness
+                            ?: uk.oli.fittrack.domain.Readiness(
+                                score = null,
+                                level = "unknown",
+                                message = "No readiness data."
+                            ),
+                        sleep = snapshot.sleepDebt
+                    )
+                }
+                if (snapshot.goals.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    GoalsCard(snapshot.goals)
+                }
+                if (history.isNotEmpty() || rides.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    RecentCard(history, rides)
+                }
+            } else if (dashboardLoading) {
+                Spacer(Modifier.height(18.dp))
+                DashboardPlaceholder("Loading your dashboard…")
             }
             Spacer(Modifier.height(20.dp))
         }

@@ -61,6 +61,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val weightTrend by vm.weightTrend.collectAsStateWithLifecycle()
     val weekOffset by vm.weekOffset.collectAsStateWithLifecycle()
     val rides by vm.rides.collectAsStateWithLifecycle()
+    val dashboard by vm.dashboard.collectAsStateWithLifecycle()
+    val dashboardLoading by vm.dashboardLoading.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -85,6 +87,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 restDay = restDay,
                 brief = brief,
                 onRefreshBrief = vm::refreshBrief,
+                dashboard = dashboard,
+                dashboardLoading = dashboardLoading,
+                onRefreshDashboard = vm::refreshDashboard,
+                rides = rides.orEmpty(),
                 onEditPlan = { nav.navigate(Routes.PLAN_EDIT) },
                 onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                 onSignIn = { nav.navigate(Routes.SIGNIN) },
