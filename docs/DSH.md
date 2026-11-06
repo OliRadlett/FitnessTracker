@@ -181,7 +181,10 @@ relative links, DSH↔OpenCode skill coverage, the pitfall index matching
 
 - **New fact for all sessions?** Add one line to `AGENTS.md` and the detail to a
   doc; keep the budget.
-- **New subsystem doc?** Add it to the routing table in `AGENTS.md`.
+- **New subsystem doc?** Add a row to [`docs/README.md`](README.md) (the doc-index
+  guard enforces it) and to the routing table in `AGENTS.md`.
+- **A decision that will be re-litigated?** Add a line to
+  [`docs/DECISIONS.md`](DECISIONS.md); link the owner, don't restate it.
 - **New pitfall?** Append to `docs/PITFALLS.md` (never renumber) and add a
   one-line entry to the index in `AGENTS.md`.
 - **New skill?** `.dsh/skills/<name>/SKILL.md` with `name` (matching the

@@ -136,6 +136,19 @@ python fittrack.py exec backend alembic upgrade head
 2. After sync/service/Celery changes: check logs — `python fittrack.py logs backend --tail 30`.
 3. Before finishing any code change: run relevant tests + `ruff check` (backend) or `tsc --noEmit` (frontend).
 
+### Verification by change type
+
+| Change | Minimum checks |
+|--------|----------------|
+| Docs/steering only | `python -m pytest backend/tests/test_doc_claims.py backend/tests/test_agent_docs.py -q` |
+| Backend code | `ruff check backend/` + `python -m pytest backend/tests/ -m "not integration" -q` + relevant integration tests |
+| Frontend | `npm run test`, `npx tsc --noEmit`, `npm run lint` (from `frontend/`) |
+| Model or migration | `alembic downgrade <prev>` + `upgrade head`; doc-claim tests |
+| Skill or `.dsh` plugin | Doc guards + `node .dsh/plugins/feature-quality/eval/{harness,wiring}.mjs` |
+
+The full command detail and env vars are above; [`docs/README.md`](README.md)
+maps which doc owns which fact.
+
 ## Video Pipeline Local Runs
 
 The lift-video pipeline (Modal) can run end-to-end on a dev machine in
