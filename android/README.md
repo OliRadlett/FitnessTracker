@@ -9,8 +9,12 @@ against those decisions.
 
 ## What works
 
-- Five-tab shell — Today, Train, Ride, Body, You. Today and Train have content;
-  Ride and Body say so plainly.
+- Five-tab shell — Today, Train, Ride, Body, You. Only Ride says "not built
+  yet" now: Today has the day, Train the sessions/progress/week, Body the
+  bodyweight trend, You the account.
+- **Body**: bodyweight — the latest weigh-in, its 30-day change, the 7-day
+  rolling average as a line, and the weigh-ins behind it with their source.
+  Logging one upserts by date; only a manual entry can be deleted.
 - Today: today and nothing else — the plan (or "Rest day"), one action. Resumes
   an unfinished session.
 - **Train**: the training surface in three views — **Sessions** (the log),
