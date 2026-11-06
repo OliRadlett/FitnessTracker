@@ -68,6 +68,12 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all {
+                // Each test class gets its own JVM, and therefore its own
+                // Robolectric data dir. Without this, one class's plan.json or
+                // session.json is visible to the next: PlanEditorFlowTest's edit
+                // to five bench sets turned up in AppFlowTest's Live screen.
+                it.forkEvery = 1
+                it.maxParallelForks = 1
                 it.testLogging {
                     showStandardStreams = true
                     events("passed", "failed")
