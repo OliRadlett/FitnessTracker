@@ -180,11 +180,16 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   latest weigh-in, 30-day change, the **7-day rolling average** as a line, and
   the weigh-ins with their source. `POST` logs one (the API upserts by date) and
   `DELETE` removes only a `manual` entry. 20–400 kg is enforced before sending.
-- **Not built yet**: the Ride tab (an explicit "not built yet" screen).
-  The lifting matrix is otherwise complete — the phase list P0–P19 in
-  [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md) is done
-  and the device pass has run, with plan *editing* deliberately left to the
-  website.
+- **Ride tab**: rides from `GET /activities` ([`net/RidesApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/RidesApi.kt),
+  [`ui/ride/RideScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/ride/RideScreen.kt)) —
+  last-7-days distance/time/TSS and the recent rides with pace, power/HR and
+  TSS. The list endpoint is unfiltered, so a ride is recognised by its
+  `sport_type`; the summary is computed from the rides on screen, so it cannot
+  disagree with the list.
+- **Not built yet**: nothing is a placeholder any more. The lifting matrix is
+  complete (phase list P0–P20 in
+  [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the
+  device pass has run, and plan *editing* is deliberately left to the website.
 
 ## Architecture
 
