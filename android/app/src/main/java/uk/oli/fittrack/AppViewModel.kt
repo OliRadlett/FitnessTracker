@@ -24,6 +24,7 @@ import uk.oli.fittrack.data.withSet
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.LoggedSet
+import uk.oli.fittrack.domain.PlanExercise
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.net.ApiException
 import uk.oli.fittrack.net.AuthApi
@@ -608,6 +609,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _dashboardLoading = MutableStateFlow(false)
     val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
+
+    /** The plan day being edited, and the plan it belongs to. */
+    private val _editingDay = MutableStateFlow<uk.oli.fittrack.net.PlanDaySummary?>(null)
+    val editingDay: StateFlow<uk.oli.fittrack.net.PlanDaySummary?> = _editingDay.asStateFlow()
+
+    private val _planEditBusy = MutableStateFlow(false)
+    val planEditBusy: StateFlow<Boolean> = _planEditBusy.asStateFlow()
+
+    private val _planEditError = MutableStateFlow<String?>(null)
+    val planEditError: StateFlow<String?> = _planEditError.asStateFlow()
+
+    /** Set when a day saved, so the screen can pop back exactly once. */
+    private val _planDaySaved = MutableStateFlow(false)
+    val planDaySaved: StateFlow<Boolean> = _planDaySaved.asStateFlow()
+
+    fun beginPlanDayEdit(day: uk.oli.fittrack.net.PlanDaySummary) {
+        _editingDay.value = day
+        _planEditError.value = null
+        _planDaySaved.value = false
+    }
+
+    fun clearPlanDaySaved() {
+        _planDaySaved.value = false
+    }
+
+    fun savePlanDay(sport: String, focus: String, notes: String?, exercises: List<PlanExercise>) {
+        val token = _auth.value.token ?: return
+        val day = _editingDay.value ?: return
+        val planId = _planWeek.value?.planId ?: return
+        val dayId = day.id ?: return
+        viewModelScope.launch {
+            _planEditBusy.value = true
+            _planEditError.value = null
+            try {
+                val edit = uk.oli.fittrack.net.PlanDayEdit(
+                    sport = sport,
+                    focus = focus,
+                    notes = notes,
+                    exercises = if (sport == "strength") exercises else emptyList()
+                )
+                when (val result = planApi.saveDay(token, planId, dayId, edit)) {
+                    is uk.oli.fittrack.net.PlanDaySave.Saved -> {
+                        loadPlanWeek(token)
+                        loadTodayPlan(token)
+                        _editingDay.value = null
+                        _planDaySaved.value = true
+                    }
+                    is uk.oli.fittrack.net.PlanDaySave.Refused ->
+                        _planEditError.value = result.message
+                }
+            } finally {
+                _planEditBusy.value = false
+            }
+        }
+    }
 
     /** The routes atlas. Null until fetched. */
     private val _routes = MutableStateFlow<List<uk.oli.fittrack.domain.BikeRoute>?>(null)

@@ -278,6 +278,16 @@ the end, because installing per-fix wastes the only real screen we have.
   tiles, no key, no signal. Reached from You → Routes. The web's duplicate
   maintenance and segment views stay on the website.
 
+- [x] **P26 — editing a plan day.** The phone's one writing surface into a plan:
+  from Train › Week, a day's `edit` opens sport, focus, the exercise list
+  (name / sets / reps / kg, add and remove) and notes, saved as a single
+  `PATCH /training-plans/{id}/days/{day}`. Only the changed fields are sent, so
+  a focus edit cannot rewrite the prescription; a 409 (the date already holds
+  another session of that sport) is shown verbatim; success reloads the week and
+  today. The week now carries `plan_id` and each day's id, and a day without one
+  cannot be edited. The website keeps the full editor, program matrix and block
+  tools — this is the sentence you change on a phone, not a desk tool.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

@@ -56,6 +56,7 @@ fun TrainScreen(
     records: List<uk.oli.fittrack.domain.PersonalRecord> = emptyList(),
     onAddRecord: (String, Double, Int, String?) -> Unit = { _, _, _, _ -> },
     onStartDay: (PlanDaySummary) -> Unit = {},
+    onEditDay: (PlanDaySummary) -> Unit = {},
     weekOffset: Int = 0,
     onShiftWeek: (Int) -> Unit = {},
     onThisWeek: () -> Unit = {},
@@ -108,7 +109,8 @@ fun TrainScreen(
                     onRefresh = onRefreshWeek,
                     onShiftWeek = onShiftWeek,
                     onThisWeek = onThisWeek,
-                    onStartDay = onStartDay
+                    onStartDay = onStartDay,
+                    onEditDay = onEditDay
                 )
             }
             Spacer(Modifier.height(20.dp))
@@ -151,7 +153,8 @@ private fun WeekPlan(
     onRefresh: () -> Unit,
     onShiftWeek: (Int) -> Unit,
     onThisWeek: () -> Unit,
-    onStartDay: (PlanDaySummary) -> Unit
+    onStartDay: (PlanDaySummary) -> Unit,
+    onEditDay: (PlanDaySummary) -> Unit
 ) {
     if (week == null) {
         Text("No plan loaded.", fontSize = 15.sp, color = Tokens.Fg)
@@ -232,12 +235,16 @@ private fun WeekPlan(
             }
         }
         Spacer(Modifier.height(10.dp))
-        week.days.forEach { day -> DayRow(day, onStartDay) }
+        week.days.forEach { day -> DayRow(day, onStartDay, onEditDay) }
     }
 }
 
 @Composable
-private fun DayRow(day: PlanDaySummary, onStartDay: (PlanDaySummary) -> Unit) {
+private fun DayRow(
+    day: PlanDaySummary,
+    onStartDay: (PlanDaySummary) -> Unit,
+    onEditDay: (PlanDaySummary) -> Unit
+) {
     val date = runCatching { LocalDate.parse(day.date) }.getOrNull()
     val title = day.focus?.let { humaniseLabel(it) }
         ?: when (day.sport) {
@@ -286,6 +293,18 @@ private fun DayRow(day: PlanDaySummary, onStartDay: (PlanDaySummary) -> Unit) {
                     color = if (day.canStart) Tokens.Accent else Tokens.Muted
                 )
                 Spacer(Modifier.width(10.dp))
+            }
+            if (day.canEdit) {
+                Text(
+                    "edit",
+                    fontSize = 12.sp,
+                    color = Tokens.Muted,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .clickable { onEditDay(day) }
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                )
+                Spacer(Modifier.width(8.dp))
             }
             Text(
                 // Today is an anchor: a completed session should not hide which
