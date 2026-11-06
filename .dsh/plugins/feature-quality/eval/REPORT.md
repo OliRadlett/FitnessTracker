@@ -216,6 +216,34 @@ dispatch, and the stub models the real arity: it throws without a signal, so the
 check fails the way the app did. The current-session path had always been fine,
 which is why a real submission succeeded while the default path did not.
 
+## v4 — presets, and what was refused
+
+Four defaults were proposed. One survived evaluation; the other three were
+replaced or dropped, because each one would have made the delivered prompt worse
+than the blank it replaced:
+
+| Proposed | Verdict | Replacement |
+|---|---|---|
+| `OWNER: you` | "you" is the *agent* in the delivered prompt; `OWNER: you` in `CONTRACT.md` names nobody a week later | `OWNER: Oli` |
+| `REAL FIXTURE: real prod data` | a category, not a fixture — it satisfies the field while giving Phase 0 nothing to open, and it suppresses the `UNFILLED:` line that asks for one | left blank |
+| `PRODUCTION LIMITS: unlimited time and scope` | contradicts the prompt's own non-negotiable, "you do not have unlimited scope" | `unlimited time, not scope` |
+| `FIRST LOOK: as long as it takes` | removes the checkpoint the prompt keeps on purpose | `5 working days` |
+
+**F13 — a preset keyed by its label was silently ignored.** `defaults.json`
+first said `"FIRST LOOK"`; the field key is `FIRST_LOOK`. `parseDefaults` warned
+and ignored it, which is the right behaviour but was invisible — the lab asserted
+only that OWNER arrived. The check now requires both presets, so a key that does
+not exist fails instead of quietly shrinking the file.
+
+**F14 — the preset mark had to be derived, not remembered.** Marking keys as the
+file arrives showed a `preset` badge over an empty field when a stored draft had
+blocked the fill. The mark is now computed from the value: preset **and**
+unchanged. Typing drops it, clearing drops it, a draft never gets it.
+
+The client's hook runtime also learned to re-render on state the way React does,
+because four preset checks read the tree after an awaited request and saw the
+pre-request frame.
+
 
 ## Rejected
 

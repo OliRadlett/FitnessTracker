@@ -30,6 +30,7 @@ window.__ModuleLoader__.load({
     const START_URL = '/plugins/feature-quality/start'
     const PREVIEW_URL = '/plugins/feature-quality/preview'
     const STATUS_URL = '/plugins/feature-quality/status'
+    const DEFAULTS_URL = '/plugins/feature-quality/defaults'
     const REQUEST_TIMEOUT_MS = 20000
     const PREVIEW_DEBOUNCE_MS = 300
     const DRAFT_KEY = 'dsh.feature-quality.draft.v2'
@@ -123,6 +124,13 @@ window.__ModuleLoader__.load({
       label: {
         color: MUTED, fontSize: 10, lineHeight: '14px', letterSpacing: '0.04em',
         display: 'inline-flex', alignItems: 'center', gap: 4,
+      },
+      labelRow: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 },
+      presetBadge: {
+        border: `1px solid ${BORDER}`, background: 'transparent', color: SUBTLE,
+        borderRadius: 999, padding: '0 6px', font: 'inherit',
+        fontSize: 9, lineHeight: '15px', letterSpacing: '0.03em',
+        cursor: 'pointer', flex: 'none',
       },
       requiredMark: { color: DANGER, fontSize: 10, lineHeight: '14px' },
       input: {
@@ -371,6 +379,8 @@ window.__ModuleLoader__.load({
       const [recent] = useState(loadRecent)
       const [touched, setTouched] = useState({})
       const [focusKey, setFocusKey] = useState(undefined)
+      const [presetKeys, setPresetKeys] = useState([])
+      const [presetValues, setPresetValues] = useState({})
       const [optionalOpen, setOptionalOpen] = useState(false)
       const [messageOpen, setMessageOpen] = useState(false)
       const [runOpen, setRunOpen] = useState(false)
@@ -382,6 +392,38 @@ window.__ModuleLoader__.load({
       const filled = FIELDS.filter((field) => collapse(values[field.key]).length > 0).length
       const optionalFilled = OPTIONAL_FIELDS.filter((field) => collapse(values[field.key]).length > 0).length
       const requiredFilled = REQUIRED_FIELDS.length - missing.length
+
+      // Presets arrive from the host's `defaults.json`, so the form and the
+      // `/quality` command fill from the same file. They never overwrite a draft:
+      // a half-written brief is the user's, not the file's.
+      useEffect(() => {
+        if (sessionId === undefined) return undefined
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+        post(DEFAULTS_URL, {}, controller.signal)
+          .then(async (response) => {
+            const body = await response.json().catch(() => undefined)
+            if (!response.ok || body?.defaults === undefined) return
+            const defaults = body.defaults
+            const keys = Object.keys(defaults).filter((key) => typeof defaults[key] === 'string' && collapse(defaults[key]) !== '')
+            if (keys.length === 0) return
+            setValues((current) => {
+              // A draft wins; so does anything typed before the file arrived.
+              if (Object.keys(current).some((key) => collapse(current[key]) !== '')) return current
+              const next = { ...current }
+              for (const key of keys) next[key] = defaults[key]
+              return next
+            })
+            setPresetValues(defaults)
+            setPresetKeys((current) => (current.length > 0 ? current : keys))
+          })
+          .catch(() => {})
+          .finally(() => clearTimeout(timer))
+        return () => {
+          clearTimeout(timer)
+          controller.abort()
+        }
+      }, [sessionId])
 
       useEffect(() => {
         if (!open) return
@@ -521,6 +563,7 @@ window.__ModuleLoader__.load({
             writeJson(RECENT_KEY, next)
           }
           setValues({})
+          setPresetKeys([])
           setPreview(undefined)
           setMessageOpen(false)
           setOpen(false)
@@ -552,6 +595,18 @@ window.__ModuleLoader__.load({
       const setField = (key) => (event) => {
         const next = event.target.value
         setValues((current) => ({ ...current, [key]: next }))
+        // Typing over a preset makes it the user's value, not the file's.
+        setPresetKeys((current) => (current.includes(key) ? current.filter((item) => item !== key) : current))
+      }
+
+      /** Clear one preset back to its placeholder. */
+      const clearPreset = (key) => () => {
+        setValues((current) => {
+          const next = { ...current }
+          delete next[key]
+          return next
+        })
+        setPresetKeys((current) => current.filter((item) => item !== key))
       }
 
       const runStatus = run?.value
@@ -561,6 +616,13 @@ window.__ModuleLoader__.load({
       const fieldNode = (field, isFirst) => {
         const required = field.tier === 'required'
         const empty = collapse(values[field.key]) === ''
+        // A mark means "this value is the preset, untouched". Deriving it from the
+        // value keeps it honest when a draft blocked the preset, when the field was
+        // cleared, and when the user typed something else (even the same string).
+        const presetValue = presetValues[field.key]
+        const isPreset = typeof presetValue === 'string'
+          && presetKeys.includes(field.key)
+          && collapse(values[field.key]) === collapse(presetValue)
         // A pristine form is not an error state: the mark says "required", and the
         // border only turns red once that field has been left empty.
         const invalid = required && empty && touched[field.key] === true
@@ -572,14 +634,27 @@ window.__ModuleLoader__.load({
           setFocusKey(undefined)
           setTouched((current) => (current[field.key] === true ? current : { ...current, [field.key]: true }))
         }
-        return h('label', {
+        return h('div', {
           key: field.key,
           style: field.key === 'FEATURE' ? { ...style.field, gridColumn: '1 / -1' } : style.field,
         },
-          h('span', { style: style.label },
-            field.label,
-            required
-              ? h('span', { style: style.requiredMark, title: 'Required before the prompt can start', 'aria-hidden': true }, '*')
+          h('div', { style: style.labelRow },
+            h('label', { htmlFor: `fq-input-${field.key}`, style: style.label },
+              field.label,
+              required
+                ? h('span', { style: style.requiredMark, title: 'Required before the prompt can start', 'aria-hidden': true }, '*')
+                : null,
+            ),
+            // A preset is the user's value the moment they keep it, so it must be
+            // visible as one: marked, and one click from going back to a placeholder.
+            isPreset
+              ? h('button', {
+                  type: 'button',
+                  style: style.presetBadge,
+                  title: 'Preset from defaults.json — click to clear',
+                  'data-feature-quality-preset': field.key,
+                  onClick: clearPreset(field.key),
+                }, 'preset \u00d7')
               : null,
             h('span', { id: `fq-why-${field.key}`, style: style.hidden },
               required ? 'Required. ' : 'Optional. ',
@@ -587,6 +662,7 @@ window.__ModuleLoader__.load({
           ),
           field.options === undefined
             ? h('input', {
+                id: `fq-input-${field.key}`,
                 ref: isFirst ? firstField : undefined,
                 type: 'text',
                 value: values[field.key] ?? '',
@@ -610,6 +686,7 @@ window.__ModuleLoader__.load({
                 },
               })
             : h('select', {
+                id: `fq-input-${field.key}`,
                 value: values[field.key] ?? '',
                 style: inputStyle,
                 'data-feature-quality-field': field.key,

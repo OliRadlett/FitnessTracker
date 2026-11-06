@@ -16,6 +16,7 @@
     "lib/",
     "client.js",
     "prompt.md",
+    "defaults.json",
     "eval/",
     "cordis.patch.yml",
     "locale/*.json",

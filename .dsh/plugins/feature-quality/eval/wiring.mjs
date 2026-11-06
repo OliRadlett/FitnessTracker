@@ -25,9 +25,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const here = new URL('./', import.meta.url)
 const root = new URL('../', here)
 
-// The run record must not land in the repository while a lab is running.
+// The run record must not land in the repository while a lab is running, and the
+// presets must not change meaning when the repository's own file is edited.
 const stateDir = mkdtempSync(join(tmpdir(), 'fq-state-'))
 process.env.FEATURE_QUALITY_STATE_DIR = stateDir
+const DEFAULTS = { OWNER: 'Preset Owner', FIRST_LOOK: '3 working days' }
+const defaultsFile = join(mkdtempSync(join(tmpdir(), 'fq-defaults-')), 'defaults.json')
+writeFileSync(defaultsFile, JSON.stringify(DEFAULTS), 'utf8')
+process.env.FEATURE_QUALITY_DEFAULTS = defaultsFile
 
 const plugin = await import(pathToFileURL(fileURLToPath(new URL('index.js', root))).href)
 const stateModule = await import(pathToFileURL(fileURLToPath(new URL('lib/state.mjs', root))).href)
@@ -37,6 +42,7 @@ const SESSION = 'session-current'
 const START = '/plugins/feature-quality/start'
 const PREVIEW = '/plugins/feature-quality/preview'
 const STATUS = '/plugins/feature-quality/status'
+const DEFAULTS_ROUTE = '/plugins/feature-quality/defaults'
 const GOOD_LINE = '/quality Badge | surface: page | job: scan routes | owner: Oli'
 
 let failures = 0
@@ -174,7 +180,7 @@ async function callRoute(world, path, payload) {
 
 const expectedText = (line) => plugin.buildPrompt(
   template,
-  plugin.canonicalise(plugin.parseInvocation(line.replace(/^\/quality/u, '')).values),
+  plugin.canonicalise(plugin.applyDefaults(plugin.parseInvocation(line.replace(/^\/quality/u, '')).values, DEFAULTS).values),
 )
 
 console.log('wiring lab\n')
@@ -203,8 +209,9 @@ await check('current-session POST delivers the built prompt and records the run'
   const record = JSON.parse(readFileSync(join(stateDir, 'badge.json'), 'utf8'))
   assertEqual(record.slug, 'badge')
   assertEqual(record.surface, 'page')
-  assertEqual(record.supplied, 4)
-  assert(Array.isArray(record.unfilled) && record.unfilled.length === 7, `unfilled: ${JSON.stringify(record.unfilled)}`)
+  assertEqual(record.supplied, 5)
+  assert(Array.isArray(record.unfilled) && record.unfilled.length === 6, `unfilled: ${JSON.stringify(record.unfilled)}`)
+  assertEqual(record.presets, ['FIRST LOOK'])
   assertEqual(record.cwd, world.workspace)
 })
 
@@ -232,9 +239,38 @@ await check('refuses a line missing a required input, before either delivery pat
   const world = createWorld()
   const { status, body } = await callRoute(world, START, { sessionId: SESSION, line: '/quality Badge | surface: page' })
   assertEqual(status, 400)
-  assert(body.error.includes('OWNER'), `error does not name OWNER: ${body.error}`)
+  // OWNER is a preset in this lab's defaults file, so it is satisfied; USER JOB
+  // is the one nobody supplied.
+  assert(body.error.includes('USER JOB'), `error does not name USER JOB: ${body.error}`)
+  assert(!body.error.includes('OWNER'), `a preset OWNER was reported missing: ${body.error}`)
   assertEqual(world.followed.length, 0)
   assertEqual(world.created.length, 0)
+})
+
+await check('the presets route serves the file the host loaded', async () => {
+  const world = createWorld()
+  const { status, body } = await callRoute(world, DEFAULTS_ROUTE, {})
+  assertEqual(status, 200)
+  assertEqual(body.ok, true)
+  assertEqual(body.defaults, DEFAULTS)
+  assertEqual(body.presets.sort(), ['FIRST_LOOK', 'OWNER'])
+})
+
+await check('a preset fills only what was not supplied', () => {
+  const applied = plugin.applyDefaults({ OWNER: 'Oli' }, DEFAULTS)
+  assertEqual(applied.values.OWNER, 'Oli', 'a preset overwrote a supplied value')
+  assertEqual(applied.values.FIRST_LOOK, '3 working days')
+  assertEqual(applied.presets, ['FIRST LOOK'])
+
+  const none = plugin.applyDefaults({}, {})
+  assertEqual(none.presets, [])
+})
+
+await check('defaults.json rejects unknown keys and blank values', () => {
+  const parsed = plugin.parseDefaults(JSON.stringify({ OWNER: 'Oli', NOPE: 'x', FIRST_LOOK: '   ' }))
+  assertEqual(parsed.values, { OWNER: 'Oli' })
+  assert(parsed.warnings.some((warning) => warning.includes('NOPE')), `no warning for NOPE: ${JSON.stringify(parsed.warnings)}`)
+  assert(parsed.warnings.some((warning) => warning.includes('FIRST_LOOK')), 'no warning for a blank value')
 })
 
 await check('refuses a URL in SURFACE, and points at CURRENT STATE', async () => {
@@ -254,7 +290,9 @@ await check('preview returns the exact text, the slug and what is unfilled', asy
   assertEqual(body.ok, true)
   assertEqual(body.slug, 'badge')
   assertEqual(body.surface, 'page')
-  assertEqual(body.unfilled.length, 7)
+  assertEqual(body.unfilled.length, 6)
+  assertEqual(body.presets, ['FIRST LOOK'])
+  assert(!body.unfilled.includes('FIRST LOOK'), 'a preset was reported as unfilled')
   assertEqual(body.text, expectedText(GOOD_LINE))
   assert(body.blocked === undefined, `unexpected block: ${body.blocked}`)
 })
@@ -263,7 +301,7 @@ await check('preview reports the block around the message, not instead of it', a
   const world = createWorld()
   const { status, body } = await callRoute(world, PREVIEW, { line: '/quality Badge | surface: page' })
   assertEqual(status, 200)
-  assert(typeof body.blocked === 'string' && body.blocked.includes('OWNER'), 'blocked does not name OWNER')
+  assert(typeof body.blocked === 'string' && body.blocked.includes('USER JOB'), 'blocked does not name USER JOB')
   assert(body.text.includes('UNFILLED:'), 'the message is missing its UNFILLED line')
 })
 
@@ -332,7 +370,7 @@ await check('/quality refuses the same gap as the route', async () => {
   const world = createWorld()
   const execution = await world.ctx.commands.execute(world.agent, '/quality Badge | surface: page', [], new AbortController().signal)
   assertEqual(execution.result.kind, 'error')
-  assert(execution.result.text.includes('OWNER'), 'the command refusal does not name OWNER')
+  assert(execution.result.text.includes('USER JOB'), 'the command refusal does not name USER JOB')
   assertEqual(world.followed.length, 0)
 })
 
@@ -449,6 +487,7 @@ function installFetch(overrides = {}) {
     calls.push({ url: address, body, method: init.method })
     const responder = overrides[address]
     if (responder !== undefined) return responder(body, calls)
+    if (address.endsWith('/defaults')) return jsonResponse({ ok: true, defaults: DEFAULTS, presets: Object.keys(DEFAULTS) })
     if (address.endsWith('/status')) return jsonResponse(statusPayload)
     if (address.endsWith('/preview')) {
       return jsonResponse({ ok: true, text: 'DELIVERED PREVIEW TEXT', slug: 'badge', supplied: 4, unfilled: ['REFERENCES'], missingRequired: [], surface: 'page' })
@@ -490,6 +529,11 @@ function createRuntime() {
       const set = (next) => {
         states[index] = typeof next === 'function' ? next(states[index]) : next
         dirty = true
+        // React re-renders on setState; the runtime does too, on the next tick,
+        // so a check can await a request and read the tree without flushing.
+        queueMicrotask(() => {
+          if (dirty) flush()
+        })
       }
       return [states[index], set]
     },
@@ -665,26 +709,102 @@ await check('the client field list matches the host field list', () => {
   assertEqual(entries, host, 'the two field lists have drifted')
 })
 
-await check('opens as a form with the required gap visible and Start disabled', async () => {
+await check('opens with the presets filled, marked, and the gap still named', async () => {
+  installStorage()
+  const calls = installFetch()
+  const runtime = mountControl({ sessionId: 'session-1' })
+  openControl(runtime)
+  await settle()
+
+  assert(calls.some((call) => call.url.endsWith('/defaults')), 'the control never asked the host for presets')
+  const submit = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-submit'] === true)
+  assert(submit !== undefined, 'no submit button')
+  assertEqual(submit.props.disabled, true)
+  assertEqual(runtime.text(submit), 'Fill 3 required')
+  const meter = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-meter'] === true)
+  assertEqual(runtime.text(meter), '1 of 4 required')
+  const gap = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-gap'] === true)
+  assert(gap !== undefined, 'the gap line is missing while three required inputs are empty')
+  assert(runtime.text(gap).includes('FEATURE, SURFACE, USER JOB'), `gap reads: ${runtime.text(gap)}`)
+  assert(!runtime.text(gap).includes('OWNER'), 'a preset OWNER was reported missing')
+  const count = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-count'] === true)
+  assertEqual(runtime.text(count), '2/11 filled')
+  assertEqual(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-message'] === true), undefined, 'the message is shown before it is asked for')
+
+  const owner = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-field'] === 'OWNER')
+  assertEqual(owner.props.value, 'Preset Owner')
+  const badge = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-preset'] === 'OWNER')
+  assert(badge !== undefined, 'the preset OWNER is not marked')
+  // FIRST LOOK lives behind the optional disclosure, so the mark is asserted there.
+  runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-optional-toggle'] === true).props.onClick()
+  runtime.flush()
+  assert(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-preset'] === 'FIRST_LOOK') !== undefined, 'the preset FIRST LOOK is not marked')
+})
+
+await check('clearing a preset returns the field to its placeholder', async () => {
   installStorage()
   installFetch()
   const runtime = mountControl({ sessionId: 'session-1' })
   openControl(runtime)
   await settle()
 
+  const badge = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-preset'] === 'OWNER')
+  badge.props.onClick()
+  runtime.flush()
+
+  const owner = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-field'] === 'OWNER')
+  assertEqual(owner.props.value, '')
+  assertEqual(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-preset'] === 'OWNER'), undefined, 'the badge survived the clear')
+  const meter = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-meter'] === true)
+  assertEqual(runtime.text(meter), '0 of 4 required')
   const submit = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-submit'] === true)
-  assert(submit !== undefined, 'no submit button')
-  assertEqual(submit.props.disabled, true)
   assertEqual(runtime.text(submit), 'Fill 4 required')
+})
+
+await check('typing over a preset keeps the value and drops the mark', async () => {
+  installStorage()
+  installFetch()
+  const runtime = mountControl({ sessionId: 'session-1' })
+  openControl(runtime)
+  await settle()
+
+  setField(runtime, 'OWNER', 'Oli')
+  const owner = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-field'] === 'OWNER')
+  assertEqual(owner.props.value, 'Oli')
+  assertEqual(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-preset'] === 'OWNER'), undefined, 'the badge survived typing')
+  runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-optional-toggle'] === true).props.onClick()
+  runtime.flush()
+  assert(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-preset'] === 'FIRST_LOOK') !== undefined, 'an untouched preset lost its mark')
+})
+
+await check('a draft wins over the presets', async () => {
+  const storage = installStorage()
+  storage.set('dsh.feature-quality.draft.v2', JSON.stringify({ values: { FEATURE: 'My brief' }, freshSession: true }))
+  installFetch()
+  const runtime = mountControl({ sessionId: 'session-1' })
+  openControl(runtime)
+  await settle()
+
+  const feature = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-field'] === 'FEATURE')
+  assertEqual(feature.props.value, 'My brief')
+  const owner = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-field'] === 'OWNER')
+  assertEqual(owner.props.value, '', 'a preset overwrote a draft')
+  assertEqual(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-preset'] === 'OWNER'), undefined, 'a preset was marked over a draft')
+})
+
+await check('with no presets file the form is pristine', async () => {
+  installStorage()
+  installFetch({ [DEFAULTS_ROUTE]: () => jsonResponse({ ok: true, defaults: {}, presets: [] }) })
+  const runtime = mountControl({ sessionId: 'session-1' })
+  openControl(runtime)
+  await settle()
+
   const meter = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-meter'] === true)
   assertEqual(runtime.text(meter), '0 of 4 required')
   const gap = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-gap'] === true)
-  assert(gap !== undefined, 'the gap line is missing on a pristine form')
   assert(runtime.text(gap).includes('Four inputs start it'), `gap reads: ${runtime.text(gap)}`)
-  assert(runtime.text(gap).includes('the other seven may stay placeholders'), 'the gap does not say the optional seven are optional')
-  const count = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-count'] === true)
-  assertEqual(runtime.text(count), '0/11 filled')
-  assertEqual(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-message'] === true), undefined, 'the message is shown before it is asked for')
+  const submit = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-submit'] === true)
+  assertEqual(runtime.text(submit), 'Fill 4 required')
 })
 
 await check('the seven optional inputs start collapsed and open on demand', async () => {
@@ -698,7 +818,7 @@ await check('the seven optional inputs start collapsed and open on demand', asyn
   const toggle = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-optional-toggle'] === true)
   assert(toggle !== undefined, 'no optional disclosure')
   assert(runtime.text(toggle).includes('7 optional inputs'), `toggle reads: ${runtime.text(toggle)}`)
-  assert(runtime.text(toggle).includes('all placeholders'), `toggle reads: ${runtime.text(toggle)}`)
+  assert(runtime.text(toggle).includes('1 filled'), `toggle reads: ${runtime.text(toggle)}`)
 
   toggle.props.onClick()
   runtime.flush()
@@ -722,7 +842,7 @@ await check('fills the required four: Start enables, the draft is kept', async (
   assertEqual(runtime.text(meter), '\u2713 4 of 4 required')
   assertEqual(runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-gap'] === true), undefined, 'the gap line survived a complete form')
   const count = runtime.find(runtime.tree, (node) => node?.props?.['data-feature-quality-count'] === true)
-  assertEqual(runtime.text(count), '4/11 filled')
+  assertEqual(runtime.text(count), '5/11 filled')
   assert(storage.has('dsh.feature-quality.draft.v2'), 'the draft was not persisted')
   const draft = JSON.parse(storage.get('dsh.feature-quality.draft.v2'))
   assertEqual(draft.values.OWNER, 'Oli')

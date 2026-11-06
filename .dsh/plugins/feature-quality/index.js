@@ -38,6 +38,13 @@ const STATUS_ROUTE = '/plugins/feature-quality/status'
 const MAX_INPUT_CHARS = 8000
 const MAX_BODY_BYTES = 256 * 1024
 const PROMPT_URL = new URL('./prompt.md', import.meta.url)
+const DEFAULTS_URL = new URL('./defaults.json', import.meta.url)
+/**
+ * `FEATURE_QUALITY_DEFAULTS` names a different presets file. The labs use it so a
+ * check does not change meaning when the repository's own presets are edited.
+ */
+const DEFAULTS_PATH = process.env.FEATURE_QUALITY_DEFAULTS
+const DEFAULT_ROUTE = '/plugins/feature-quality/defaults'
 
 /**
  * `tier: 'required'` fields gate submission; the rest may stay placeholders.
@@ -342,6 +349,86 @@ export function canonicalise(values) {
 }
 
 /**
+ * Read the preset values from `defaults.json` beside the prompt.
+ *
+ * A missing file means "no presets" — that is a legitimate configuration. A file
+ * that exists and cannot be parsed is a startup error, because silently ignoring
+ * it would deliver a prompt the author believes is pre-filled.
+ *
+ * @returns the file's text, or undefined when there is no file.
+ */
+function readDefaultsFile() {
+  try {
+    return readFileSync(DEFAULTS_PATH ?? DEFAULTS_URL, 'utf8')
+  } catch (error) {
+    if (error?.code === 'ENOENT') return undefined
+    throw new Error(`feature-quality: cannot read defaults.json (${describeThrown(error)})`)
+  }
+}
+
+/**
+ * Validate `defaults.json`: a flat object of `FIELD: "value"`.
+ *
+ * Only known fields are accepted, and each value is collapsed to one line like
+ * every other input — a preset two lines long would break the Inputs block.
+ *
+ * @param text - the file's contents, or undefined when it does not exist.
+ * @returns `{ values, warnings }`.
+ */
+export function parseDefaults(text) {
+  if (text === undefined) return { values: {}, warnings: [] }
+  let parsed
+  try {
+    parsed = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text)
+  } catch (error) {
+    throw new Error(`feature-quality: defaults.json is not valid JSON (${describeThrown(error)})`)
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('feature-quality: defaults.json must be a JSON object of FIELD: "value"')
+  }
+  const values = {}
+  const warnings = []
+  for (const [key, value] of Object.entries(parsed)) {
+    const field = FIELDS.find((candidate) => candidate.key === key)
+    if (field === undefined) {
+      warnings.push(`defaults.json: "${key}" is not an input; ignored`)
+      continue
+    }
+    if (typeof value !== 'string' || collapse(value) === '') {
+      warnings.push(`defaults.json: ${key} needs a non-empty string; ignored`)
+      continue
+    }
+    values[field.key] = collapse(value)
+  }
+  return { values, warnings }
+}
+
+/**
+ * Fill the inputs nobody supplied from the presets.
+ *
+ * A preset is a value the user would have typed, so it is supplied — it is not a
+ * placeholder, and the `UNFILLED:` line must not name it. What it must not do is
+ * hide: callers report `presets` in the receipt, and the control marks each one
+ * and lets it be cleared.
+ *
+ * @param values - the parsed inputs.
+ * @param defaults - the validated presets.
+ * @returns `{ values, presets }` with preset labels in field order.
+ */
+export function applyDefaults(values, defaults) {
+  const next = { ...values }
+  const presets = []
+  for (const field of FIELDS) {
+    const preset = defaults?.[field.key]
+    if (typeof preset !== 'string' || collapse(preset) === '') continue
+    if (next[field.key] !== undefined) continue
+    next[field.key] = collapse(preset)
+    presets.push(field.label)
+  }
+  return { values: next, presets }
+}
+
+/**
  * Fill `prompt.md` from the supplied inputs.
  *
  * A missing input keeps its original bracketed description. When any input is
@@ -386,12 +473,13 @@ export function prepare(template, values) {
 }
 
 /** The one-line receipt shown in the transcript after submission. */
-export function describeSubmission(prepared, warnings = []) {
+export function describeSubmission(prepared, warnings = [], presets = []) {
   const head = `Quality prompt submitted — ${prepared.supplied}/${FIELDS.length} inputs supplied · run ${prepared.slug}`
   const missing = prepared.unfilled.length === 0 ? '' : ` Placeholders: ${prepared.unfilled.join(', ')}.`
   const tail = prepared.unfilled.length === 0 ? ' Phase 0 starts next.' : ''
+  const presetNote = presets.length === 0 ? '' : ` Presets used: ${presets.join(', ')}.`
   const notes = warnings.length === 0 ? '' : ` ${warnings.join(' ')}`
-  return `${head}.${missing}${tail}${notes}`
+  return `${head}.${missing}${tail}${presetNote}${notes}`
 }
 
 /** Record the run so `/quality-status` can report the brief, best-effort. */
@@ -447,29 +535,31 @@ function loadTemplate() {
 }
 
 /** The command handler; the route reaches it through `ctx.commands.execute`. */
-function commandHandler(template) {
+function commandHandler(template, defaults) {
   return async (invocation) => {
     const parsed = parseInvocation(invocation.rawInput)
     if (parsed.error !== undefined) return { kind: 'error', text: parsed.error }
-    const { missingRequired, surface } = validateValues(parsed.values)
+    const applied = applyDefaults(parsed.values, defaults)
+    const { missingRequired, surface } = validateValues(applied.values)
     if (missingRequired.length > 0) {
       return { kind: 'error', text: describeRequiredGap(missingRequired) }
     }
     if (!surface.ok) return { kind: 'error', text: `quality: ${surface.reason}` }
-    parsed.values.SURFACE = surface.value
-    const prepared = prepare(template, parsed.values)
+    applied.values.SURFACE = surface.value
+    const prepared = prepare(template, applied.values)
     const message = createUserMessage({ content: [{ type: 'text', text: prepared.text }], source: { kind: 'user' } })
     try {
       await invocation.agent.followup(message)
     } catch (error) {
       return { kind: 'error', text: `feature-quality: submitting the prompt failed (${describeThrown(error)}).` }
     }
-    recordRun(parsed.values, prepared, {
+    recordRun(applied.values, prepared, {
       cwd: invocation.agent?.session?.header?.cwd,
       sessionId: invocation.agent?.id,
       line: `/${COMMAND_NAME} ${invocation.rawInput ?? ''}`.trim(),
+      presets: applied.presets,
     })
-    return { kind: 'success', text: describeSubmission(prepared, parsed.warnings) }
+    return { kind: 'success', text: describeSubmission(prepared, parsed.warnings, applied.presets) }
   }
 }
 
@@ -558,14 +648,15 @@ function isQualityLine(line) {
  *
  * @returns `{ ok: true, ... }` or `{ ok: false, error }`.
  */
-export function previewLine(template, line) {
+export function previewLine(template, line, defaults = {}) {
   if (!isQualityLine(line)) {
     return { ok: false, error: `line must start with /${COMMAND_NAME}` }
   }
   const parsed = parseInvocation(line.slice(`/${COMMAND_NAME}`.length))
   if (parsed.error !== undefined) return { ok: false, error: parsed.error }
-  const { missingRequired, surface } = validateValues(parsed.values)
-  const prepared = prepare(template, canonicalise(parsed.values))
+  const applied = applyDefaults(parsed.values, defaults)
+  const { missingRequired, surface } = validateValues(applied.values)
+  const prepared = prepare(template, canonicalise(applied.values))
   const problems = []
   if (missingRequired.length > 0) problems.push(describeRequiredGap(missingRequired))
   if (!surface.ok) problems.push(`quality: ${surface.reason}`)
@@ -575,6 +666,7 @@ export function previewLine(template, line) {
     slug: prepared.slug,
     supplied: prepared.supplied,
     unfilled: prepared.unfilled,
+    presets: applied.presets,
     missingRequired,
     surface: surface.ok ? (surface.value ?? null) : null,
     ...(problems.length === 0 ? {} : { blocked: problems.join('\n\n') }),
@@ -591,7 +683,7 @@ export function previewLine(template, line) {
  * would silently leave the path unclaimed, and the SPA fallback would answer 405
  * to the control's POST.
  */
-function registerRoutes(ctx, server, template) {
+function registerRoutes(ctx, server, template, defaults) {
   const disposeStart = server.register({
     kind: 'exact',
     path: START_ROUTE,
@@ -617,7 +709,7 @@ function registerRoutes(ctx, server, template) {
       }
       // Validate before either path runs, so the control's error is the command's
       // error and not a post-hoc failure inside the agent.
-      const preview = previewLine(template, line)
+      const preview = previewLine(template, line, defaults)
       if (!preview.ok || preview.blocked !== undefined) {
         respondJson(res, 400, { error: preview.ok ? preview.blocked : `quality: ${preview.error}` })
         return
@@ -701,12 +793,23 @@ function registerRoutes(ctx, server, template) {
         return
       }
       const line = typeof payload.line === 'string' ? payload.line : ''
-      const preview = previewLine(template, line)
+      const preview = previewLine(template, line, defaults)
       if (!preview.ok) {
         respondJson(res, 400, { error: `quality: ${preview.error}` })
         return
       }
       respondJson(res, 200, preview)
+    },
+  })
+
+  // The control asks for the presets before it opens, so the form and the
+  // command see one set of values from one file.
+  const disposeDefaults = server.register({
+    kind: 'exact',
+    path: DEFAULT_ROUTE,
+    handler: async (req, res) => {
+      if (!admit(ctx, req, res)) return
+      respondJson(res, 200, { ok: true, defaults, presets: Object.keys(defaults) })
     },
   })
 
@@ -738,6 +841,7 @@ function registerRoutes(ctx, server, template) {
     disposeStart()
     disposePreview()
     disposeStatus()
+    disposeDefaults()
   }
 }
 
@@ -757,6 +861,8 @@ function admit(ctx, req, res) {
  */
 export function apply(ctx) {
   const template = loadTemplate()
+  const { values: defaults, warnings: defaultWarnings } = parseDefaults(readDefaultsFile())
+  for (const warning of defaultWarnings) ctx.logger.warn?.(`feature-quality: ${warning}`)
   ctx.effect(() => {
     const disposeQuality = ctx.commands.register({
       name: COMMAND_NAME,
@@ -764,7 +870,7 @@ export function apply(ctx) {
       input: {
         hint: '<brief> | surface: <page|flow|API|algorithm|integration> | job: \u2026 | fixture: \u2026 | owner: \u2026',
       },
-      handler: commandHandler(template),
+      handler: commandHandler(template, defaults),
     })
     const disposeStatusCommand = ctx.commands.register({
       name: STATUS_COMMAND_NAME,
@@ -786,8 +892,8 @@ export function apply(ctx) {
       ctx.logger.warn?.('feature-quality: web server is not resolvable; the composer control is unavailable')
       return
     }
-    scope.effect(() => registerRoutes(ctx, server, template), 'feature-quality: composer control routes')
-    ctx.logger.info?.(`feature-quality: composer control served at ${START_ROUTE}, ${PREVIEW_ROUTE}, ${STATUS_ROUTE}`)
+    scope.effect(() => registerRoutes(ctx, server, template, defaults), 'feature-quality: composer control routes')
+    ctx.logger.info?.(`feature-quality: composer control served at ${START_ROUTE}, ${PREVIEW_ROUTE}, ${STATUS_ROUTE}, ${DEFAULT_ROUTE}`)
   })
-  ctx.logger.info?.(`feature-quality: /${COMMAND_NAME} ready (prompt.md, ${FIELDS.length} inputs, ${REQUIRED_LABELS.length} required)`)
+  ctx.logger.info?.(`feature-quality: /${COMMAND_NAME} ready (prompt.md, ${FIELDS.length} inputs, ${REQUIRED_LABELS.length} required, ${Object.keys(defaults).length} presets)`)
 }

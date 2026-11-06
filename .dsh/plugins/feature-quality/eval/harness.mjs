@@ -193,6 +193,24 @@ console.log('\ncontract')
   } else {
     fail('the preview did not block a bad surface')
   }
+
+  // The repository's own presets: every key must be a field, or `parseDefaults`
+  // warns and the file silently shrinks (a label key like "FIRST LOOK" did this).
+  const defaultsText = readFileSync(new URL('../defaults.json', here), 'utf8')
+  const defaults = module.parseDefaults(defaultsText)
+  const fieldKeys = new Set(module.FIELDS.map((field) => field.key))
+  const unknown = Object.keys(defaults.values).filter((key) => !fieldKeys.has(key))
+  if (defaults.warnings.length === 0 && unknown.length === 0) {
+    ok(`defaults.json is clean (${Object.keys(defaults.values).length} presets, all field keys)`)
+  } else {
+    fail(`defaults.json: ${[...defaults.warnings, ...unknown.map((key) => `${key} is not a field`)].join('; ')}`)
+  }
+  const presetLine = module.buildPrompt(template, module.applyDefaults({}, defaults.values).values)
+  if (presetLine.includes('OWNER:            ') && !presetLine.includes('[one person or agent accountable')) {
+    ok('a preset replaces its placeholder in the delivered text')
+  } else {
+    fail('a preset did not replace its placeholder')
+  }
 }
 
 console.log('\nfixture       supplied  outsideΔ  inputsΔ  verdict')

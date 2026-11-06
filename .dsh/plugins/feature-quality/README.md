@@ -74,6 +74,50 @@ is added at all.
 A misspelled field name (`refrences:`) is prose, so it would silently join
 FEATURE; the receipt names the field it probably meant.
 
+### Presets
+
+`defaults.json` beside the prompt pre-fills inputs the user did not supply:
+
+```json
+{
+  "OWNER": "Oli",
+  "PRODUCTION_LIMITS": "unlimited time, not scope",
+  "FIRST_LOOK": "5 working days"
+}
+```
+
+Rules the file has to keep:
+
+- **Keys are field keys** — `FIRST_LOOK`, not `FIRST LOOK`. An unknown key is
+  logged and ignored rather than silently dropped.
+- **A preset fills only what was not supplied.** A typed value, a stored draft or
+  a Recent restore always wins.
+- **A preset counts as supplied**, so it is not a placeholder and never appears
+  in the `UNFILLED:` line — but it is not hidden either: the control marks it
+  `preset ×` (one click returns it to a placeholder), and the transcript receipt
+  says `Presets used: …`.
+- **Both entry points read the same file**, because the host loads it and serves
+  it to the control at `/plugins/feature-quality/defaults`.
+- A **missing** file is a valid configuration (no presets); a **malformed** one
+  fails activation rather than delivering a prompt nobody pre-filled.
+
+A change to `defaults.json` needs the bundle re-installed (the host reads it at
+activation, once); the control picks it up on its next mount.
+
+**What does not belong in it.** These were proposed and rejected, and the reason
+is the rule they break:
+
+| Value | Why not |
+|---|---|
+| `FEATURE`, `SURFACE`, `USER JOB` | The four-input gate means "a person decided this". A default here makes the gate decorative. |
+| `REAL FIXTURE: real prod data` | A category, not a fixture. It reads as answered while giving Phase 0 nothing to open, and the `UNFILLED:` line stops asking for it. |
+| `PRODUCTION LIMITS: unlimited time and scope` | Contradicts the prompt's own non-negotiable — "You may use unlimited time; you do not have unlimited scope." |
+| `FIRST LOOK: as long as it takes` | Removes the checkpoint the prompt keeps on purpose: "do choose a first-look checkpoint anyway, because a decision needs a moment." |
+
+`OWNER` is the one required field that is defaulted, and deliberately: it is a
+name the user would have typed, and the mark makes it visible. It costs the gate
+one field — the meter opens at `1 of 4 required` — which is the honest price.
+
 ### `/quality-status`
 
 ```
@@ -191,6 +235,7 @@ runtime (open, fill, preview, submit, refusal, bad-route answer).
 | `lib/template.mjs` | The Inputs block: normalise, split, append — shared with the labs |
 | `lib/state.mjs` | Run records, slug, deliverable scan, `/quality-status` text |
 | `client.js` | Client half: the control above the composer |
+| `defaults.json` | Preset inputs, loaded by the host and served to the control |
 | `prompt.md` | The prompt itself, with `{{FIELD}}` tokens |
 | `eval/harness.mjs` | The delivery lab |
 | `eval/wiring.mjs` | The wiring and interaction lab |
