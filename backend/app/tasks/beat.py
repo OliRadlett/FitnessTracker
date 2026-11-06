@@ -23,6 +23,13 @@ beat_schedule: dict = {
         "schedule": crontab(minute="*/5"),
         "options": {"expires": 900},
     },
+    # Non-Strava webhooks (Whoop). Same slot, separate task: the queues fail
+    # independently, so one provider's outage cannot stop the other's events.
+    "process-provider-webhook-events": {
+        "task": "app.tasks.scheduler.process_provider_webhook_events",
+        "schedule": crontab(minute="*/5"),
+        "options": {"expires": 900},
+    },
     # Weekly Strava reconciliation — heals missed deletes/renames
     "reconcile-strava-activities": {
         "task": "app.tasks.scheduler.reconcile_strava_activities",

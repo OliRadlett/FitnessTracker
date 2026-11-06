@@ -45,7 +45,7 @@ from app.models.undo import UndoLog
 from app.models.user import OAuthConnection, User
 from app.models.wahoo_zones import WahooZoneSet
 from app.models.weather import CachedWeather
-from app.models.webhook_event import StravaWebhookEvent
+from app.models.webhook_event import ProviderWebhookEvent, StravaWebhookEvent
 from app.models.weight import WeightLog
 
 __all__ = [
@@ -75,6 +75,7 @@ __all__ = [
     "OAuthConnection",
     "PersonalRecord",
     "PlanReviewSnapshot",
+    "ProviderWebhookEvent",
     "PushSubscription",
     "RideFuelPlan",
     "Route",
