@@ -154,10 +154,17 @@ lost its shape score. Fixed in `services/route_matching.py`:
   is arbitrary. Point-to-point still requires both ends to converge.
 
 The real 54.1 km loop now scores 0.960/auto at 5% and 10% offsets and 0.946/auto
-at 25%, versus 0.645/0.600/0.600. Reversed loops are still rejected. The 11
-cached pairs remain review-band because they are different variants sharing
-roads, not exact rotations; precision did not regress. This changes scores only
-after the similarity cache is rebuilt.
+at 25%, versus 0.645/0.600/0.600. Reversed loops are still rejected.
+
+The 86-route production-copy rescan then exposed a second, order-dependent bug:
+the §4 detour gate is directional, and the scan scored each pair only in storage
+order. The old cache held 11 pairs, the first rescan kept 7, and all 11 still
+passed when scored in their original orientation. `score_route_pair_either_direction`
+now tries the reverse before declaring no match, so pair presence is
+order-independent. With the fix the rescan returns **21 review pairs, 0 auto**:
+all 11 old pairs are retained (2 scores changed) and 10 are new. The queue is
+richer, not cleaner — the added pairs include low-coverage candidates down to
+0.5532, which is why they are review-tier suggestions and nothing auto-merges.
 
 The scan also no longer skips pairs when road/embedding signals are absent
 (`(None, None)`); that bug emptied the cache on accounts with 0/86 road matches.

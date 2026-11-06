@@ -720,6 +720,29 @@ def score_route_pair(
     )
 
 
+def score_route_pair_either_direction(
+    points_a: list[tuple[float, float]],
+    points_b: list[tuple[float, float]],
+    **kwargs,
+) -> ScoreBreakdown:
+    """Score a pair in the better of its two directions.
+
+    The §4 detour gate is deliberately directional (ride vs course), so the
+    same two routes can pass one way and fail the other. A scan that scores
+    only ``(i, j)`` in storage order therefore drops a genuine pair whenever
+    the shorter/subset route happens to be on the wrong side — the old cache
+    held 11 pairs, a rescan kept 7, and all 11 still passed when scored in
+    their original orientation. Try the reverse before declaring no match.
+    """
+    forward = score_route_pair(points_a, points_b, **kwargs)
+    if forward.matched:
+        return forward
+    reverse = score_route_pair(points_b, points_a, **kwargs)
+    if reverse.matched or reverse.total > forward.total:
+        return reverse
+    return forward
+
+
 def frechet_similarity(
     points_a: list[tuple[float, float]],
     points_b: list[tuple[float, float]],

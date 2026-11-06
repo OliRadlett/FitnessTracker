@@ -432,7 +432,9 @@ def _score_route_graph_modal(
     import sys
 
     sys.path.insert(0, "/root")
-    from route_matching import score_route_pair  # type: ignore[import-not-found]
+    from route_matching import (
+        score_route_pair_either_direction,  # type: ignore[import-not-found]
+    )
 
     routes = _json.loads(routes_json)
     pairs = _json.loads(pairs_json)
@@ -440,7 +442,7 @@ def _score_route_graph_modal(
     out: list[dict] = []
     for i, j in pairs:
         a, b = routes[i], routes[j]
-        breakdown = score_route_pair(
+        breakdown = score_route_pair_either_direction(
             a["polyline"],
             b["polyline"],
             length_a=a.get("distance_meters"),
@@ -468,7 +470,7 @@ def compute_route_similarity_locally(
     gate: float = 0.45,
 ) -> dict:
     """Local (non-Modal) similarity graph using the shared engine."""
-    from app.services.route_matching import score_route_pair
+    from app.services.route_matching import score_route_pair_either_direction
 
     if pairs is None:
         pairs = _pairs_for_routes(len(routes_data))
@@ -476,7 +478,7 @@ def compute_route_similarity_locally(
     out: list[dict] = []
     for i, j in pairs:
         a, b = routes_data[i], routes_data[j]
-        breakdown = score_route_pair(
+        breakdown = score_route_pair_either_direction(
             a["polyline"],
             b["polyline"],
             length_a=a.get("distance_meters"),

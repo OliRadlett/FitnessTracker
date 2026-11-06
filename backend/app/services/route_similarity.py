@@ -209,7 +209,7 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
     from app.models.route import Route, RouteSimilarity
     from app.services.polyline_utils import decode_polyline
     from app.services.road_matching import load_metric, road_signals
-    from app.services.route_matching import score_route_pair
+    from app.services.route_matching import score_route_pair_either_direction
     from app.services.route_service import merge_routes
 
     settings = get_settings()
@@ -294,7 +294,7 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
             # Road/embedding are optional enrichment, not a requirement. A
             # user with no Phase-2 data must still get geometry-only rows;
             # skipping here emptied the cache for exactly those accounts.
-            bd = score_route_pair(
+            bd = score_route_pair_either_direction(
                 points_by_id[p["a"]],
                 points_by_id[p["b"]],
                 length_a=a.distance_meters,

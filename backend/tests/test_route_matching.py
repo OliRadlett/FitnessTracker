@@ -10,6 +10,7 @@ from app.services.route_matching import (
     polyline_length,
     resample,
     score_route_pair,
+    score_route_pair_either_direction,
     simplify,
 )
 
@@ -224,3 +225,29 @@ def test_road_signal_does_not_override_reversed():
     bd = score_route_pair(pts, list(reversed(pts)), road_jaccard=1.0)
     assert bd.reversed
     assert bd.total == 0.0
+
+
+def test_pair_matching_is_direction_independent():
+    # A square loop plus a 2.2 km out-and-back spur. The detour gate is
+    # directional, so the spur-first orientation fails (the spur is longer
+    # than the 2 km budget) while the base-first orientation passes. A scan
+    # must not drop the pair just because storage order put the spur first.
+    base = [(0.0, 0.0), (0.0, 0.02), (0.02, 0.02), (0.02, 0.0), (0.0, 0.0)]
+    spur = [
+        (0.0, 0.0),
+        (-0.01, 0.0),
+        (0.0, 0.0),
+        (0.0, 0.02),
+        (0.02, 0.02),
+        (0.02, 0.0),
+        (0.0, 0.0),
+    ]
+
+    assert not score_route_pair(spur, base).matched
+    assert score_route_pair(base, spur).matched
+
+    forward = score_route_pair_either_direction(spur, base)
+    reverse = score_route_pair_either_direction(base, spur)
+    assert forward.matched
+    assert reverse.matched
+    assert forward.total == reverse.total
