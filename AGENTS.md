@@ -140,7 +140,10 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   decoder trims, and every grouping/comparison trims, so one lift is one row.
 - **Finishing**: the summary asks for the session's own RPE and a note, and
   `SessionEngine.finished()` turns the session in progress into history with
-  both. A blank note is null, not an empty string.
+  both. A blank note is null, not an empty string. It also shows the session's
+  **new records** (`ProgressEngine.sessionRecords` against the history *before*
+  the session): a lift you have never logged counts, an equal estimate does not,
+  and warm-ups/bodyweight sets never do.
 - **Today's session comes from the training plan**: `GET /training-plans` → the
   plan whose dates bracket today → `GET /training-plans/{id}` → today's
   `sport == "strength"` day, mapped in

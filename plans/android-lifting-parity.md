@@ -176,6 +176,13 @@ the end, because installing per-fix wastes the only real screen we have.
   reps, not kilos. A run/rest/empty day is not clickable, and starting is refused
   while another session is in progress rather than throwing away logged sets.
 
+- [x] **P17 — the summary knows what a record is.** Finishing a session now shows
+  NEW RECORD(S) above the volume breakdown: the lifts whose estimated 1RM beat
+  everything before them, judged by `ProgressEngine.sessionRecords` against the
+  history *before* this session (so the summary is a claim, not a comparison with
+  itself). A lift you have never logged counts — the first time is the record —
+  an equal estimate does not, and warm-ups and bodyweight sets never do.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

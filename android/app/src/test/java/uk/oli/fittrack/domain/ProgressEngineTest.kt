@@ -186,6 +186,41 @@ class ProgressEngineTest {
     }
 
     @Test
+    fun `a session claims a record only when it beats the one before`() {
+        val history = listOf(session("2026-11-01", set("Bench Press", 100.0, 5)))
+
+        // 100×5 has an e1RM of 112.5; 100×5 again is not a record.
+        val same = session("2026-11-06", set("Bench Press", 100.0, 5))
+        assertTrue(ProgressEngine.sessionRecords(same, history).isEmpty())
+
+        // 100×6 is 116.1, which beats it.
+        val better = session("2026-11-06", set("Bench Press", 100.0, 6))
+        val records = ProgressEngine.sessionRecords(better, history)
+        assertEquals(listOf("Bench Press"), records.map { it.exercise })
+        assertEquals(6, records.single().reps)
+    }
+
+    @Test
+    fun `a lift you have never done is a record the first time`() {
+        val history = listOf(session("2026-11-01", set("Bench Press", 100.0, 5)))
+        val today = session("2026-11-06", set("Back Squat", 140.0, 3))
+
+        assertEquals(listOf("Back Squat"), ProgressEngine.sessionRecords(today, history).map { it.exercise })
+    }
+
+    @Test
+    fun `warm-ups and bodyweight sets do not set records`() {
+        val history = listOf(session("2026-11-01", set("Bench Press", 100.0, 5)))
+        val today = session(
+            "2026-11-06",
+            set("Bench Press", 120.0, 3, warmup = true),
+            set("Pull Up", 0.0, 10)
+        )
+
+        assertTrue(ProgressEngine.sessionRecords(today, history).isEmpty())
+    }
+
+    @Test
     fun `records collapse to one row per lift, best first`() {
         val records = listOf(
             PersonalRecord("a", "Bench Press", 100.0, 5, e1rm = 116.0),

@@ -89,6 +89,32 @@ object ProgressEngine {
             .sortedByDescending { it.estimated1rm }
 
     /**
+     * The records a session just set, judged against everything before it.
+     *
+     * A lift you have never logged counts: the first time you do it *is* the
+     * record. An equal estimate does not — a record has to be beaten, or every
+     * session at the same weight would claim one.
+     */
+    fun sessionRecords(
+        session: FinishedSession,
+        history: List<FinishedSession>
+    ): List<PersonalBest> {
+        val before = personalBests(history)
+        return SessionEngine.workingSets(session.sets)
+            .filter { it.weightKg > 0.0 && it.reps > 0 }
+            .groupBy { it.exercise.trim() }
+            .mapNotNull { (exercise, sets) ->
+                val best = sets.maxByOrNull { estimated1rm(it.weightKg, it.reps) }
+                    ?: return@mapNotNull null
+                val previous = before.firstOrNull { it.exercise == exercise }
+                val estimate = estimated1rm(best.weightKg, best.reps)
+                if (previous != null && estimate <= previous.estimated1rm) return@mapNotNull null
+                PersonalBest(exercise, best.weightKg, best.reps, best.at)
+            }
+            .sortedByDescending { it.estimated1rm }
+    }
+
+    /**
      * The heaviest set in each rep bucket for one exercise, with an empty bucket
      * kept as null so the strip always shows five ranges — a blank row is
      * information ("you have never done a single"), a missing row is not.

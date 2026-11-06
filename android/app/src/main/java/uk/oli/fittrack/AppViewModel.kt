@@ -525,6 +525,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * What the session in progress would set a record for, judged against the
+     * history *before* it — the session is not in history until it is finished,
+     * so this is a preview, not a claim.
+     */
+    fun sessionRecords(): List<uk.oli.fittrack.domain.PersonalBest> {
+        val current = _session.value ?: return emptyList()
+        val finished = uk.oli.fittrack.domain.SessionEngine.finished(current, null, null)
+        return uk.oli.fittrack.domain.ProgressEngine.sessionRecords(finished, _history.value)
+    }
+
+    /**
      * Start a session from a planned day — including one that is not today, so
      * you can look at Thursday and start it.
      *
