@@ -77,7 +77,10 @@ async def list_uncoursed_routes(
 
 @router.get("/suggestions", response_model=list[CourseSuggestion])
 async def list_course_suggestions(
-    limit: int = Query(20, ge=1, le=100),
+    # Default high enough to show the whole review queue: the production-copy
+    # rescan produced 21 review pairs, and the page's "Show all" must not
+    # silently hide the last one behind a 20-row API cap.
+    limit: int = Query(50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):

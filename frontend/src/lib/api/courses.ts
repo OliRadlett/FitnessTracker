@@ -35,7 +35,7 @@ export async function getUncoursedRoutes(token?: string): Promise<CourseRoute[]>
 
 export async function getCourseSuggestions(
   token?: string,
-  limit = 20,
+  limit = 50,
 ): Promise<CourseSuggestion[]> {
   return apiFetch<CourseSuggestion[]>(
     `/api/v1/courses/suggestions?limit=${limit}`,
