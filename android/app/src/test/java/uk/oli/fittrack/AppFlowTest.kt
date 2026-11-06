@@ -116,8 +116,9 @@ class AppFlowTest {
         compose.onNodeWithText("LAST 7 DAYS").assertExists()
         compose.onNodeWithText("Last time").assertExists()
 
-        // The log is readable, not just written.
-        compose.onNodeWithText("Log").performClick()
+        // The log is readable, not just written — under Train now, where
+        // sessions, progress and the plan live together.
+        compose.onNodeWithText("Train").performClick()
         compose.waitForIdle()
         save("app-8-log")
         compose.onNodeWithText("1 session").assertExists()
@@ -142,11 +143,18 @@ class AppFlowTest {
         compose.onNodeWithText("BEST BY REP RANGE").assertExists()
         compose.onAllNodesWithText("Bench Press").onFirst().assertExists()
         compose.onNodeWithText("ESTIMATED 1RM").assertExists()
-        // One session is not a trend, and the screen says so rather than drawing
+        // The pair is not a trend, and the screen says so rather than drawing
         // a flat line through a single point.
         compose.onNodeWithText("Two sessions of an exercise and the line appears.").assertExists()
 
-        compose.onNodeWithText("Log").performClick()
+        // The week is a network read: signed out it says so rather than
+        // pretending the plan is empty.
+        compose.onNodeWithText("Week").performClick()
+        compose.waitForIdle()
+        save("app-8d-week")
+        compose.onNodeWithText("No plan loaded.").assertExists()
+
+        compose.onNodeWithText("Sessions").performClick()
         compose.waitForIdle()
         compose.onNodeWithText("Push day").performClick()
         compose.waitForIdle()

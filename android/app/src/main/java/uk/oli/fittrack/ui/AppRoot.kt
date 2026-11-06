@@ -18,6 +18,7 @@ import uk.oli.fittrack.ui.log.SessionDetailScreen
 import uk.oli.fittrack.ui.plan.PlanEditorScreen
 import uk.oli.fittrack.ui.signin.SignInScreen
 import uk.oli.fittrack.ui.today.TodayScreen
+import uk.oli.fittrack.ui.train.TrainScreen
 import uk.oli.fittrack.ui.you.YouScreen
 import java.util.Locale
 
@@ -50,6 +51,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val restDay by vm.restDay.collectAsStateWithLifecycle()
     val warmupTemplates by vm.warmupTemplates.collectAsStateWithLifecycle()
     val linkCandidates by vm.linkCandidates.collectAsStateWithLifecycle()
+    val planWeek by vm.planWeek.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -174,8 +176,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
 
         composable(Routes.TAB) { entry ->
             val name = entry.arguments?.getString("name") ?: "train"
-            if (name == "you") {
-                YouScreen(
+            when (name) {
+                "you" -> YouScreen(
                     auth = auth,
                     syncedAt = syncedAt,
                     syncError = syncError,
@@ -183,8 +185,14 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab
                 )
-            } else {
-                PlaceholderScreen(tab = name, onTab = nav::switchTab)
+                "train" -> TrainScreen(
+                    history = history,
+                    planWeek = planWeek,
+                    onOpenSession = { id -> nav.navigate(Routes.session(id)) },
+                    onRefreshWeek = vm::refreshPlanWeek,
+                    onTab = nav::switchTab
+                )
+                else -> PlaceholderScreen(tab = name, onTab = nav::switchTab)
             }
         }
     }

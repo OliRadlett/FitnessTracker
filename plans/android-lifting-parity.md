@@ -121,7 +121,16 @@ the end, because installing per-fix wastes the only real screen we have.
     its duration, with Unlink and a picker backed by
     `GET /sessions/{id}/linkable-activities` → `PUT /sessions/{id}/link`. Both
     are optimistic and revert with a reason if the server refuses.
-- [ ] **P10 — manual PRs.** The one matrix row left: a PR with no session behind
+- [x] **P10 — the Train tab.** The tab that said "not built yet" now holds the
+  training surface in three views: **Sessions** (the log with every filter),
+  **Progress** (PRs, rep ranges, the e1RM line) and **Week** (the active plan's
+  current week from `GET /training-plans/{id}/week/{n}`, Monday-based, with
+  completed/partial/missed/rest status and today marked). Today is now *today
+  only* — one day, one session — which is what makes the two tabs different
+  things rather than two paths to the same list. The week is read-only on
+  purpose: the editor is the website's job, the phone's is to say what is
+  coming.
+- [ ] **P11 — manual PRs.** The one matrix row left: a PR with no session behind
   it needs `GET /lifting/prs`, whose payload has never been captured.
 - [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
   @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:

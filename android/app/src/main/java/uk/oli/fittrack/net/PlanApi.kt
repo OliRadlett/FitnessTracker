@@ -138,6 +138,71 @@ sealed interface PlanLookup {
     data object Unavailable : PlanLookup
 }
 
+/** One day of the plan's week, as the Train tab lists it. */
+data class PlanDaySummary(
+    val date: String,
+    val sport: String,
+    val focus: String?,
+    val status: String,
+    val exercises: Int,
+    val isToday: Boolean
+)
+
+/** The week around today, from the active plan. */
+data class PlanWeek(
+    val planName: String,
+    val weekNumber: Int,
+    val weekStart: String,
+    val weekEnd: String,
+    val days: List<PlanDaySummary>
+)
+
+@Serializable
+private data class WeekDto(
+    val week_number: Int = 0,
+    val week_start: String? = null,
+    val week_end: String? = null,
+    val days: List<WeekDayDto> = emptyList()
+)
+
+@Serializable
+private data class WeekDayDto(
+    val day_date: String? = null,
+    val sport: String? = null,
+    val planned_focus: String? = null,
+    val day_status: String = "pending",
+    val planned_exercises: List<PlannedExerciseDto>? = null,
+    val completed: Boolean = false
+)
+
+object WeekJson {
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    fun decode(body: String, planName: String, today: LocalDate): PlanWeek? {
+        val week = runCatching { json.decodeFromString<WeekDto>(body) }.getOrNull() ?: return null
+        val days = week.days.mapNotNull { day ->
+            val date = day.day_date ?: return@mapNotNull null
+            PlanDaySummary(
+                date = date,
+                sport = day.sport ?: "rest",
+                focus = day.planned_focus?.trim()?.takeIf { it.isNotBlank() },
+                status = if (day.completed) "completed" else day.day_status,
+                exercises = day.planned_exercises.orEmpty().size,
+                isToday = date == today.toString()
+            )
+        }
+        if (days.isEmpty()) return null
+        return PlanWeek(
+            planName = planName,
+            weekNumber = week.week_number,
+            weekStart = week.week_start ?: days.first().date,
+            weekEnd = week.week_end ?: days.last().date,
+            days = days
+        )
+    }
+}
+
 class PlanApi(private val baseUrl: String) {
 
     private val client = OkHttpClient.Builder()
@@ -145,6 +210,28 @@ class PlanApi(private val baseUrl: String) {
         .build()
 
     private val json = Json { ignoreUnknownKeys = true }
+
+    /**
+     * The active plan's week around [today], or null when there is no plan or
+     * no signal. Weeks are Monday-based, as the API's `/week/{n}` is.
+     */
+    suspend fun weekPlan(token: String, today: LocalDate): PlanWeek? = withContext(Dispatchers.IO) {
+        val plansBody = runCatching { get("$baseUrl/training-plans", token) }.getOrNull()
+            ?: return@withContext null
+        val active = PlanJson.activePlan(PlanJson.plans(plansBody), today) ?: return@withContext null
+
+        val start = active.start_date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            ?: return@withContext null
+        val startMonday = start.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+        val todayMonday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+        val weekNumber = (java.time.temporal.ChronoUnit.WEEKS.between(startMonday, todayMonday) + 1)
+            .toInt()
+            .coerceAtLeast(1)
+
+        val body = runCatching { get("$baseUrl/training-plans/${active.id}/week/$weekNumber", token) }
+            .getOrNull() ?: return@withContext null
+        WeekJson.decode(body, active.name, today)
+    }
 
     /**
      * What today looks like in the training plan. Fail-open: a failed request
