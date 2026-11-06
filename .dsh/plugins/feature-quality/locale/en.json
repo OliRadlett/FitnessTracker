@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Feature Quality Prompt",
+    "description": "Adds a Quality prompt control above the message composer and the /quality command: fills the Generic Feature Quality Prompt and opens it as the session's next user message."
+  }
+}

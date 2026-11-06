@@ -1,0 +1,3 @@
+- insert:
+    - id: feature-quality
+      name: '@local/feature-quality'

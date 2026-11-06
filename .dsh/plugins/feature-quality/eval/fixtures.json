@@ -1,0 +1,17 @@
+[
+  {
+    "name": "full",
+    "note": "Every bracket supplied: the delivery must be the template with only the Inputs values changed.",
+    "input": "feature: Lifting page overhaul | surface: page | job: see whether a lift is progressing | current state: plans/lifting-redesign-plan.md | fixture: sessions/2026-10-28 | refs: https://linear.app, https://strava.com | anti: https://example.com/bad | external: none | limits: unlimited | first look: 5 working days | owner: Oli"
+  },
+  {
+    "name": "partial-real",
+    "note": "The real invocation from session 0e4299a8: 6 of 11 fields supplied.",
+    "input": "feature: Lifting page overhaul | surface: https://oliradlett.co.uk/fittrack/lifting | job: The lifting page has a lack of quality. Treat this as a complete overhaul. Enhance and improve the page with unlimited time and scope | current state: https://oliradlett.co.uk/fittrack/lifting | fixture: Use real data from a prod connection | limits: unlimited"
+  },
+  {
+    "name": "empty",
+    "note": "Nothing supplied: a bare /quality.",
+    "input": ""
+  }
+]
