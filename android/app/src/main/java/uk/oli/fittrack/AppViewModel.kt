@@ -72,6 +72,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val cyclingApi = uk.oli.fittrack.net.CyclingApi(BuildConfig.API_BASE_URL)
     private val goalsApi = uk.oli.fittrack.net.GoalsApi(BuildConfig.API_BASE_URL)
     private val routesApi = uk.oli.fittrack.net.RoutesApi(BuildConfig.API_BASE_URL)
+    private val healthApi = uk.oli.fittrack.net.HealthApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -136,6 +137,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadDashboard(token)
                 loadGoals(token)
                 loadRoutes(token)
+                loadHealth(token)
+                loadCalendar(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -219,6 +222,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _goalList.value = null
         _goalCheckIns.value = emptyMap()
         _routes.value = null
+        _health.value = null
+        _calendarDays.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -609,6 +614,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _dashboardLoading = MutableStateFlow(false)
     val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
+
+    /** Health: readiness, sleep and breathing. */
+    private val _health = MutableStateFlow<uk.oli.fittrack.domain.HealthSnapshot?>(null)
+    val health: StateFlow<uk.oli.fittrack.domain.HealthSnapshot?> = _health.asStateFlow()
+
+    /** The calendar month on screen, and its days keyed by date. */
+    private val _calendarMonth = MutableStateFlow(java.time.YearMonth.now())
+    val calendarMonth: StateFlow<java.time.YearMonth> = _calendarMonth.asStateFlow()
+
+    private val _calendarDays =
+        MutableStateFlow<Map<String, uk.oli.fittrack.domain.CalendarDay>?>(null)
+    val calendarDays: StateFlow<Map<String, uk.oli.fittrack.domain.CalendarDay>?> =
+        _calendarDays.asStateFlow()
+
+    private suspend fun loadHealth(token: String) {
+        _health.value = healthApi.snapshot(
+            token = token,
+            readiness = _dashboard.value?.readiness,
+            sleepDebt = _dashboard.value?.sleepDebt
+        )
+    }
+
+    fun refreshHealth() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadHealth(token) }
+    }
+
+    private suspend fun loadCalendar(token: String) {
+        val month = _calendarMonth.value
+        val start = month.atDay(1)
+        val end = month.atEndOfMonth()
+        _calendarDays.value = runCatching {
+            healthApi.calendar(token, start.toString(), end.toString())
+        }.getOrDefault(emptyMap())
+    }
+
+    /** Shifts the calendar by months; 0 means this month. */
+    fun shiftCalendar(months: Int) {
+        val token = _auth.value.token ?: return
+        _calendarMonth.value = if (months == 0) java.time.YearMonth.now()
+        else _calendarMonth.value.plusMonths(months.toLong())
+        _calendarDays.value = null
+        viewModelScope.launch { loadCalendar(token) }
+    }
+
+    fun refreshCalendar() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadCalendar(token) }
+    }
 
     /** The plan day being edited, and the plan it belongs to. */
     private val _editingDay = MutableStateFlow<uk.oli.fittrack.net.PlanDaySummary?>(null)

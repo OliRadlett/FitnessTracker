@@ -14,6 +14,8 @@ import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.body.BodyScreen
 import uk.oli.fittrack.ui.goals.GoalsScreen
+import uk.oli.fittrack.ui.health.CalendarScreen
+import uk.oli.fittrack.ui.health.HealthScreen
 import uk.oli.fittrack.ui.routes.RoutesScreen
 import uk.oli.fittrack.ui.train.PlanDayEditScreen
 import uk.oli.fittrack.ui.ride.RideScreen
@@ -38,6 +40,8 @@ object Routes {
     const val GOALS = "goals"
     const val ROUTES = "routes"
     const val PLAN_DAY = "plan-day"
+    const val HEALTH = "health"
+    const val CALENDAR = "calendar"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -80,6 +84,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val planEditBusy by vm.planEditBusy.collectAsStateWithLifecycle()
     val planEditError by vm.planEditError.collectAsStateWithLifecycle()
     val planDaySaved by vm.planDaySaved.collectAsStateWithLifecycle()
+    val health by vm.health.collectAsStateWithLifecycle()
+    val calendarMonth by vm.calendarMonth.collectAsStateWithLifecycle()
+    val calendarDays by vm.calendarDays.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -205,6 +212,24 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.HEALTH) {
+            HealthScreen(
+                health = health,
+                onRefresh = vm::refreshHealth,
+                onBack = { nav.popBackStack() }
+            )
+        }
+
+        composable(Routes.CALENDAR) {
+            CalendarScreen(
+                month = calendarMonth,
+                days = calendarDays,
+                onMonth = vm::shiftCalendar,
+                onRefresh = vm::refreshCalendar,
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.PLAN_DAY) {
             // The day is handed over through the view model, which is where the
             // week it came from already lives: a nav argument would be a copy.
@@ -275,6 +300,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     routeCount = routesList?.size ?: 0,
                     onOpenGoals = { nav.navigate(Routes.GOALS) },
                     onOpenRoutes = { nav.navigate(Routes.ROUTES) },
+                    onOpenHealth = { nav.navigate(Routes.HEALTH) },
+                    onOpenCalendar = { nav.navigate(Routes.CALENDAR) },
                     onSignIn = { nav.navigate(Routes.SIGNIN) },
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab
