@@ -9,9 +9,17 @@ against those decisions.
 
 ## What works
 
-- Five-tab shell — Today, Train, Ride, Body, You. Only Today has content; the
-  other four say so plainly.
-- Today: the plan, six exercises, one action. Resumes an unfinished session.
+- Five-tab shell — Today, Train, Ride, Body, You. Only Ride says "not built
+  yet" now: Today has the day, Train the sessions/progress/week, Body the
+  bodyweight trend, You the account.
+- **Body**: bodyweight — the latest weigh-in, its 30-day change, the 7-day
+  rolling average as a line, and the weigh-ins behind it with their source.
+  Logging one upserts by date; only a manual entry can be deleted.
+- Today: today and nothing else — the plan (or "Rest day"), one action. Resumes
+  an unfinished session.
+- **Train**: the training surface in three views — **Sessions** (the log),
+  **Progress** and **Week** (the active plan's current week, read-only, with
+  completed, partial, missed and rest days marked and today outlined).
 - Live: prefilled weight/reps/RPE from the set you just did, ± steppers, RPE
   chips, rest timer, and a per-exercise set list showing what you actually
   logged.
@@ -31,14 +39,29 @@ against those decisions.
   `history.json`, capped at 200. Today then shows "Last time 92.5 × 4 @7 · today"
   and a 7-day volume strip; the next session prefills from what you actually
   lifted, not from the plan.
-- **The log**: Today → **Log** lists finished sessions by week with sets and
+- **The log**: Train → **Sessions** lists finished sessions by week with sets and
   volume; tapping one opens the full session. It filters on free text (focus,
-  note, exercise names), focus, exercise and a date window, with a result count
-  and a "No sessions match" state.
-- **Progress**: Today → **Progress** shows personal bests per exercise (by
+  note, exercise names), focus, exercise, a date window and the classifier's type
+  and class, with a result count and a "No sessions match" state.
+- **Progress**: Train → **Progress** shows personal bests per exercise (by
   estimated 1RM), the best set in each rep range, and a per-exercise e1RM line
   over the last 20 sessions. Computed from the cached history, so it works
   signed out and without a signal.
+- **Analytics**: also on Progress — eight weeks of volume as bars, where the work
+  went (volume by focus, with an "Other" tail) and the lifts trained most.
+  Computed from the same history: no `/charts` calls, warm-ups excluded.
+- **Records**: the server's `GET /lifting/prs` list, including the manual PRs
+  that have no session behind them, shown above the computed bests with a
+  "manual" badge; `+ Add` types one in. The finish summary also lists the records
+  the session just set — a lift you have never logged counts, an equal estimate
+  does not, and warm-ups or bodyweight sets never do.
+- **Today's verdict**: the server's `/dashboard/today` headline and its reasons,
+  with TSB and recovery, as the first card on Today. No verdict is no card.
+- **AI analysis**: the session detail reads the cached analysis and can ask for
+  a fresh one, showing the model that wrote it.
+- **Week**: Train → **Week** lists the active plan's current week with
+  completed/partial/missed/rest and today marked. A strength day carries its
+  prescription, and tapping it starts that session with last time's load.
 - **Session detail**: every set, grouped by exercise, with warm-ups flagged,
   AMRAP badges, per-set notes, the session note and the session's own RPE.
   Tapping a set edits it inline (weight, reps, RPE, warm-up/AMRAP, note); a set
@@ -66,14 +89,13 @@ against those decisions.
 
 ## What does not work yet
 
-- **The plan is still a seeded constant** (`data/SessionStore.kt › SeedPlan`).
-  It does not come from the training-plan API yet, so the app prescribes the
-  same push day until that lands.
-- **Lifting parity is in progress** — the phase list P0–P7 in
+- **Offline plan**: today's session comes from the training plan when signed in
+  (`GET /training/plans`). Signed out — or before the first sync — the app
+  prescribes the seeded push day from `data/SessionStore.kt › SeedPlan`.
+- **Lifting parity is in progress** — the phase list P0–P9 in
   [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md) is
   complete and has been run on a real phone (OnePlus 11, 360×804 dp) against
-  prod. Still on the matrix: session labels/AI tags, a linked Strava activity,
-  manual PRs, and warm-up templates.
+  prod. Still on the matrix: manual PRs (a PR with no session behind it).
 - No widgets, Health Connect, background sync or notifications.
 - Sign-in is not a gate — the gym flow works before you authenticate. Logging a
   set must never wait on a network round trip.

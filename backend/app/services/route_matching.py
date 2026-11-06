@@ -142,9 +142,7 @@ def simplify(
     return [points[i] for i in range(n) if keep[i]]
 
 
-def resample(
-    points: list[tuple[float, float]], n: int
-) -> list[tuple[float, float]]:
+def resample(points: list[tuple[float, float]], n: int) -> list[tuple[float, float]]:
     """Resample to exactly ``n`` evenly-spaced points by cumulative distance."""
     if not points:
         return []
@@ -234,6 +232,58 @@ def _discrete_frechet(
             cur[j] = max(min(prev[j], prev[j - 1], cur[j - 1]), d)
         prev = cur
     return prev[m - 1]
+
+
+def _is_loop(points: list[tuple[float, float]]) -> bool:
+    return (
+        len(points) > 2
+        and haversine_distance(points[0][0], points[0][1], points[-1][0], points[-1][1])
+        < _LOOP_THRESHOLD_M
+    )
+
+
+def _align_loop_start(
+    a: list[tuple[float, float]], b: list[tuple[float, float]]
+) -> tuple[list[tuple[float, float]], int, bool]:
+    """Rotate a loop ``b`` so it starts at the point nearest ``a``'s start.
+
+    Discrete Fréchet is index-aligned, so the same loop recorded from a café
+    2 km further round scores as if it were a different route: the monotone
+    coupling has to walk the whole loop before it can align. Rotating ``b`` to
+    the nearest of two candidate start points removes that artefact while
+    keeping the sequence order (and therefore direction) intact.
+
+    Returns ``(aligned_b, offset_index, aligned)``. Point-to-point routes are
+    returned unchanged: moving their start is a different route, not a start
+    offset on the same loop.
+    """
+    if len(a) < 3 or len(b) < 3 or not (_is_loop(a) and _is_loop(b)):
+        return b, 0, False
+
+    start = a[0]
+    # Already aligned (or close enough): do not pay for the rotation search.
+    if haversine_distance(start[0], start[1], b[0][0], b[0][1]) < _LOOP_THRESHOLD_M:
+        return b, 0, False
+
+    ranked = sorted(
+        range(len(b)),
+        key=lambda i: haversine_distance(start[0], start[1], b[i][0], b[i][1]),
+    )[:2]
+
+    best: float | None = None
+    best_index = 0
+    for idx in ranked:
+        rotated = b[idx:] + b[:idx]
+        forward = _discrete_frechet(a, rotated)
+        reverse = _discrete_frechet(a, list(reversed(rotated)))
+        score = min(forward, reverse)
+        if best is None or score < best:
+            best = score
+            best_index = idx
+
+    if best_index == 0:
+        return b, 0, False
+    return b[best_index:] + b[:best_index], best_index, True
 
 
 _METRES_PER_DEGREE = 110_000.0
@@ -458,8 +508,12 @@ def _endpoint_similarity(
 ) -> float:
     """Loop-aware start/end proximity, 0.0–1.0.
 
-    Loops have start≈end, so only the start is compared (avoids double-counting
-    the same point); point-to-point requires both ends to converge.
+    A loop's start is arbitrary: the same circuit recorded from a café 3 km
+    round is still the same course, so two closed loops get 1.0 here. Their
+    relationship is expressed by coverage and the start-aligned Fréchet term;
+    penalising the start point again would re-introduce the offset artefact the
+    sequence alignment exists to remove. Point-to-point routes require both
+    ends to converge.
     """
     start_dist = haversine_distance(*a_start, *b_start)
     end_dist = haversine_distance(*a_end, *b_end)
@@ -468,11 +522,7 @@ def _endpoint_similarity(
     b_loop = haversine_distance(*b_start, *b_end) < _LOOP_THRESHOLD_M
 
     if a_loop and b_loop:
-        if start_dist < 500:
-            return 1.0
-        if start_dist < 1000:
-            return 0.3
-        return 0.0
+        return 1.0
 
     if start_dist < 500 and end_dist < 500:
         return 1.0
@@ -533,18 +583,19 @@ def score_route_pair(
     coverage 0.593, divergence 8,336 m against a 2,071 m budget.
     """
     if len(points_a) < 2 or len(points_b) < 2:
-        return _empty_breakdown(
-            length_a or 0.0, length_b or 0.0
-        )
+        return _empty_breakdown(length_a or 0.0, length_b or 0.0)
 
     la = length_a if length_a is not None else polyline_length(points_a)
     lb = length_b if length_b is not None else polyline_length(points_b)
     if la <= 0 or lb <= 0:
         return _empty_breakdown(la, lb)
 
-    # 1. Clean up + resample for Fréchet (order-sensitive).
+    # 1. Clean up + resample for Fréchet (order-sensitive). For loops, rotate
+    # B onto A's start first: the same circuit recorded from a different point
+    # must not lose its shape score to an arbitrary index offset.
     a_fr = resample(drop_jitter(points_a), resample_n)
     b_fr = resample(drop_jitter(points_b), resample_n)
+    b_fr, _, _ = _align_loop_start(a_fr, b_fr)
     b_fr_rev = list(reversed(b_fr))
 
     frechet_fwd = _discrete_frechet(a_fr, b_fr)
@@ -570,7 +621,9 @@ def score_route_pair(
     min_cov = min(cov_ab, cov_ba)
 
     frechet_sim = max(0.0, 1.0 - frechet_fwd / frechet_ceiling_m)
-    endpoint = _endpoint_similarity(points_a[0], points_a[-1], points_b[0], points_b[-1])
+    endpoint = _endpoint_similarity(
+        points_a[0], points_a[-1], points_b[0], points_b[-1]
+    )
 
     # Phase 2 — road-anchored signal (edge Jaccard and/or embedding cosine).
     road_signal: float | None = None
@@ -625,11 +678,7 @@ def score_route_pair(
         bd.detour_ok = detour_ok
         return bd
 
-    total = (
-        _W_COVERAGE * min_cov
-        + _W_FRECHET * frechet_sim
-        + _W_ENDPOINT * endpoint
-    )
+    total = _W_COVERAGE * min_cov + _W_FRECHET * frechet_sim + _W_ENDPOINT * endpoint
     if road_signal is not None:
         total = 0.7 * total + 0.3 * road_signal
 
@@ -669,6 +718,29 @@ def score_route_pair(
         detour_budget_m=round(budget_m, 1),
         detour_ok=detour_ok,
     )
+
+
+def score_route_pair_either_direction(
+    points_a: list[tuple[float, float]],
+    points_b: list[tuple[float, float]],
+    **kwargs,
+) -> ScoreBreakdown:
+    """Score a pair in the better of its two directions.
+
+    The §4 detour gate is deliberately directional (ride vs course), so the
+    same two routes can pass one way and fail the other. A scan that scores
+    only ``(i, j)`` in storage order therefore drops a genuine pair whenever
+    the shorter/subset route happens to be on the wrong side — the old cache
+    held 11 pairs, a rescan kept 7, and all 11 still passed when scored in
+    their original orientation. Try the reverse before declaring no match.
+    """
+    forward = score_route_pair(points_a, points_b, **kwargs)
+    if forward.matched:
+        return forward
+    reverse = score_route_pair(points_b, points_a, **kwargs)
+    if reverse.matched or reverse.total > forward.total:
+        return reverse
+    return forward
 
 
 def frechet_similarity(

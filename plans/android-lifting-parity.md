@@ -98,6 +98,142 @@ the end, because installing per-fix wastes the only real screen we have.
   sheet does, and both travel into history — the detail shows them, and a synced
   session carries them to the API. `SessionEngine.finished()` owns the
   conversion, so a blank note stays blank rather than becoming an empty string.
+- [x] **P8 — today's real session.** The app fetches the training plan
+  (`GET /training/plans` → the plan whose dates bracket today → `GET
+  /training/plans/{id}`) and turns today's planned strength day into the plan the
+  gym flow starts from: focus as the title, exercises with their prescribed sets
+  and reps, and last time's load as the weight (a planned entry carries no load —
+  only `pct_1rm`/`rpe` hints). A rest day says "Rest day." with a "Start anyway"
+  button instead of prescribing the seeded push day, and a failed request leaves
+  the existing plan alone rather than inventing a rest day. The phone's own plan
+  editor remains for offline/demo use and is hidden while the server plan shows.
+- [x] **P9 — labels, templates and the linked activity.** The three matrix rows
+  that were still open:
+  - **Session labels**: `session_split`/`session_lift`/`session_class` are
+    decoded and shown as chips on the detail, and the log can filter by TYPE
+    (split) and CLASS, which is what the website's browser offers. Unlabelled
+    sessions match neither rather than leaking through.
+  - **Warm-up templates**: `GET /lifting/warmup-templates` on sync, offered on
+    the Live screen — one tap logs the template's steps as flagged warm-ups for
+    the current exercise. Local-only, so it works with no signal; warm-ups never
+    advance the plan.
+  - **Linked Strava activity**: the link is decoded and shown on the detail with
+    its duration, with Unlink and a picker backed by
+    `GET /sessions/{id}/linkable-activities` → `PUT /sessions/{id}/link`. Both
+    are optimistic and revert with a reason if the server refuses.
+- [x] **P10 — the Train tab.** The tab that said "not built yet" now holds the
+  training surface in three views: **Sessions** (the log with every filter),
+  **Progress** (PRs, rep ranges, the e1RM line) and **Week** (the active plan's
+  current week from `GET /training-plans/{id}/week/{n}`, Monday-based, with
+  completed/partial/missed/rest status and today marked). Today is now *today
+  only* — one day, one session — which is what makes the two tabs different
+  things rather than two paths to the same list. The week is read-only on
+  purpose: the editor is the website's job, the phone's is to say what is
+  coming.
+- [x] **P11 — the records book.** Progress could only show what the phone could
+  prove from its own history, which by definition excludes a PR with no session
+  behind it. `GET /lifting/prs` is now read (names trimmed, Brzycki filled in
+  when the server has no estimate, `manual` when `session_id` is null),
+  `POST /lifting/prs` types one in, and Progress shows RECORDS above the
+  computed bests with a "manual" badge — kept apart on purpose, because a
+  number you typed and a number the log proves should not look the same.
+- [x] **P12 — analytics from the log.** The website's Analytics tab, computed
+  locally instead of from `/charts/*` (`domain/Analytics.kt`): eight
+  Monday-based weeks of volume (zero-filled, because the gap is the point),
+  volume by focus with an "Other" tail, and the lifts trained most. Warm-ups
+  never count. The same reasoning as Progress — the screen cannot disagree with
+  the log it is drawn from, and it works on a dead signal.
+
+- [x] **P13 — templates you can keep.** The Live screen's warm-up list is now a
+  manager, not just a menu: `×` deletes a template (`DELETE
+  /lifting/warmup-templates/{id}`, optimistic, put back with a reason if the
+  server refuses), and once you have logged a ramp **"Save these N warm-ups as
+  a template"** posts exactly what you did (`POST /lifting/warmup-templates`,
+  steps numbered by position) so next time it is one tap. The website's Templates
+  tab owns renaming and editing; the phone keeps what it is good at — capturing a
+  ramp you just performed.
+
+- [x] **P14 — analyse a session.** The website can ask Gemini what it thinks of
+  a session; the app can now too. `GET /lifting/sessions/{id}/ai-analysis`
+  returns the cached analysis (JSON `null` when there is none), and the POST
+  generates one on demand — through a longer-timeout client, because a model
+  reading the session is not a database query. The detail shows the text with
+  its model and a "Run again", and an unset key surfaces as `501` on the button
+  rather than a silent nothing.
+
+- [x] **P15 — today's verdict.** `GET /dashboard/today` carries the unified
+  verdict (headline, `should_rest`, reasons, per-engine consensus) plus TSB and
+  recovery. The app shows it as the first card on Today — the server's sentence,
+  not one the phone composed — with up to three reasons and the two numbers.
+  A silent engine is reported as "unavailable" rather than dropped (a list that
+  omits it reads as agreement), and no verdict at all is no card, so the screen
+  falls back to the plan alone.
+
+- [x] **P16 — start a day from the Week.** The Week view carried only a count of
+  exercises; now each day carries its prescription, so tapping a strength day
+  starts that session — including a day that is not today, which is what a week
+  view is *for*. The load is last time's, because a planned entry says sets and
+  reps, not kilos. A run/rest/empty day is not clickable, and starting is refused
+  while another session is in progress rather than throwing away logged sets.
+
+- [x] **P17 — the summary knows what a record is.** Finishing a session now shows
+  NEW RECORD(S) above the volume breakdown: the lifts whose estimated 1RM beat
+  everything before them, judged by `ProgressEngine.sessionRecords` against the
+  history *before* this session (so the summary is a claim, not a comparison with
+  itself). A lift you have never logged counts — the first time is the record —
+  an equal estimate does not, and warm-ups and bodyweight sets never do.
+
+- [x] **P18 — the Body tab.** The last placeholder but Ride now has content:
+  bodyweight from `GET /metrics/weight?days=90` — the latest weigh-in, the
+  30-day change, the **7-day rolling average** as a line (the number that
+  actually answers "am I going the right way"), and the weigh-ins themselves
+  with their source. `POST /metrics/weight` logs one (upserting by date, so a
+  second weigh-in the same day replaces the first) and `DELETE
+  /metrics/weight/{id}` removes one — but only a `manual` entry: a scale's
+  reading is not ours to delete. A weight outside 20–400 kg is refused before it
+  is sent.
+
+- [x] **P19 — page the week.** A week view that cannot look ahead is a list with
+  a date on it. The Week header now carries `‹ week N ›` and a "This week" jump
+  when you have paged away. The number is counted in Monday-based weeks from the
+  plan's own start (`PlanWeeks`), and clamped to the plan's extent, so an arrow
+  never asks the API for week 0 or week 999 — and past either end it stays put.
+
+- [x] **P20 — the device pass.** Driven on the OnePlus 11 (360×804 dp) against
+  prod, following [`android-device-pass.md`](android-device-pass.md). It found
+  four bugs the 180 JVM tests could not:
+  1. the **Today tab showed "NOT BUILT YET / Today"** — `switchTab` sent every tab
+     through the `tab/{name}` route, and Today is its own destination;
+  2. **"Save these N warm-ups…" was invisible**, sitting below a template list
+     taller than the space above the action deck;
+  3. the **AI analysis rendered as raw markdown** (`###`, `**`) — now stripped by
+     `AnalysisText`;
+  4. the **week pager lied at the plan's edge** (same week, "This week" shown) —
+     `PlanWeek` now carries its extent and the arrows die at the ends.
+  Also caught: `android:windowLightNavigationBar` needed API 27 while `minSdk` is
+  26 (`:app:lintDebug` now passes), and a completed plan day hid the "today"
+  marker.
+  Verified live: rest day + verdict, Week (week 11, today, day statuses), Sessions
+  volumes, Progress records (including a **manual Deadlift 190×1**) and analytics,
+  Body (88.9 kg, −1.0 kg over 30 days, the 7-day line), a full session (warm-up
+  template applied, saved and deleted; RPE 8 + note; pushed) and its deletion
+  surviving a restart and resync — so the DELETE reached the server. Test data
+  was removed.
+
+- [x] **P21 — the Ride tab.** The last placeholder. `GET /activities` is
+  unfiltered (it answers every sport), so the app asks for a page and keeps the
+  rides by `sport_type` — `Ride`, `VirtualRide`, `EBikeRide`, `cycling`. The tab
+  shows the last 7 days as distance, time and TSS, then the recent rides with
+  pace, average power/HR and their own TSS. Every number is computed from the
+  rides on screen, so the summary cannot disagree with the list beneath it. It
+  is read-only: a ride comes from Strava or Komoot, and the phone is not where it
+  gets edited.
+
+The lifting matrix is now complete: every row the website's `/lifting` surface
+has, the app has, except plan *editing* (deliberately the website's job — the
+app's Week view is read-only) and template *renaming/editing* (the Templates
+tab's job). The end-to-end device checklist that proves it lives in
+[`android-device-pass.md`](android-device-pass.md).
 - [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
   @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:
   34 real sessions pulled, the log with its filters, Progress computed from that

@@ -34,6 +34,7 @@ import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.HistoryFilter
 import uk.oli.fittrack.domain.HistoryQuery
 import uk.oli.fittrack.domain.SessionEngine
+import uk.oli.fittrack.domain.humaniseLabel
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.formatWeight
 import uk.oli.fittrack.ui.plural
@@ -75,14 +76,25 @@ fun LogScreen(
     var focus by rememberSaveable { mutableStateOf<String?>(null) }
     var exercise by rememberSaveable { mutableStateOf<String?>(null) }
     var days by rememberSaveable { mutableStateOf<Int?>(null) }
+    var split by rememberSaveable { mutableStateOf<String?>(null) }
+    var klass by rememberSaveable { mutableStateOf<String?>(null) }
     var expanded by rememberSaveable { mutableStateOf(false) }
 
-    val query = HistoryQuery(text = text, focus = focus, exercise = exercise, days = days)
-    val filtered = remember(history, text, focus, exercise, days) {
+    val query = HistoryQuery(
+        text = text,
+        focus = focus,
+        exercise = exercise,
+        days = days,
+        split = split,
+        klass = klass
+    )
+    val filtered = remember(history, text, focus, exercise, days, split, klass) {
         HistoryFilter.apply(history, query, now)
     }
     val focuses = remember(history) { HistoryFilter.focuses(history) }
     val exercises = remember(history) { HistoryFilter.exercises(history) }
+    val splits = remember(history) { HistoryFilter.splits(history) }
+    val classes = remember(history) { HistoryFilter.classes(history) }
 
     Column {
         OutlinedTextField(
@@ -125,6 +137,14 @@ fun LogScreen(
             }
             if (exercises.size > 1) {
                 ChipRow("EXERCISE", exercises, exercise) { exercise = if (exercise == it) null else it }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (splits.size > 1) {
+                ChipRow("TYPE", splits, split, ::humaniseLabel) { split = if (split == it) null else it }
+                Spacer(Modifier.height(8.dp))
+            }
+            if (classes.size > 1) {
+                ChipRow("CLASS", classes, klass, ::humaniseLabel) { klass = if (klass == it) null else it }
             }
         }
 
@@ -149,6 +169,8 @@ fun LogScreen(
                             focus = null
                             exercise = null
                             days = null
+                            split = null
+                            klass = null
                         }
                         .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
@@ -214,6 +236,7 @@ private fun ChipRow(
     label: String,
     options: List<String>,
     selected: String?,
+    display: (String) -> String = { it },
     onSelect: (String) -> Unit
 ) {
     Column {
@@ -224,7 +247,7 @@ private fun ChipRow(
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             options.forEach { option ->
-                FilterChip(option, option == selected) { onSelect(option) }
+                FilterChip(display(option), option == selected) { onSelect(option) }
             }
         }
     }

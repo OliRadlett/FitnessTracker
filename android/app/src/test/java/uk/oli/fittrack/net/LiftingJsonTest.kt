@@ -130,6 +130,44 @@ class LiftingJsonTest {
     }
 
     @Test
+    fun `classifier labels and a linked activity survive the decode`() {
+        val body = """
+            [{"id":"s1","session_date":"2026-11-04","focus":"Push",
+              "session_split":"push","session_lift":"bench","session_class":"volume_hypertrophy",
+              "linked_activity":{"id":"a1","source":"strava","sport_type":"weighttraining",
+                "name":"Evening weights","start_date":"2026-11-04T18:00:00+00:00",
+                "duration_seconds":3600},
+              "sets":[{"exercise_name":"Bench Press","weight_kg":90,"reps":4}]}]
+        """.trimIndent()
+
+        val session = LiftingJson.decode(body).single()
+
+        assertEquals("push", session.labels?.split)
+        assertEquals("bench", session.labels?.lift)
+        assertEquals("volume_hypertrophy", session.labels?.klass)
+        val linked = session.linkedActivity!!
+        assertEquals("a1", linked.id)
+        assertEquals("Evening weights", linked.name)
+        assertEquals("strava", linked.source)
+        assertEquals(3600, linked.durationSeconds)
+        assertTrue(linked.startAt > 0L)
+    }
+
+    @Test
+    fun `an unlabelled session has no labels rather than blanks`() {
+        val body = """
+            [{"id":"s1","session_date":"2026-11-04","focus":"Push","session_split":null,
+              "session_lift":"","session_class":null,
+              "sets":[{"exercise_name":"Bench Press","weight_kg":90,"reps":4}]}]
+        """.trimIndent()
+
+        val session = LiftingJson.decode(body).single()
+
+        assertNull(session.labels)
+        assertNull(session.linkedActivity)
+    }
+
+    @Test
     fun `a set with no id still decodes`() {
         val noId = """
             [{"id":"x","session_date":"2026-11-04","focus":"Test","notes":"felt good",

@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import type { LucideIcon } from 'lucide-react';
 import {
   Route,
+  Layers,
   TrendingUp,
   Video,
   Play,
@@ -26,6 +27,7 @@ interface MoreDrawerItem {
 export const MORE_ITEMS: MoreDrawerItem[] = [
   { label: 'Today', href: '/today', icon: Sunrise },
   { label: 'Routes', href: '/routes', icon: Route },
+  { label: 'Courses', href: '/courses', icon: Layers },
   { label: 'Segments', href: '/segments', icon: TrendingUp },
   { label: 'Videos', href: '/lifting/videos', icon: Video },
   { label: '3D Replay', href: '/replay', icon: Play },

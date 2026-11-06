@@ -24,6 +24,9 @@ from app.models.nutrition import RideFuelPlan
 from app.models.plan_review import PlanReviewSnapshot
 from app.models.push import PushSubscription
 from app.models.route import (
+    Course,
+    CourseLinkLog,
+    CourseSuggestionDismissal,
     Route,
     RouteMatchMetric,
     RouteMergeLog,
@@ -54,6 +57,9 @@ __all__ = [
     "ActivityStream",
     "AthleteInsight",
     "CachedWeather",
+    "Course",
+    "CourseLinkLog",
+    "CourseSuggestionDismissal",
     "CrossDomainInsight",
     "CyclingPowerRecord",
     "CyclingProfile",

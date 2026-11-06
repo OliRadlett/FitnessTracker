@@ -20,6 +20,7 @@ class HistoryFilterTest {
         date: String,
         title: String = "Push day",
         note: String? = null,
+        labels: SessionLabels? = null,
         sets: List<LoggedSet>
     ) = FinishedSession(
         id = "s-$date-${title.hashCode()}",
@@ -27,7 +28,8 @@ class HistoryFilterTest {
         startedAt = at(date),
         endedAt = at(date),
         sets = sets,
-        note = note
+        note = note,
+        labels = labels
     )
 
     private val history = listOf(
@@ -163,5 +165,45 @@ class HistoryFilterTest {
         assertEquals(0, HistoryQuery().active)
         assertEquals(2, HistoryQuery(text = "x", days = 30).active)
         assertEquals(3, HistoryQuery(text = "x", days = 30, focus = "Push day").active)
+    }
+
+    @Test
+    fun `split and class filters use the classifier labels`() {
+        val labelled = listOf(
+            session(
+                "2026-11-01",
+                labels = SessionLabels(split = "push", lift = "bench", klass = "volume_hypertrophy"),
+                sets = listOf(set("Bench Press"))
+            ),
+            session(
+                "2026-11-02",
+                labels = SessionLabels(split = "legs", lift = "squat", klass = "max_strength"),
+                sets = listOf(set("Back Squat"))
+            ),
+            session("2026-11-03", sets = listOf(set("Bench Press")))
+        )
+
+        assertEquals(1, HistoryFilter.apply(labelled, HistoryQuery(split = "legs"), now).size)
+        assertEquals(1, HistoryFilter.apply(labelled, HistoryQuery(klass = "max_strength"), now).size)
+        // An unlabelled session matches neither, rather than leaking through.
+        assertEquals(0, HistoryFilter.apply(labelled, HistoryQuery(split = "upper"), now).size)
+    }
+
+    @Test
+    fun `split and class options are ordered by frequency`() {
+        val labelled = listOf(
+            session("2026-11-01", labels = SessionLabels(split = "push", klass = "max_strength"), sets = listOf(set("A"))),
+            session("2026-11-02", labels = SessionLabels(split = "push", klass = "max_strength"), sets = listOf(set("B"))),
+            session("2026-11-03", labels = SessionLabels(split = "legs", klass = "volume_hypertrophy"), sets = listOf(set("C")))
+        )
+
+        assertEquals(listOf("push", "legs"), HistoryFilter.splits(labelled))
+        assertEquals(listOf("max_strength", "volume_hypertrophy"), HistoryFilter.classes(labelled))
+    }
+
+    @Test
+    fun `labels are humanised for chips`() {
+        assertEquals("Max strength", humaniseLabel("max_strength"))
+        assertEquals("Push", humaniseLabel("push"))
     }
 }

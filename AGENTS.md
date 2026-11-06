@@ -105,32 +105,91 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   session" starts today from a finished one (`SessionEngine.planFrom`), copying
   working sets only.
 - **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
-  holds the website-versus-app matrix and the phase list (P0–P7, device pass at
+  holds the website-versus-app matrix and the phase list (P0–P19, device pass at
   the end).
-- **Progress**: Today's third segment computes PRs, best-by-rep-range and a
+- **Progress**: Train's Progress view computes PRs, best-by-rep-range and a
   per-exercise estimated-1RM line from the cached history
   ([`domain/Progress.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Progress.kt)),
   with no network in the path. Warm-ups never count; empty rep ranges are shown
   as empty rather than omitted. The chart defaults to the exercise with the
   longest **session** record, not the strongest lift — a one-off PR has no line
   to draw.
-- **Browsing the log**: Today's Log segment filters on free text (focus, note,
-  exercise names), focus, exercise and a date window
+- **Browsing the log**: Train's **Sessions** view filters on free text (focus,
+  note, exercise names), focus, exercise, a date window and the classifier's
+  TYPE (split) and CLASS
   ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
   all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
   better than the website's months.
+- **Train tab**: [`ui/train/TrainScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/train/TrainScreen.kt)
+  holds Sessions · Progress · **Week** (the active plan's current week from
+  `GET /training-plans/{id}/week/{n}`, Monday-numbered from the plan's start,
+  with completed/partial/missed/rest and today marked). A strength day carries
+  its prescription, so tapping it starts that session (load = last time's) —
+  `AppViewModel.startFromDay`, refused while one is already in progress. The
+  header pages between weeks (`‹ week N ›` plus "This week"); the number is
+  Monday-based from the plan's start and clamped to its extent by `PlanWeeks`.
+  Today is today-only; the two tabs stay different things.
+- **Labels, templates, links**: the session detail shows the classifier's
+  split/lift/class chips and any linked Strava activity (link/unlink through
+  `/sessions/{id}/linkable-activities` and `PUT /sessions/{id}/link`); the Live
+  screen offers saved warm-up templates (`/lifting/warmup-templates`) that log
+  their steps as flagged warm-ups for the current exercise, locally, with no
+  signal — plus `×` to delete one and "Save these N warm-ups as a template" to
+  capture the ramp you just did (`POST`, steps numbered by position). Renaming
+  and editing a template stays on the website's Templates tab.
 - **Names are trimmed at the boundary**: the server has held both `Legs` and
   `Legs `, and an untrimmed name silently splits a lift's history in two. The
   decoder trims, and every grouping/comparison trims, so one lift is one row.
 - **Finishing**: the summary asks for the session's own RPE and a note, and
   `SessionEngine.finished()` turns the session in progress into history with
-  both. A blank note is null, not an empty string.
-- **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens), and parity gaps still on the matrix:
-  session labels/AI tags, a linked Strava activity, manual PRs (needs
-  `GET /lifting/prs`, never captured) and warm-up templates. The phase list
-  P0–P7 in [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
-  is complete and the device pass has run.
+  both. A blank note is null, not an empty string. It also shows the session's
+  **new records** (`ProgressEngine.sessionRecords` against the history *before*
+  the session): a lift you have never logged counts, an equal estimate does not,
+  and warm-ups/bodyweight sets never do.
+- **Today's session comes from the training plan**: `GET /training-plans` → the
+  plan whose dates bracket today → `GET /training-plans/{id}` → today's
+  `sport == "strength"` day, mapped in
+  [`net/PlanApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/PlanApi.kt)
+  (focus as the title, prescribed sets/reps, last time's load as the weight).
+  A rest day shows "Rest day." and "Start anyway"; a failed request leaves the
+  current plan alone rather than inventing a rest day. `SeedPlan` is only the
+  fallback when signed out or offline, and the phone's plan editor is hidden
+  while a server plan is showing.
+- **Today's verdict**: `/dashboard/today` → the unified verdict card at the top
+  of Today ([`net/TodayApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/TodayApi.kt)):
+  the server's headline, up to three reasons, and TSB/recovery. It shows the
+  server's sentence rather than composing one, keeps an unavailable engine in
+  the list as "unavailable", and renders nothing at all when there is no verdict.
+- **AI analysis**: the session detail asks for the cached analysis (`GET
+  /lifting/sessions/{id}/ai-analysis`, JSON `null` before one exists) and can
+  generate one (`POST`, on a 120 s client because a model is reading the
+  session). The text is cached per session in the view model; `501` is surfaced
+  as the reason on the button.
+- **Records**: `GET /lifting/prs` is read ([`net/PrApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/PrApi.kt)),
+  including the manual PRs that have no session behind them, and `POST
+  /lifting/prs` types one in. Progress lists them above the computed bests with
+  a "manual" badge — a typed number and a proven one must not look the same.
+- **Analytics**: [`domain/Analytics.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Analytics.kt)
+  computes eight Monday-based weeks of volume, volume by focus (with an "Other"
+  tail) and the most-trained lifts from the cached history — no `/charts` calls,
+  no network, warm-ups excluded. Same rule as Progress: it cannot disagree with
+  the log it is drawn from.
+- **Body tab**: bodyweight from `GET /metrics/weight?days=90`
+  ([`net/BodyApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/BodyApi.kt),
+  [`ui/body/BodyScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/body/BodyScreen.kt)):
+  latest weigh-in, 30-day change, the **7-day rolling average** as a line, and
+  the weigh-ins with their source. `POST` logs one (the API upserts by date) and
+  `DELETE` removes only a `manual` entry. 20–400 kg is enforced before sending.
+- **Ride tab**: rides from `GET /activities` ([`net/RidesApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/RidesApi.kt),
+  [`ui/ride/RideScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/ride/RideScreen.kt)) —
+  last-7-days distance/time/TSS and the recent rides with pace, power/HR and
+  TSS. The list endpoint is unfiltered, so a ride is recognised by its
+  `sport_type`; the summary is computed from the rides on screen, so it cannot
+  disagree with the list.
+- **Not built yet**: nothing is a placeholder any more. The lifting matrix is
+  complete (phase list P0–P20 in
+  [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the
+  device pass has run, and plan *editing* is deliberately left to the website.
 
 ## Architecture
 
@@ -295,6 +354,31 @@ shows terrain and surface; the page renders no quality controls. Audit:
 [`docs/route-intelligence-audit-2026-11-05.md`](docs/route-intelligence-audit-2026-11-05.md).
 Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
 
+**Route courses** — [`plans/route-courses-2026-11-05.md`](plans/route-courses-2026-11-05.md).
+The model is **Course → Route → Ride**: `Course` is the identity, `Route` is a
+concrete variant (geometry, direction, start/end, provider sources), `Activity`
+is the ride. Migration **117** adds `courses` + `routes.course_id` +
+`course_link_log` and backfills **one course per existing route** (1:1); it does
+not group variants or delete routes. Migration **118** adds
+`activities.route_link_status/source/confidence/confirmed_at`; every existing
+ride→route link is backfilled **`suggested` + `legacy`** because those links
+came from the WIP matcher. Course history/PRs must read `confirmed` only.
+Migration **119** stores durable suggestion dismissals; the suggestion query
+skips both pair orientations. Grouping is an `UPDATE routes SET course_id`, not
+a merge; `merge_routes` stays
+for identical variants. The API is `/api/v1/courses` (`GET/POST /`, `GET
+/uncoursed`, `GET /suggestions` (review-tier pairs from `route_similarity`), `GET /merge-candidates` (same-name courses below the geometry floor),
+group/ungroup under `/{course_id}/routes/{route_id}`, merge
+`/{target_id}/merge/{source_id}`, `PATCH /{course_id}` (rename), list dismissed suggestions at
+`/suggestions/dismissed`, dismiss/restore a pair at
+`/suggestions/{a}/{b}/dismiss`, confirm/reject at
+`/ride-links/{activity_id}/...`, manual pickers at `/routes/search` and
+`/rides/search`, and a manual confirmed link at `/ride-links/{activity_id}/link`);
+the UI is `/courses` (More → Courses),
+built on `lib/api/courses.ts`. The 86-route investigation (11 cached pairs,
+start-offset collapse, 86 → 79 grouping) lives in `prototype/route-merging/` on
+the main worktree and is not merged.
+
 **Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–4 landed;
 Waves 0–2 merged to `main` as PR #234, Waves 3–4 in review). Nine specs in
 [`plans/`](plans/) from a re-baselined brainstorm, plus
@@ -312,11 +396,10 @@ Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.
 deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
 working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
 five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `117`** — the head is `116` (`107` user demographics, `108`/`109`
-segment groups + line geometry, `110` health events, `111` power provenance, `112`
-`weight_logs.raw_data`, `113` DailyMetric SpO2 + skin temp, `114` gear, `115` activity laps,
-`116` provider webhook events), `096` is `undo_logs`, and one branch was renumbered **three
-times** in one sitting because `main` kept claiming the numbers (pitfall 34). Check
+**New migrations continue from `120`** — main's head was `116` (`provider_webhook_events`);
+this branch adds `117` courses, `118` link trust and `119` suggestion dismissals, so this
+branch's head is `119`. `096` is `undo_logs`, and this branch was renumbered **four times**
+in one sitting because `main` kept claiming the numbers (pitfall 34). Check
 `git ls-tree origin/main backend/alembic/versions/` immediately before renumbering, and again
 before opening the PR.
 

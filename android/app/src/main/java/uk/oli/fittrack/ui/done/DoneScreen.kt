@@ -58,6 +58,7 @@ import java.util.Locale
 fun DoneScreen(
     session: SessionState,
     previous: FinishedSession?,
+    records: List<uk.oli.fittrack.domain.PersonalBest> = emptyList(),
     onDone: (note: String?, rpeSession: Double?) -> Unit
 ) {
     val volume = SessionEngine.volumeKg(session.sets)
@@ -128,6 +129,32 @@ fun DoneScreen(
                 )
                 Spacer(Modifier.weight(1f))
                 Text(shortDate(previous.endedAt), fontSize = 13.sp, color = Tokens.Muted)
+            }
+        }
+
+        if (records.isNotEmpty()) {
+            Spacer(Modifier.height(24.dp))
+            Label(if (records.size == 1) "NEW RECORD" else "NEW RECORDS")
+            Spacer(Modifier.height(8.dp))
+            records.forEach { record ->
+                Row(
+                    Modifier.fillMaxWidth().height(40.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        record.exercise,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Tokens.Accent,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "${formatWeight(record.weightKg)} kg × ${record.reps}",
+                        fontSize = 13.sp,
+                        color = Tokens.Fg,
+                        style = TextStyle(fontFeatureSettings = "tnum")
+                    )
+                }
             }
         }
 

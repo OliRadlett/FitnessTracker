@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -21,6 +22,14 @@ class Activity(Base):
     __table_args__ = (
         UniqueConstraint(
             "source", "provider_activity_id", name="uq_activity_source_provider_id"
+        ),
+        # A link status without a route is meaningless. NULL status is allowed
+        # even when route_id is set: rows written before migration 108 and
+        # code paths that have not classified the link yet are "unclassified",
+        # which is not the same as "confirmed".
+        CheckConstraint(
+            "route_link_status IS NULL OR route_id IS NOT NULL",
+            name="ck_activity_route_link_status_requires_route",
         ),
     )
 
@@ -52,6 +61,17 @@ class Activity(Base):
         ForeignKey("gear.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    # Ride -> Route link trust (migration 108). `route_id` is the candidate
+    # pointer; these columns say whether the link is trusted. Existing links
+    # came from a WIP matcher and are backfilled as `suggested` + `legacy`.
+    # Course history and PRs must read `confirmed` only. NULL status means
+    # "unclassified", which is deliberately not treated as confirmed.
+    route_link_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    route_link_source: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    route_link_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    route_link_confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     source: Mapped[str] = mapped_column(
         String(50), nullable=False

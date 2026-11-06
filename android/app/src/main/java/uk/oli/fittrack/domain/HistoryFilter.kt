@@ -6,14 +6,20 @@ data class HistoryQuery(
     val focus: String? = null,
     val exercise: String? = null,
     /** Only sessions inside the last N days; null means no date limit. */
-    val days: Int? = null
+    val days: Int? = null,
+    /** The classifier's split (push/pull/legs/…). */
+    val split: String? = null,
+    /** The classifier's session class (max_strength/volume_hypertrophy/…). */
+    val klass: String? = null
 ) {
     val active: Int
         get() = listOf(
             text.isNotBlank(),
             focus != null,
             exercise != null,
-            days != null
+            days != null,
+            split != null,
+            klass != null
         ).count { it }
 
     val isEmpty: Boolean get() = active == 0
@@ -48,6 +54,8 @@ object HistoryFilter {
             (cutoff == null || session.endedAt >= cutoff) &&
                 (query.focus == null || session.planTitle.trim() == query.focus) &&
                 (query.exercise == null || session.sets.any { it.exercise.trim() == query.exercise }) &&
+                (query.split == null || session.labels?.split == query.split) &&
+                (query.klass == null || session.labels?.klass == query.klass) &&
                 (needle.isEmpty() || matches(session, needle))
         }
     }
@@ -82,4 +90,26 @@ object HistoryFilter {
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .map { it.key }
             .take(limit)
+
+    /** The classifier's splits present in the history, most frequent first. */
+    fun splits(history: List<FinishedSession>): List<String> =
+        history.mapNotNull { it.labels?.split }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .map { it.key }
+
+    /** The classifier's session classes present in the history, most frequent first. */
+    fun classes(history: List<FinishedSession>): List<String> =
+        history.mapNotNull { it.labels?.klass }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
+            .map { it.key }
 }
+
+/** "max_strength" → "Max strength", for a chip you can read at a glance. */
+fun humaniseLabel(raw: String): String =
+    raw.replace('_', ' ').replaceFirstChar { it.uppercase() }

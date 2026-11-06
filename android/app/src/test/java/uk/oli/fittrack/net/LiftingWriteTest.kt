@@ -6,6 +6,8 @@ import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -107,6 +109,151 @@ class LiftingWriteTest {
         val request = server.takeRequest(5, TimeUnit.SECONDS)!!
         assertEquals("DELETE", request.method)
         assertEquals("/lifting/sets/set-9", request.path)
+    }
+
+    @Test
+    fun `linkable activities come from the session's own path`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """[{"id":"act-9","name":"Evening weights","source":"strava",
+                     "start_date":"2026-11-04T18:00:00+00:00","duration_seconds":3600}]"""
+            )
+        )
+
+        val candidates = runBlocking { api.linkableActivities("tok", "sess-7") }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("GET", request.method)
+        assertEquals("/lifting/sessions/sess-7/linkable-activities", request.path)
+        assertEquals("act-9", candidates.single().id)
+        assertEquals("Evening weights", candidates.single().name)
+    }
+
+    @Test
+    fun `linking sends the activity id and unlinking sends null`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        runBlocking { api.linkActivity("tok", "sess-7", "act-9") }
+
+        val link = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("PUT", link.method)
+        assertEquals("/lifting/sessions/sess-7/link", link.path)
+        assertTrue(link.body.readUtf8().contains("\"activity_id\":\"act-9\""))
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        runBlocking { api.linkActivity("tok", "sess-7", null) }
+
+        val unlink = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertTrue(unlink.body.readUtf8().contains("\"activity_id\":null"))
+    }
+
+    @Test
+    fun `the cached analysis is a GET, and a missing one is null rather than an error`() {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("null"))
+        assertNull(runBlocking { api.sessionAnalysis("tok", "sess-7") })
+        assertEquals("/lifting/sessions/sess-7/ai-analysis", server.takeRequest(5, TimeUnit.SECONDS)!!.path)
+
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"id":"a1","analysis_type":"lifting","analysis_text":"  Solid volume.  ",
+                     "model_used":"gemini-2.0","created_at":"2026-11-06T12:00:00+00:00"}"""
+            )
+        )
+
+        val analysis = runBlocking { api.sessionAnalysis("tok", "sess-7") }!!
+
+        assertEquals("Solid volume.", analysis.text)
+        assertEquals("gemini-2.0", analysis.model)
+        assertNotNull(analysis.createdAt)
+    }
+
+    @Test
+    fun `asking for an analysis is a POST on the same path`() {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """{"id":"a1","analysis_text":"Fresh analysis","model_used":"gemini-2.0"}"""
+            )
+        )
+
+        val analysis = runBlocking { api.requestSessionAnalysis("tok", "sess-7") }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("POST", request.method)
+        assertEquals("/lifting/sessions/sess-7/ai-analysis", request.path)
+        assertEquals("Fresh analysis", analysis!!.text)
+    }
+
+    @Test
+    fun `an unavailable model surfaces its status`() {
+        server.enqueue(MockResponse().setResponseCode(501).setBody("""{"detail":"unset"}"""))
+
+        val error = runCatching { runBlocking { api.requestSessionAnalysis("tok", "sess-7") } }
+            .exceptionOrNull()
+
+        assertTrue(error is ApiException)
+        assertEquals(501, (error as ApiException).status)
+    }
+
+    @Test
+    fun `saving a warm-up template posts the ramp in order`() {
+        server.enqueue(
+            MockResponse().setResponseCode(201).setBody(
+                """{"id":"t1","name":"Bench warmup","exercise_name":"Bench Press",
+                     "steps":[{"step_number":1,"weight_kg":60,"reps":8},
+                              {"step_number":2,"weight_kg":80,"reps":5,"notes":"paused"}]}"""
+            )
+        )
+
+        val saved = runBlocking {
+            api.createWarmupTemplate(
+                "tok",
+                " Bench warmup ",
+                "Bench Press",
+                listOf(
+                    uk.oli.fittrack.domain.WarmupStep(60.0, 8),
+                    uk.oli.fittrack.domain.WarmupStep(80.0, 5, "paused")
+                )
+            )
+        }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("POST", request.method)
+        assertEquals("/lifting/warmup-templates", request.path)
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("\"name\":\"Bench warmup\""))
+        assertTrue(body.contains("\"exercise_name\":\"Bench Press\""))
+        // Steps are numbered by their position, so the server's order is ours.
+        assertTrue(body.contains("\"step_number\":1"))
+        assertTrue(body.contains("\"step_number\":2"))
+        assertTrue(body.contains("\"weight_kg\":80.0"))
+        assertTrue(body.contains("\"notes\":\"paused\""))
+
+        assertEquals("t1", saved!!.id)
+        assertEquals(2, saved.steps.size)
+    }
+
+    @Test
+    fun `deleting a warm-up template hits its own path`() {
+        server.enqueue(MockResponse().setResponseCode(204))
+
+        runBlocking { api.deleteWarmupTemplate("tok", "t1") }
+
+        val request = server.takeRequest(5, TimeUnit.SECONDS)!!
+        assertEquals("DELETE", request.method)
+        assertEquals("/lifting/warmup-templates/t1", request.path)
+    }
+
+    @Test
+    fun `a refused template save is an error, not a silent no-op`() {
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"detail":"bad"}"""))
+
+        val error = runCatching {
+            runBlocking {
+                api.createWarmupTemplate("tok", "x", null, listOf(uk.oli.fittrack.domain.WarmupStep(20.0, 10)))
+            }
+        }.exceptionOrNull()
+
+        assertTrue(error is ApiException)
+        assertEquals(400, (error as ApiException).status)
     }
 
     @Test

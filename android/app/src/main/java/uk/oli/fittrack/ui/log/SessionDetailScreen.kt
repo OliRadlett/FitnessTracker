@@ -45,7 +45,10 @@ import uk.oli.fittrack.domain.ExerciseSets
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.LoggedSet
+import uk.oli.fittrack.domain.LinkedActivity
 import uk.oli.fittrack.domain.SessionEngine
+import uk.oli.fittrack.domain.humaniseLabel
+import uk.oli.fittrack.net.SessionAnalysis
 import uk.oli.fittrack.net.SetEdit
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.formatDuration
@@ -75,11 +78,21 @@ fun SessionDetailScreen(
     onDeleteSession: () -> Unit = {},
     onEditSession: (Long, String?, String?) -> Unit = { _, _, _ -> },
     onAddSets: (String, List<SetEdit>) -> Unit = { _, _ -> },
+    linkCandidates: List<LinkedActivity> = emptyList(),
+    onLoadLinkable: () -> Unit = {},
+    onLinkActivity: (LinkedActivity?) -> Unit = {},
+    onCancelLink: () -> Unit = {},
+    analysis: SessionAnalysis? = null,
+    analysisBusy: Boolean = false,
+    onLoadAnalysis: () -> Unit = {},
+    onAnalyse: () -> Unit = {},
     canRepeat: Boolean = true,
     onRepeat: () -> Unit = {}
 ) {
     val zone = ZoneId.systemDefault()
     val start = Instant.ofEpochMilli(session.startedAt).atZone(zone)
+    // Ask for the cached analysis once, when the screen opens.
+    androidx.compose.runtime.LaunchedEffect(session.id) { onLoadAnalysis() }
     val working = SessionEngine.workingSets(session.sets)
     val warmups = session.sets.size - working.size
     val topSet = working.maxByOrNull { it.weightKg }
@@ -196,6 +209,169 @@ fun SessionDetailScreen(
                         Text(note, fontSize = 14.sp, color = Tokens.Fg)
                     }
                 }
+            }
+
+            // The analysis is the server's, so it is asked for once on open and
+            // then cached; generating one is an explicit tap.
+            item {
+                Spacer(Modifier.height(12.dp))
+                Label("AI ANALYSIS")
+                Spacer(Modifier.height(8.dp))
+                if (analysis != null) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Tokens.Surface)
+                            .padding(16.dp)
+                    ) {
+                        // The model answers in markdown; the screen is plain
+                        // text, so the markers are stripped rather than shown.
+                        Text(
+                            uk.oli.fittrack.domain.AnalysisText.plain(analysis.text),
+                            fontSize = 14.sp,
+                            color = Tokens.Fg
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                analysis.model.ifBlank { "analysis" },
+                                fontSize = 11.sp,
+                                color = Tokens.Muted,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                if (analysisBusy) "Analysing…" else "Run again",
+                                fontSize = 12.sp,
+                                color = Tokens.Accent,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = !analysisBusy) { onAnalyse() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Tokens.Surface)
+                            .clickable(enabled = !analysisBusy) { onAnalyse() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (analysisBusy) "Analysing…" else "Analyse this session",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Tokens.Accent
+                        )
+                    }
+                }
+            }
+
+            val labels = session.labels
+            val linked = session.linkedActivity
+            if (labels != null) {
+                item {
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        labels.split?.let { LabelChip(humaniseLabel(it)) }
+                        labels.lift?.let { LabelChip(humaniseLabel(it)) }
+                        labels.klass?.let { LabelChip(humaniseLabel(it)) }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+            }
+
+            // Linking stands on its own: a session with no labels and no link is
+            // exactly the one that needs the button.
+            item {
+                Spacer(Modifier.height(12.dp))
+                if (linked != null) {
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Tokens.Surface)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Label("STRAVA")
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                linked.name,
+                                fontSize = 14.sp,
+                                color = Tokens.Fg,
+                                modifier = Modifier.weight(1f)
+                            )
+                            linked.durationSeconds?.let {
+                                Text(formatDuration(it * 1000L), fontSize = 12.sp, color = Tokens.Muted)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                "Unlink",
+                                fontSize = 12.sp,
+                                color = Tokens.Muted,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onLinkActivity(null) }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    } else if (linkCandidates.isEmpty()) {
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Tokens.Surface)
+                                .clickable { onLoadLinkable() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "Link a Strava activity",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Tokens.Accent
+                            )
+                        }
+                    } else {
+                        Column {
+                            Label("LINK AN ACTIVITY")
+                            Spacer(Modifier.height(4.dp))
+                            linkCandidates.forEach { candidate ->
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { onLinkActivity(candidate) }
+                                        .padding(vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        candidate.name,
+                                        fontSize = 14.sp,
+                                        color = Tokens.Fg,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    candidate.durationSeconds?.let {
+                                        Text(formatDuration(it * 1000L), fontSize = 12.sp, color = Tokens.Muted)
+                                    }
+                                }
+                            }
+                            Text(
+                                "Cancel",
+                                fontSize = 12.sp,
+                                color = Tokens.Muted,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onCancelLink() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
             }
 
             item {
@@ -467,6 +643,19 @@ private fun SetRow(set: LoggedSet, number: Int, onClick: () -> Unit) {
                 modifier = Modifier.padding(start = 30.dp, top = 3.dp)
             )
         }
+    }
+}
+
+/** A classifier label, read-only: the server decides these, the phone shows them. */
+@Composable
+private fun LabelChip(text: String) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(Tokens.Accent.copy(alpha = 0.12f))
+            .padding(horizontal = 10.dp, vertical = 5.dp)
+    ) {
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Tokens.Accent)
     }
 }
 

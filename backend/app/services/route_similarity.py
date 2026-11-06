@@ -148,9 +148,9 @@ async def get_scan_state(db: AsyncSession, user_id: uuid.UUID) -> dict:
 
     row = (
         await db.execute(
-            select(func.count(RouteSimilarity.id), func.max(RouteSimilarity.computed_at)).where(
-                RouteSimilarity.user_id == user_id
-            )
+            select(
+                func.count(RouteSimilarity.id), func.max(RouteSimilarity.computed_at)
+            ).where(RouteSimilarity.user_id == user_id)
         )
     ).one()
     count, latest = int(row[0] or 0), row[1]
@@ -209,7 +209,7 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
     from app.models.route import Route, RouteSimilarity
     from app.services.polyline_utils import decode_polyline
     from app.services.road_matching import load_metric, road_signals
-    from app.services.route_matching import score_route_pair
+    from app.services.route_matching import score_route_pair_either_direction
     from app.services.route_service import merge_routes
 
     settings = get_settings()
@@ -230,8 +230,18 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
         review = settings.route_match_threshold
         gate = settings.route_match_gate
 
+        from app.services.route_quarantine import active_routes_clause
+
         routes = (
-            (await db.execute(select(Route).where(Route.user_id == user_id))).scalars().all()
+            (
+                await db.execute(
+                    select(Route).where(
+                        Route.user_id == user_id, active_routes_clause()
+                    )
+                )
+            )
+            .scalars()
+            .all()
         )
         if len(routes) < 2:
             await _set_state(
@@ -289,9 +299,10 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
             if a is None or b is None:
                 continue
             rj, es = road_signals(a, b, metric)
-            if rj is None and es is None:
-                continue
-            bd = score_route_pair(
+            # Road/embedding are optional enrichment, not a requirement. A
+            # user with no Phase-2 data must still get geometry-only rows;
+            # skipping here emptied the cache for exactly those accounts.
+            bd = score_route_pair_either_direction(
                 points_by_id[p["a"]],
                 points_by_id[p["b"]],
                 length_a=a.distance_meters,
@@ -304,7 +315,9 @@ async def recompute_user_similarity(db: AsyncSession, user_id: uuid.UUID) -> dic
             )
             p.update(bd.to_dict())
 
-        await db.execute(delete(RouteSimilarity).where(RouteSimilarity.user_id == user_id))
+        await db.execute(
+            delete(RouteSimilarity).where(RouteSimilarity.user_id == user_id)
+        )
         for p in pairs:
             db.add(
                 RouteSimilarity(

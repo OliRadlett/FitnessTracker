@@ -78,7 +78,7 @@ data the page never renders because `useDashboardData()` was the load strip's so
 | # | Ask | Blocking? | Consequence if not fixed |
 |---|---|---|---|
 | 1 | `power-curve` returns `date_achieved: null` on every row although it is in the response model | **Done 2026-11-05** — the curve reports the winning activity and the endpoint fills the date | The record table states when each best was set. |
-| 2 | Reconcile the three record pipelines (`power_curve`, `lifetime_pbs`, `cycling_power_records`) — 20 min reads 214.4 / 236.4 / 262 W | No — the page renders **one** pipeline | The user cannot see lifetime bests on the page at all until it is settled. |
+| 2 | Reconcile the three record pipelines (`power_curve`, `lifetime_pbs`, `cycling_power_records`) | No — the page renders **one** pipeline | Lifetime bests stay off the page until it is settled. **Measured 2026-11-06 — see §Record pipelines below.** |
 | 3 | `ride_type` / `if` missing on the newest rides (3 of 35) while older ones have them | No | Those rows render `unclassified`; the page states the count rather than inventing a type. |
 | 4 | `daily_tss` returns ride dates, not calendar days | No — the page no longer uses it | The defect still affects `/analytics`; file it separately. |
 | 5 | Weather coefficients have no sample-size guard in the API | No — gated in the UI at R² 0.2 | Any future consumer can publish R² 0.03 as a percentage again. |
@@ -227,3 +227,39 @@ in production. The moved components (steps 1–2) are additive and stay.
 Ride maps, 3D replay, fuel plans, LLM narrative, light theme, PDF/share, route or segment surfaces,
 the `/dashboard` and `/health` overlaps beyond the moves above, any new backend field (asks are
 filed, not built), and the shared `Chart` fix (separate PR, §7).
+
+## 14. Record pipelines — measured, 2026-11-06
+
+Three producers report "your best power at duration D" and they do not agree. Pulled live from prod
+(`/cycling/power-curve`, `/cycling/lifetime-pbs`, `/cycling/prs`) and then recomputed from the ride's
+own streams (`/activities/{id}/streams`):
+
+| duration | `power_curve` (90 d) | `lifetime_pbs` (10 y) | `prs` (stored) | recomputed, time-weighted | recomputed, sample-counted |
+|---|---|---|---|---|---|
+| 5 s | 880 · 10 Aug | 931.6 · 9 Feb | **931.6 · 9 Feb** | — | — |
+| 1 min | 489.9 · 23 Aug | 489.9 · 23 Aug | **489.9 · 23 Aug** | — | — |
+| 5 min | 326.5 · 9 Sep | 326.5 · 9 Sep | **326.5 · 9 Sep** | — | — |
+| 20 min | 213 · 9 Sep | 226.1 · 21 Apr | **261.5 · 21 Apr** | **226.2** | 231.1 |
+| 60 min | 181.4 · 11 Sep | 213.6 · 21 Apr | **239.9 · 21 Apr** | **188.9** | 213.9 |
+
+What that says:
+
+1. **The stored PR pipeline is wrong, and it is the one that prints 261.5.** The 21 Apr ride has 5,729
+   samples and a time axis; a time-weighted best 20 min is 226.2 W and a sample-counted one is 231.1 W.
+   No method reproduces 261.5. The 60-min record is worse: 239.9 stored against ~189–214 recomputed.
+   `cycling_power_records` is written by `prs.py`; the writer is the defect.
+2. **`lifetime_pbs` is right at 20 min (226.1 ≈ 226.2) and wrong at 60 min** (213.6 vs a time-weighted
+   188.9, matching the sample-counted 213.9). Its 60-min value looks like the *fallback* branch, i.e. a
+   window counted in samples rather than seconds.
+3. **The definitional split matters more than either bug**: `timeaxis.resample_1hz` interpolates across
+   stops, so a "60-minute best" there means 60 minutes of *elapsed* time including stopped seconds,
+   while a time-weighted integral over moving samples means 60 minutes of *moving* time. Those are
+   different questions (Strava reports moving-time power; TrainingPeaks reports elapsed). The app must
+   pick one and label it.
+4. **`/cycling` is unaffected by 1 and 2**: it renders `power_curve`, which is the only one of the three
+   whose 20-min value is reproducible from the streams.
+
+Next step, in order: fix `prs.py` so a stored record is the moving-time best from the stream it points
+at; state the convention in the endpoint docstrings; then decide whether `lifetime_pbs` should be shown
+on the page at all (its dates already come from the PR rows, which is how it reported "21 Apr" for a
+number that ride's streams do not support).
