@@ -91,6 +91,20 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-9-session-detail")
         compose.onNodeWithText("TOP SET").assertExists()
+
+        // A logged set is editable after the fact: tap the row, bump the load,
+        // save. The row and the session's volume must both move.
+        compose.onNodeWithText("90 kg × 4").performClick()
+        compose.waitForIdle()
+        save("app-10-set-editor")
+        compose.onNodeWithText("Delete set").assertExists()
+
+        compose.onAllNodesWithText("+").onFirst().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Save").performClick()
+        compose.waitForIdle()
+        save("app-11-set-edited")
+        compose.onNodeWithText("92.5 kg × 4").assertExists()
     }
 
     private fun save(name: String) {

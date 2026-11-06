@@ -45,7 +45,9 @@ import uk.oli.fittrack.ui.BottomAction
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.PrimaryButton
 import uk.oli.fittrack.ui.formatRemaining
+import uk.oli.fittrack.ui.formatRpe
 import uk.oli.fittrack.ui.formatWeight
+import uk.oli.fittrack.ui.plural
 import uk.oli.fittrack.ui.theme.Tokens
 
 private val Tabular = TextStyle(fontFeatureSettings = "tnum")
@@ -189,7 +191,7 @@ private fun CompletedScreen(session: SessionState, onFinish: () -> Unit) {
             Text("Session complete.", fontSize = 30.sp, fontWeight = FontWeight.SemiBold, color = Tokens.Fg)
             Spacer(Modifier.height(8.dp))
             Text(
-                "${session.doneSets} sets · ${formatWeight(SessionEngine.volumeKg(session.sets).toFloat())} kg",
+                "${plural(session.doneSets, "set")} · ${formatWeight(SessionEngine.volumeKg(session.sets).toFloat())} kg",
                 fontSize = 15.sp,
                 color = Tokens.Muted
             )
@@ -230,7 +232,11 @@ private fun LastSetCard(session: SessionState, exercise: PlanExercise) {
                     style = Tabular
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("RPE ${last?.rpe ?: SessionEngine.DEFAULT_RPE}", fontSize = 13.sp, color = Tokens.Accent)
+                Text(
+                    "RPE ${formatRpe(last?.rpe ?: SessionEngine.DEFAULT_RPE.toDouble())}",
+                    fontSize = 13.sp,
+                    color = Tokens.Accent
+                )
             }
         }
         if (last != null) {

@@ -22,13 +22,19 @@ against those decisions.
   and a 7-day volume strip; the next session prefills from what you actually
   lifted, not from the plan.
 - **The log**: Today → **Log** lists finished sessions by week with sets and
-  volume; tapping one opens a read-only detail. Nothing on that screen can edit
-  history, deliberately.
+  volume; tapping one opens the full session.
+- **Session detail**: every set, grouped by exercise, with warm-ups flagged,
+  AMRAP badges, per-set notes, the session note and the session's own RPE.
+  Tapping a set edits it inline (weight, reps, RPE, warm-up/AMRAP, note); a set
+  can be deleted, and so can the whole session. Synced rows are written back with
+  `PATCH`/`DELETE` and revert with a reason if the server refuses; local-only
+  rows edit in place.
 - **History sync (pull)**: once signed in, lifting history is fetched from
   `GET /api/v1/lifting/sessions` and merged into the local log, so "last time"
   reflects what you actually lifted. Fail-open: no signal means no sync, never a
-  blocked workout. Warm-up sets are dropped — prefill must not come from an
-  empty bar.
+  blocked workout. Warm-up sets are kept and flagged — they show on the session,
+  but never prefill a working set, never count towards the plan and never add
+  volume.
 - **Push**: a finished session is uploaded to `POST /api/v1/lifting/sessions`
   in the background, so finishing never waits on the network. `live_key` carries
   the phone's session id, which makes the retry idempotent — and on success the
@@ -42,6 +48,11 @@ against those decisions.
 - **The plan is still a seeded constant** (`data/SessionStore.kt › SeedPlan`).
   It does not come from the training-plan API yet, so the app prescribes the
   same push day until that lands.
+- **Lifting parity is in progress** — the website can still do things the phone
+  cannot: edit session fields, add a set/exercise, repeat a session, log
+  warm-ups/AMRAP/notes live, PRs and progress charts, and browse filters. The
+  phase list and the website-versus-app matrix live in
+  [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md).
 - No widgets, Health Connect, background sync or notifications.
 - Sign-in is not a gate — the gym flow works before you authenticate. Logging a
   set must never wait on a network round trip.

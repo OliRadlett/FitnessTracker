@@ -1,6 +1,7 @@
 package uk.oli.fittrack.domain
 
 import kotlinx.serialization.Serializable
+import kotlin.math.roundToInt
 
 @Serializable
 data class PlanExercise(
@@ -23,8 +24,20 @@ data class LoggedSet(
     val exercise: String,
     val weightKg: Double,
     val reps: Int,
-    val rpe: Int,
-    val at: Long
+    /**
+     * Null when the set was logged without one. The API allows that, and
+     * inventing a 7 would make the app's copy of a session disagree with the
+     * website's for no reason.
+     */
+    val rpe: Double? = null,
+    val at: Long = 0L,
+    /** A ramp-up set. Kept in history for fidelity, never used to prefill. */
+    val isWarmup: Boolean = false,
+    /** AMRAP set: as many reps as possible, so `reps` is a floor, not a target. */
+    val isAmrap: Boolean = false,
+    val note: String? = null,
+    /** The server's set id once the session is on the server; null while local-only. */
+    val serverId: String? = null
 )
 
 /** A session in progress. Persisted after every set, so the process dying mid-workout costs nothing. */
@@ -35,10 +48,19 @@ data class SessionState(
     val plan: Plan,
     val sets: List<LoggedSet> = emptyList()
 ) {
-    val doneSets: Int get() = sets.size
+    /** Warm-ups are sets you did, but they are not sets the plan asked for. */
+    val doneSets: Int get() = sets.count { !it.isWarmup }
 }
 
 data class Prefill(val weightKg: Double, val reps: Int, val rpe: Int)
+
+/** One exercise's sets in the order they were performed, warm-ups included. */
+data class ExerciseSets(val exercise: String, val sets: List<LoggedSet>) {
+    val workingSets: List<LoggedSet> get() = sets.filterNot { it.isWarmup }
+
+    /** Working volume only: a warm-up bar contributes no tonnage, by the backend's own rule. */
+    val volumeKg: Double get() = SessionEngine.volumeKg(sets)
+}
 
 /**
  * Pure session logic. No Android, no I/O — every rule the gym depends on lives
@@ -46,8 +68,11 @@ data class Prefill(val weightKg: Double, val reps: Int, val rpe: Int)
  */
 object SessionEngine {
 
+    /** Sets that count towards the plan. A warm-up never does. */
+    fun workingSets(sets: List<LoggedSet>): List<LoggedSet> = sets.filterNot { it.isWarmup }
+
     fun doneFor(state: SessionState, exercise: String): Int =
-        state.sets.count { it.exercise == exercise }
+        state.sets.count { it.exercise == exercise && !it.isWarmup }
 
     /** The first exercise that still owes sets, in plan order. Null means the session is finished. */
     fun currentExercise(state: SessionState): PlanExercise? =
@@ -60,29 +85,43 @@ object SessionEngine {
      * What the fields should say before the next set, in order of truth:
      * the set you just did for this exercise, then the same exercise last
      * session, then the plan.
+     *
+     * Warm-ups are excluded at every step: prefilling the next working set from
+     * a ramp-up would have you pressing a load you cannot handle.
      */
     fun prefill(
         state: SessionState,
         exercise: PlanExercise,
         history: List<FinishedSession> = emptyList()
     ): Prefill {
-        val thisSession = state.sets.lastOrNull { it.exercise == exercise.name }
+        val thisSession = state.sets.lastOrNull { it.exercise == exercise.name && !it.isWarmup }
         val previous = thisSession ?: HistoryEngine.lastSetFor(history, exercise.name)
         return if (previous != null) {
-            Prefill(previous.weightKg, previous.reps, previous.rpe)
+            Prefill(previous.weightKg, previous.reps, previous.rpe?.roundToInt() ?: DEFAULT_RPE)
         } else {
             Prefill(exercise.weightKg, exercise.reps, DEFAULT_RPE)
         }
     }
 
     fun volumeKg(sets: List<LoggedSet>): Double =
-        sets.sumOf { it.weightKg * it.reps }
+        workingSets(sets).sumOf { it.weightKg * it.reps }
 
     /** Heaviest first, so the summary reads like a scoreboard rather than a table. */
     fun volumeByExercise(sets: List<LoggedSet>): List<Pair<String, Double>> =
-        sets.groupBy { it.exercise }
-            .map { (name, group) -> name to volumeKg(group) }
+        groupedByExercise(sets)
+            .map { it.exercise to it.volumeKg }
+            .filter { it.second > 0.0 }
             .sortedByDescending { it.second }
+
+    /**
+     * Every exercise in the order it first appears, warm-ups kept. Session
+     * detail needs the ramps shown; the plan and the summary must not count them.
+     */
+    fun groupedByExercise(sets: List<LoggedSet>): List<ExerciseSets> {
+        val order = LinkedHashMap<String, MutableList<LoggedSet>>()
+        for (set in sets) order.getOrPut(set.exercise) { mutableListOf() }.add(set)
+        return order.map { (exercise, group) -> ExerciseSets(exercise, group) }
+    }
 
     fun isComplete(state: SessionState): Boolean =
         state.plan.exercises.all { doneFor(state, it.name) >= it.sets }

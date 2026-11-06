@@ -11,13 +11,13 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.LoggedSet
+import uk.oli.fittrack.domain.SessionEngine
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
-import kotlin.math.roundToInt
 
 /**
  * The backend's lifting-session payload, mapped onto the app's own history type.
@@ -33,6 +33,8 @@ private data class SessionDto(
     val session_date: String? = null,
     val focus: String? = null,
     val program_name: String? = null,
+    val notes: String? = null,
+    val rpe_session: Double? = null,
     val duration_seconds: Int? = null,
     val started_at: String? = null,
     val ended_at: String? = null,
@@ -41,11 +43,14 @@ private data class SessionDto(
 
 @Serializable
 private data class SetDto(
+    val id: String? = null,
     val exercise_name: String,
     val weight_kg: Double = 0.0,
     val reps: Int = 0,
     val rpe: Double? = null,
     val is_warmup: Boolean = false,
+    val is_amrap: Boolean = false,
+    val notes: String? = null,
     val order_index: Int = 0
 )
 
@@ -60,10 +65,11 @@ object LiftingJson {
         val start = parseInstant(started_at) ?: parseDate(session_date) ?: return null
         val end = parseInstant(ended_at) ?: (start + (duration_seconds ?: 0) * 1000L)
 
-        // A warm-up is not what you did for a work set and must never prefill the
-        // next one, so it is dropped here rather than filtered at every read.
-        val working = sets.filterNot { it.is_warmup }.sortedBy { it.order_index }
-        if (working.isEmpty()) return null
+        // Warm-ups are kept and flagged: the website shows them on the session,
+        // and a client that silently dropped them would report a different
+        // workout. Everything that *counts* filters on the flag instead.
+        val ordered = sets.sortedBy { it.order_index }
+        if (ordered.none { !it.is_warmup }) return null
 
         return FinishedSession(
             id = id,
@@ -72,17 +78,27 @@ object LiftingJson {
                 ?: "Lifting",
             startedAt = start,
             endedAt = end,
-            sets = working.map { set ->
+            sets = ordered.map { set ->
                 LoggedSet(
                     exercise = set.exercise_name,
                     weightKg = set.weight_kg,
                     reps = set.reps,
-                    rpe = (set.rpe ?: 7.0).roundToInt(),
-                    at = end
+                    // Null stays null: the website shows an empty RPE, so inventing
+                    // a 7 here would make the two surfaces disagree.
+                    rpe = set.rpe,
+                    // The wire has no per-set timestamp; the session's own end is
+                    // the only honest value to hang a set on.
+                    at = end,
+                    isWarmup = set.is_warmup,
+                    isAmrap = set.is_amrap,
+                    note = set.notes?.takeIf { it.isNotBlank() },
+                    serverId = set.id
                 )
             },
             // It came from the server; pushing it back would be a loop.
-            synced = true
+            synced = true,
+            note = notes?.takeIf { it.isNotBlank() },
+            rpeSession = rpe_session
         )
     }
 
@@ -155,7 +171,92 @@ class LiftingApi(private val baseUrl: String) {
             }
         }
 
+    /**
+     * Edit one set that already exists on the server.
+     *
+     * Every field is written, nulls included, because the edit form owns the
+     * whole set: clearing the RPE has to send an explicit `null` or the server
+     * keeps the old value (`exclude_unset` semantics).
+     */
+    suspend fun updateSet(token: String, setId: String, edit: SetEdit) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sets/$setId")
+                .header("Authorization", "Bearer $token")
+                .patch(LiftingPatchJson.encodeToString(edit).toRequestBody(jsonMedia))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not save the set (${response.code})")
+                }
+            }
+        }
+
+    suspend fun deleteSet(token: String, setId: String) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sets/$setId")
+                .header("Authorization", "Bearer $token")
+                .delete()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not delete the set (${response.code})")
+                }
+            }
+        }
+
+    suspend fun deleteSession(token: String, sessionId: String) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId")
+                .header("Authorization", "Bearer $token")
+                .delete()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not delete the session (${response.code})")
+                }
+            }
+        }
+
     private val json = Json { ignoreUnknownKeys = true }
+    private val jsonMedia = "application/json; charset=utf-8".toMediaType()
+}
+
+/** The six fields a set edit owns, in the wire's names. */
+@Serializable
+data class SetEdit(
+    val weight_kg: Double,
+    val reps: Int,
+    val rpe: Double?,
+    val is_warmup: Boolean,
+    val is_amrap: Boolean,
+    val notes: String?
+) {
+    companion object {
+        fun of(set: LoggedSet): SetEdit = SetEdit(
+            weight_kg = set.weightKg,
+            reps = set.reps,
+            rpe = set.rpe,
+            is_warmup = set.isWarmup,
+            is_amrap = set.isAmrap,
+            notes = set.note
+        )
+    }
+}
+
+/**
+ * PATCH bodies must spell out their nulls: with the default `encodeDefaults =
+ * false`, a null RPE would be omitted and the server would keep the old one.
+ */
+internal val LiftingPatchJson: Json = Json {
+    encodeDefaults = true
+    explicitNulls = true
+    ignoreUnknownKeys = true
 }
 
 @Serializable
@@ -176,7 +277,10 @@ internal data class CreateSetBody(
     val set_number: Int,
     val weight_kg: Double,
     val reps: Int,
-    val rpe: Int,
+    val rpe: Double,
+    val is_warmup: Boolean,
+    val is_amrap: Boolean,
+    val notes: String? = null,
     val order_index: Int,
     val client_id: String
 )
@@ -200,7 +304,10 @@ internal object LiftingPush {
                 set_number = number,
                 weight_kg = set.weightKg,
                 reps = set.reps,
-                rpe = set.rpe,
+                rpe = set.rpe ?: SessionEngine.DEFAULT_RPE.toDouble(),
+                is_warmup = set.isWarmup,
+                is_amrap = set.isAmrap,
+                notes = set.note,
                 order_index = index,
                 // Stable across retries: derived from the session and position.
                 client_id = "${session.id}:$index"
