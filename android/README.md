@@ -22,6 +22,10 @@ against those decisions.
   `is_amrap` and a nullable `rpe`.
 - Done: volume, sets, duration and top set, computed from the log.
 - Process death costs nothing: the session is written to disk after every set.
+- **Rest and plates**: the rest card states its target (2:30 by default) and
+  adjusts in 30-second steps mid-rest, restarting the timer at the new length.
+  The weight stepper carries a plate calculator — bar weight (20 kg, tap for the
+  15 kg bar) and the per-side plates, including what cannot be made up.
 - **History**: finishing a session (early or complete) writes it to
   `history.json`, capped at 200. Today then shows "Last time 92.5 × 4 @7 · today"
   and a 7-day volume strip; the next session prefills from what you actually

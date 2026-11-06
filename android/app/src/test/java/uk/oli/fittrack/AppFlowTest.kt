@@ -71,6 +71,13 @@ class AppFlowTest {
         compose.onAllNodesWithText("AMRAP").onFirst().assertExists()
         compose.onNodeWithText("Log set 2").assertExists()
 
+        // Rest is adjustable mid-rest, and the target says so.
+        compose.onNodeWithText("target 2:30").assertExists()
+        compose.onNodeWithText("+30s").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("target 3:00").assertExists()
+        save("app-4-rest-adjusted")
+
         // Bump the weight on the stepper, then log again. The row must show what
         // was logged (92.5), not what the plan asked for (90).
         compose.onAllNodesWithText("+").onFirst().performClick()

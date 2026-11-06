@@ -73,9 +73,12 @@ the end, because installing per-fix wastes the only real screen we have.
   point (6.0–10.0 by 0.5) instead of the five whole-number chips. A warm-up is
   pushed with `is_warmup`, an AMRAP set with `is_amrap`, and a set with no RPE
   is sent as `null` rather than the old invented 7.
-- [ ] **P4b — rest target and plates.** Editable rest target (the website's is
-  readiness-derived; the app's is a fixed 2:30 countdown) and the plate
-  calculator.
+- [x] **P4b — rest target and plates.** The rest card shows its target and a
+  `−30s` / `+30s` pair; a running rest restarts at the new length, and the target
+  is persisted with the session (an old `session.json` without the field still
+  loads). The weight stepper carries a plate calculator: bar weight (20/15 kg,
+  tap to switch) and the greedy per-side loadout on `PlateMath`, including the
+  shortfall when the weight cannot be made with real plates.
 - [ ] **P5 — progress.** PRs (`GET /lifting/prs`), best-by-rep-range, and an
   exercise-progress view driven by `GET /charts/exercise_progress`; weekly
   volume and estimated-1RM history from `/charts/*` rather than re-derived.

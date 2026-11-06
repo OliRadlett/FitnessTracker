@@ -108,8 +108,8 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   holds the website-versus-app matrix and the phase list (P0–P7, device pass at
   the end).
 - **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
-  tabs (explicit "not built yet" screens), and parity phases P4b–P6 — rest
-  target/plate calculator, PRs/progress, browse filters.
+  tabs (explicit "not built yet" screens), and parity phases P5–P6 —
+  PRs/progress, browse filters.
 
 ## Architecture
 
