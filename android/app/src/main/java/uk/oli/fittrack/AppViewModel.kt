@@ -73,6 +73,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val goalsApi = uk.oli.fittrack.net.GoalsApi(BuildConfig.API_BASE_URL)
     private val routesApi = uk.oli.fittrack.net.RoutesApi(BuildConfig.API_BASE_URL)
     private val healthApi = uk.oli.fittrack.net.HealthApi(BuildConfig.API_BASE_URL)
+    private val activitiesApi = uk.oli.fittrack.net.ActivitiesApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -143,6 +144,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 attempt { loadRoutes(token) }
                 attempt { loadHealth(token) }
                 attempt { loadCalendar(token) }
+                attempt { loadActivities(token) }
                 if (_syncError.value == null && firstFailure != null) {
                     // The history itself is fine; say which section lagged
                     // rather than claiming the whole sync failed.
@@ -247,6 +249,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _routes.value = null
         _health.value = null
         _calendarDays.value = null
+        _activities.value = null
+        _activityDetail.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -685,6 +689,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshCalendar() {
         val token = _auth.value.token ?: return
         viewModelScope.launch { loadCalendar(token) }
+    }
+
+    /** The activities feed, and whichever activity is open. */
+    private val _activities = MutableStateFlow<List<uk.oli.fittrack.domain.ActivitySummary>?>(null)
+    val activities: StateFlow<List<uk.oli.fittrack.domain.ActivitySummary>?> = _activities.asStateFlow()
+
+    private val _activityDetail = MutableStateFlow<uk.oli.fittrack.domain.ActivityDetail?>(null)
+    val activityDetail: StateFlow<uk.oli.fittrack.domain.ActivityDetail?> = _activityDetail.asStateFlow()
+
+    private val _activityDetailLoading = MutableStateFlow(false)
+    val activityDetailLoading: StateFlow<Boolean> = _activityDetailLoading.asStateFlow()
+
+    private val _activitySport = MutableStateFlow<String?>(null)
+    val activitySport: StateFlow<String?> = _activitySport.asStateFlow()
+
+    private val _activityWindow =
+        MutableStateFlow(uk.oli.fittrack.domain.ActivityWindow.Year)
+    val activityWindow: StateFlow<uk.oli.fittrack.domain.ActivityWindow> =
+        _activityWindow.asStateFlow()
+
+    private suspend fun loadActivities(token: String) {
+        val after = _activityWindow.value.days?.let { java.time.LocalDate.now().minusDays(it) }
+        _activities.value = activitiesApi.list(
+            token = token,
+            sport = _activitySport.value,
+            after = after,
+            limit = 80
+        )
+    }
+
+    fun refreshActivities() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadActivities(token) }
+    }
+
+    fun filterActivities(sport: String?, window: uk.oli.fittrack.domain.ActivityWindow) {
+        _activitySport.value = sport
+        _activityWindow.value = window
+        refreshActivities()
+    }
+
+    fun openActivity(id: String) {
+        val token = _auth.value.token ?: return
+        _activityDetailLoading.value = true
+        viewModelScope.launch {
+            try {
+                _activityDetail.value = activitiesApi.detail(token, id)
+            } finally {
+                _activityDetailLoading.value = false
+            }
+        }
+    }
+
+    fun closeActivity() {
+        _activityDetail.value = null
     }
 
     /** The plan day being edited, and the plan it belongs to. */

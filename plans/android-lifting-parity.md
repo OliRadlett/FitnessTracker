@@ -332,6 +332,14 @@ the end, because installing per-fix wastes the only real screen we have.
   (FTP 85) created during the pass still needs deleting once that endpoint works.
   Fixes: `#467`.
 
+- [x] **P29 — the activities page.** The website's `/activities` as a phone feed:
+  sport (All / Rides / Lifts) and window (30d / 90d / 1y / All) filters over
+  `GET /activities`, rows reading "Today · Ride · 55.6 km · 3h 12m · 400 m ·
+  TSS 118" with the purpose/ride-type axes, and a detail page that draws the
+  activity's `encoded_polyline` through the routes decoder. Deliberately absent:
+  the website's comparison mode and replay theatre — the detail says streams
+  exist and points at the website for the replay. Reached from You → Activities.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

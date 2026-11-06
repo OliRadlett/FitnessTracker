@@ -13,6 +13,7 @@ import androidx.navigation.compose.rememberNavController
 import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.body.BodyScreen
+import uk.oli.fittrack.ui.activities.ActivitiesScreen
 import uk.oli.fittrack.ui.goals.GoalsScreen
 import uk.oli.fittrack.ui.health.CalendarScreen
 import uk.oli.fittrack.ui.health.HealthScreen
@@ -42,6 +43,7 @@ object Routes {
     const val PLAN_DAY = "plan-day"
     const val HEALTH = "health"
     const val CALENDAR = "calendar"
+    const val ACTIVITIES = "activities"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -88,6 +90,11 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val health by vm.health.collectAsStateWithLifecycle()
     val calendarMonth by vm.calendarMonth.collectAsStateWithLifecycle()
     val calendarDays by vm.calendarDays.collectAsStateWithLifecycle()
+    val activityFeed by vm.activities.collectAsStateWithLifecycle()
+    val activityDetail by vm.activityDetail.collectAsStateWithLifecycle()
+    val activityDetailLoading by vm.activityDetailLoading.collectAsStateWithLifecycle()
+    val activitySportValue by vm.activitySport.collectAsStateWithLifecycle()
+    val activityWindowValue by vm.activityWindow.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -215,6 +222,19 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.ACTIVITIES) {
+            ActivitiesScreen(
+                activities = activityFeed,
+                detail = activityDetail,
+                loadingDetail = activityDetailLoading,
+                onWindow = { window -> vm.filterActivities(activitySportValue, window) },
+                onSport = { sport -> vm.filterActivities(sport, activityWindowValue) },
+                onOpen = vm::openActivity,
+                onClose = vm::closeActivity,
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.HEALTH) {
             HealthScreen(
                 health = health,
@@ -305,6 +325,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onOpenRoutes = { nav.navigate(Routes.ROUTES) },
                     onOpenHealth = { nav.navigate(Routes.HEALTH) },
                     onOpenCalendar = { nav.navigate(Routes.CALENDAR) },
+                    activityCount = activityFeed?.size ?: 0,
+                    onOpenActivities = { nav.navigate(Routes.ACTIVITIES) },
                     onSignIn = { nav.navigate(Routes.SIGNIN) },
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab

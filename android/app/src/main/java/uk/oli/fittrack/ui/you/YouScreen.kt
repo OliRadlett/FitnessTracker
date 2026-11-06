@@ -54,6 +54,8 @@ fun YouScreen(
     onOpenRoutes: () -> Unit = {},
     onOpenHealth: () -> Unit = {},
     onOpenCalendar: () -> Unit = {},
+    activityCount: Int = 0,
+    onOpenActivities: () -> Unit = {},
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -149,6 +151,13 @@ fun YouScreen(
             NavRow("Health") { onOpenHealth() }
             Spacer(Modifier.height(8.dp))
             NavRow("Calendar") { onOpenCalendar() }
+
+            Spacer(Modifier.height(20.dp))
+            Label("ACTIVITIES")
+            Spacer(Modifier.height(8.dp))
+            NavRow(if (activityCount > 0) "$activityCount in the feed" else "Activities") {
+                onOpenActivities()
+            }
 
             Spacer(Modifier.height(24.dp))
             Label("THIS BUILD")
