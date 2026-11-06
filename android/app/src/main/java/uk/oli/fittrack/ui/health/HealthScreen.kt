@@ -1,6 +1,7 @@
 package uk.oli.fittrack.ui.health
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -294,6 +295,7 @@ private fun DayCell(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val isToday = date == LocalDate.now()
     val tint = when (day?.recoveryBand) {
         RecoveryBand.Green -> Tokens.Accent.copy(alpha = 0.22f)
         RecoveryBand.Amber -> Tokens.Muted.copy(alpha = 0.22f)
@@ -305,6 +307,7 @@ private fun DayCell(
             .fillMaxWidth()
             .height(46.dp)
             .clip(RoundedCornerShape(8.dp))
+            .then(if (isToday) Modifier.border(1.5.dp, Tokens.Accent, RoundedCornerShape(8.dp)) else Modifier)
             .background(if (selected) Tokens.Surface else tint)
             .clickable { onClick() }
             .padding(3.dp),
@@ -313,7 +316,7 @@ private fun DayCell(
         Text(
             date.dayOfMonth.toString(),
             fontSize = 12.sp,
-            color = if (selected) Tokens.Accent else Tokens.Fg,
+            color = if (selected || isToday) Tokens.Accent else Tokens.Fg,
             style = TextStyle(fontFeatureSettings = "tnum")
         )
         Spacer(Modifier.height(3.dp))

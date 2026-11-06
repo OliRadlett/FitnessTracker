@@ -1,8 +1,10 @@
 package uk.oli.fittrack.net
 
 import kotlinx.coroutines.runBlocking
+import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.RecordedRequest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -130,17 +132,26 @@ class HealthApiTest {
 
     @Test
     fun `the health snapshot keeps the dashboard's readiness and sleep debt`() {
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"current_rr":15.2,"recent_avg_rr":14.9,"baseline_avg_rr":14.8,"trend":"up"}"""
-            )
-        )
-        server.enqueue(
-            MockResponse().setResponseCode(200).setBody(
-                """{"consistency_score":72,"avg_bedtime":"23:10","std_minutes":34,
-                    "days_analyzed":6,"window_days":7}"""
-            )
-        )
+        // Both calls run concurrently, so an ordered queue can serve them in
+        // either order — a dispatcher keyed on the path is the only stable way
+        // to test the snapshot.
+        server.dispatcher = object : Dispatcher() {
+            override fun dispatch(request: RecordedRequest): MockResponse = when {
+                request.path.orEmpty().startsWith("/metrics/respiratory-rate") -> MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """{"current_rr":15.2,"recent_avg_rr":14.9,"baseline_avg_rr":14.8,
+                            "trend":"up"}"""
+                    )
+                request.path.orEmpty().startsWith("/metrics/sleep-consistency") -> MockResponse()
+                    .setResponseCode(200)
+                    .setBody(
+                        """{"consistency_score":72,"avg_bedtime":"23:10","std_minutes":34,
+                            "days_analyzed":6,"window_days":7}"""
+                    )
+                else -> MockResponse().setResponseCode(404)
+            }
+        }
 
         val readiness = uk.oli.fittrack.domain.Readiness(score = 68.0, level = "yellow")
         val debt = uk.oli.fittrack.domain.SleepDebt(3.5, 7.4, 4, 8.0, 7)

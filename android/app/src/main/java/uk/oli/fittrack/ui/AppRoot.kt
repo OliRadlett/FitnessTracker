@@ -78,6 +78,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val goalMetrics by vm.goalMetrics.collectAsStateWithLifecycle()
     val goalCheckIns by vm.goalCheckIns.collectAsStateWithLifecycle()
     val goalBusy by vm.goalBusy.collectAsStateWithLifecycle()
+    val goalLoading by vm.goalLoading.collectAsStateWithLifecycle()
     val goalMessage by vm.goalMessage.collectAsStateWithLifecycle()
     val routesList by vm.routes.collectAsStateWithLifecycle()
     val editingDay by vm.editingDay.collectAsStateWithLifecycle()
@@ -194,7 +195,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 metrics = goalMetrics,
                 checkIns = goalCheckIns,
                 busy = goalBusy,
+                loading = goalLoading,
                 message = goalMessage,
+                onRefresh = vm::refreshGoals,
                 onCreate = vm::createGoal,
                 onCheckIn = vm::addGoalCheckIn,
                 onStatus = vm::setGoalStatus,
