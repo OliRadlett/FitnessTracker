@@ -17,7 +17,6 @@ import java.time.LocalDateTime
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.util.concurrent.TimeUnit
-import kotlin.math.roundToInt
 
 /**
  * The backend's lifting-session payload, mapped onto the app's own history type.
@@ -33,6 +32,8 @@ private data class SessionDto(
     val session_date: String? = null,
     val focus: String? = null,
     val program_name: String? = null,
+    val notes: String? = null,
+    val rpe_session: Double? = null,
     val duration_seconds: Int? = null,
     val started_at: String? = null,
     val ended_at: String? = null,
@@ -41,11 +42,14 @@ private data class SessionDto(
 
 @Serializable
 private data class SetDto(
+    val id: String? = null,
     val exercise_name: String,
     val weight_kg: Double = 0.0,
     val reps: Int = 0,
     val rpe: Double? = null,
     val is_warmup: Boolean = false,
+    val is_amrap: Boolean = false,
+    val notes: String? = null,
     val order_index: Int = 0
 )
 
@@ -56,14 +60,19 @@ object LiftingJson {
     fun decode(body: String): List<FinishedSession> =
         json.decodeFromString<List<SessionDto>>(body).mapNotNull { it.toFinished() }
 
+    /** One set as the append endpoint returns it (a `LiftingSetRead`). */
+    fun decodeSet(body: String, at: Long = System.currentTimeMillis()): LoggedSet? =
+        runCatching { json.decodeFromString<SetDto>(body).toLoggedSet(at) }.getOrNull()
+
     private fun SessionDto.toFinished(): FinishedSession? {
         val start = parseInstant(started_at) ?: parseDate(session_date) ?: return null
         val end = parseInstant(ended_at) ?: (start + (duration_seconds ?: 0) * 1000L)
 
-        // A warm-up is not what you did for a work set and must never prefill the
-        // next one, so it is dropped here rather than filtered at every read.
-        val working = sets.filterNot { it.is_warmup }.sortedBy { it.order_index }
-        if (working.isEmpty()) return null
+        // Warm-ups are kept and flagged: the website shows them on the session,
+        // and a client that silently dropped them would report a different
+        // workout. Everything that *counts* filters on the flag instead.
+        val ordered = sets.sortedBy { it.order_index }
+        if (ordered.none { !it.is_warmup }) return null
 
         return FinishedSession(
             id = id,
@@ -72,19 +81,31 @@ object LiftingJson {
                 ?: "Lifting",
             startedAt = start,
             endedAt = end,
-            sets = working.map { set ->
-                LoggedSet(
-                    exercise = set.exercise_name,
-                    weightKg = set.weight_kg,
-                    reps = set.reps,
-                    rpe = (set.rpe ?: 7.0).roundToInt(),
-                    at = end
-                )
+            sets = ordered.map { set ->
+                // The wire has no per-set timestamp; the session's own end is
+                // the only honest value to hang a set on.
+                set.toLoggedSet(at = end)
             },
             // It came from the server; pushing it back would be a loop.
-            synced = true
+            synced = true,
+            note = notes?.takeIf { it.isNotBlank() },
+            rpeSession = rpe_session
         )
     }
+
+    private fun SetDto.toLoggedSet(at: Long) = LoggedSet(
+        exercise = exercise_name,
+        weightKg = weight_kg,
+        reps = reps,
+        // Null stays null: the website shows an empty RPE, so inventing a 7 here
+        // would make the two surfaces disagree.
+        rpe = rpe,
+        at = at,
+        isWarmup = is_warmup,
+        isAmrap = is_amrap,
+        note = notes?.takeIf { it.isNotBlank() },
+        serverId = id
+    )
 
     /** The API writes offsets, but tolerate a naive timestamp rather than dropping the row. */
     private fun parseInstant(raw: String?): Long? {
@@ -155,7 +176,176 @@ class LiftingApi(private val baseUrl: String) {
             }
         }
 
+    /**
+     * Edit one set that already exists on the server.
+     *
+     * Every field is written, nulls included, because the edit form owns the
+     * whole set: clearing the RPE has to send an explicit `null` or the server
+     * keeps the old value (`exclude_unset` semantics).
+     */
+    suspend fun updateSet(token: String, setId: String, edit: SetEdit) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sets/$setId")
+                .header("Authorization", "Bearer $token")
+                .patch(LiftingPatchJson.encodeToString(edit).toRequestBody(jsonMedia))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not save the set (${response.code})")
+                }
+            }
+        }
+
+    suspend fun deleteSet(token: String, setId: String) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sets/$setId")
+                .header("Authorization", "Bearer $token")
+                .delete()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not delete the set (${response.code})")
+                }
+            }
+        }
+
+    suspend fun deleteSession(token: String, sessionId: String) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId")
+                .header("Authorization", "Bearer $token")
+                .delete()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not delete the session (${response.code})")
+                }
+            }
+        }
+
+    /** Edit the session's own fields. Only the scalars; sets have their own endpoints. */
+    suspend fun updateSession(token: String, sessionId: String, patch: SessionPatch) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId")
+                .header("Authorization", "Bearer $token")
+                .patch(LiftingPatchJson.encodeToString(patch).toRequestBody(jsonMedia))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not save the session (${response.code})")
+                }
+            }
+        }
+
+    /** Append one set to a session that already exists. Returns the server's row. */
+    suspend fun addSet(token: String, sessionId: String, body: NewSetBody): LoggedSet =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId/sets")
+                .header("Authorization", "Bearer $token")
+                .post(LiftingPatchJson.encodeToString(body).toRequestBody(jsonMedia))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not add the set (${response.code})")
+                }
+                LiftingJson.decodeSet(responseBody)
+                    ?: throw ApiException(response.code, "The server's set was unreadable.")
+            }
+        }
+
     private val json = Json { ignoreUnknownKeys = true }
+    private val jsonMedia = "application/json; charset=utf-8".toMediaType()
+}
+
+/** A session's editable scalars, in the wire's names. */
+@Serializable
+data class SessionPatch(
+    val session_date: String,
+    val focus: String?,
+    val notes: String?,
+    val started_at: String,
+    val ended_at: String,
+    val duration_seconds: Int
+)
+
+/** One set to append, in the wire's names. `order_index` is the server's to assign. */
+@Serializable
+data class NewSetBody(
+    val exercise_name: String,
+    val set_number: Int,
+    val weight_kg: Double,
+    val reps: Int,
+    val rpe: Double?,
+    val is_warmup: Boolean,
+    val is_amrap: Boolean,
+    val notes: String?,
+    val client_id: String
+)
+
+/** Builds the session patch. Pure, so the date/time conventions are testable. */
+object LiftingSessionPatch {
+
+    /**
+     * The date is the **device-local** calendar date, and the timestamps carry
+     * the device's offset. Moving the session a day keeps its time of day and
+     * its duration: `plusDays` on a zoned time survives a DST boundary.
+     */
+    fun of(session: FinishedSession, zone: ZoneId = ZoneId.systemDefault()): SessionPatch {
+        val start = Instant.ofEpochMilli(session.startedAt).atZone(zone)
+        val end = Instant.ofEpochMilli(session.endedAt).atZone(zone)
+        return SessionPatch(
+            session_date = start.toLocalDate().toString(),
+            focus = session.planTitle.takeIf { it.isNotBlank() },
+            notes = session.note,
+            started_at = start.toOffsetDateTime().toString(),
+            ended_at = end.toOffsetDateTime().toString(),
+            duration_seconds = ((session.endedAt - session.startedAt) / 1000)
+                .coerceAtLeast(0)
+                .toInt()
+        )
+    }
+}
+
+/** The six fields a set edit owns, in the wire's names. */
+@Serializable
+data class SetEdit(
+    val weight_kg: Double,
+    val reps: Int,
+    val rpe: Double?,
+    val is_warmup: Boolean,
+    val is_amrap: Boolean,
+    val notes: String?
+) {
+    companion object {
+        fun of(set: LoggedSet): SetEdit = SetEdit(
+            weight_kg = set.weightKg,
+            reps = set.reps,
+            rpe = set.rpe,
+            is_warmup = set.isWarmup,
+            is_amrap = set.isAmrap,
+            notes = set.note
+        )
+    }
+}
+
+/**
+ * PATCH bodies must spell out their nulls: with the default `encodeDefaults =
+ * false`, a null RPE would be omitted and the server would keep the old one.
+ */
+internal val LiftingPatchJson: Json = Json {
+    encodeDefaults = true
+    explicitNulls = true
+    ignoreUnknownKeys = true
 }
 
 @Serializable
@@ -176,7 +366,10 @@ internal data class CreateSetBody(
     val set_number: Int,
     val weight_kg: Double,
     val reps: Int,
-    val rpe: Int,
+    val rpe: Double?,
+    val is_warmup: Boolean,
+    val is_amrap: Boolean,
+    val notes: String? = null,
     val order_index: Int,
     val client_id: String
 )
@@ -201,6 +394,9 @@ internal object LiftingPush {
                 weight_kg = set.weightKg,
                 reps = set.reps,
                 rpe = set.rpe,
+                is_warmup = set.isWarmup,
+                is_amrap = set.isAmrap,
+                notes = set.note,
                 order_index = index,
                 // Stable across retries: derived from the session and position.
                 client_id = "${session.id}:$index"

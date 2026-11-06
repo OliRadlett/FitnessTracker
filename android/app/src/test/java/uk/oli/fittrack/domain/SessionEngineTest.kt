@@ -8,6 +8,8 @@ import org.junit.Test
 
 class SessionEngineTest {
 
+    private val legacyJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
     private val plan = Plan(
         title = "Push day",
         exercises = listOf(
@@ -20,8 +22,8 @@ class SessionEngineTest {
 
     private fun stateWith(vararg sets: LoggedSet) = started().copy(sets = sets.toList())
 
-    private fun set(exercise: String, kg: Double, reps: Int, rpe: Int = 7) =
-        LoggedSet(exercise, kg, reps, rpe, at = 0L)
+    private fun set(exercise: String, kg: Double, reps: Int, rpe: Int = 7, warmup: Boolean = false) =
+        LoggedSet(exercise, kg, reps, rpe.toDouble(), at = 0L, isWarmup = warmup)
 
     @Test
     fun `starts on the first exercise`() {
@@ -102,5 +104,136 @@ class SessionEngineTest {
     fun `set number is one past what is logged`() {
         val state = stateWith(set("Bench Press", 90.0, 4))
         assertEquals(2, SessionEngine.setNumber(state, plan.exercises.first()))
+    }
+
+    @Test
+    fun `a warm-up does not count towards the plan`() {
+        val state = stateWith(set("Bench Press", 60.0, 8, warmup = true))
+
+        assertEquals(0, SessionEngine.doneFor(state, "Bench Press"))
+        assertEquals("Bench Press", SessionEngine.currentExercise(state)?.name)
+        assertEquals(1, SessionEngine.setNumber(state, plan.exercises.first()))
+    }
+
+    @Test
+    fun `a warm-up never prefills the next working set`() {
+        val state = stateWith(
+            set("Bench Press", 60.0, 8, rpe = 4, warmup = true),
+            set("Bench Press", 90.0, 4, rpe = 8)
+        )
+
+        val prefill = SessionEngine.prefill(state, plan.exercises.first())
+
+        assertEquals(90.0, prefill.weightKg, 0.001)
+        assertEquals(8, prefill.rpe)
+    }
+
+    @Test
+    fun `volume excludes warm-ups, matching the backend`() {
+        val state = stateWith(
+            set("Bench Press", 60.0, 8, warmup = true),
+            set("Bench Press", 90.0, 4)
+        )
+
+        assertEquals(360.0, SessionEngine.volumeKg(state.sets), 0.001)
+    }
+
+    @Test
+    fun `a repeat plan copies working sets and skips warm-ups`() {
+        val session = FinishedSession(
+            id = "s1",
+            planTitle = "Legs",
+            startedAt = 0L,
+            endedAt = 1_000L,
+            sets = listOf(
+                LoggedSet("Back Squat", 60.0, 8, 4.0, isWarmup = true),
+                LoggedSet("Back Squat", 130.0, 3, 9.0),
+                LoggedSet("Back Squat", 130.0, 3, 9.0),
+                LoggedSet("Leg Press", 200.0, 10, 8.0)
+            )
+        )
+
+        val plan = SessionEngine.planFrom(session)
+
+        assertEquals("Legs", plan.title)
+        assertEquals(listOf("Back Squat", "Leg Press"), plan.exercises.map { it.name })
+        assertEquals(2, plan.exercises[0].sets)
+        assertEquals(3, plan.exercises[0].reps)
+        assertEquals(130.0, plan.exercises[0].weightKg, 0.001)
+        assertEquals(1, plan.exercises[1].sets)
+        assertEquals(200.0, plan.exercises[1].weightKg, 0.001)
+    }
+
+    @Test
+    fun `a session of nothing but warm-ups cannot be repeated`() {
+        val session = FinishedSession(
+            id = "s1",
+            planTitle = "Legs",
+            startedAt = 0L,
+            endedAt = 1_000L,
+            sets = listOf(LoggedSet("Back Squat", 60.0, 8, 4.0, isWarmup = true))
+        )
+
+        assertTrue(SessionEngine.planFrom(session).exercises.isEmpty())
+    }
+
+    @Test
+    fun `finishing carries the session note and effort, not just the sets`() {
+        val state = stateWith(
+            set("Bench Press", 90.0, 4),
+            set("Bench Press", 92.5, 4)
+        ).copy(startedAt = 1_000L)
+
+        val finished = SessionEngine.finished(state, "  felt strong  ", 8.5)
+
+        assertEquals("felt strong", finished.note)
+        assertEquals(8.5, finished.rpeSession!!, 0.001)
+        assertEquals(state.sets.size, finished.sets.size)
+        assertEquals("Push day", finished.planTitle)
+        // The session ends at the last set that was actually logged.
+        assertEquals(state.sets.maxOf { it.at }, finished.endedAt)
+    }
+
+    @Test
+    fun `a blank note is no note`() {
+        val finished = SessionEngine.finished(started(), "   ", null)
+
+        assertNull(finished.note)
+        assertNull(finished.rpeSession)
+    }
+
+    @Test
+    fun `rest target steps by half a minute and stays in range`() {
+        assertEquals(180, SessionEngine.restTarget(DEFAULT_REST_SECONDS, 30))
+        assertEquals(120, SessionEngine.restTarget(DEFAULT_REST_SECONDS, -30))
+        assertEquals(MAX_REST_SECONDS, SessionEngine.restTarget(MAX_REST_SECONDS, 30))
+        assertEquals(MIN_REST_SECONDS, SessionEngine.restTarget(MIN_REST_SECONDS, -30))
+    }
+
+    @Test
+    fun `an old session file without a rest target still loads`() {
+        // The field arrived after sessions were already being written to disk;
+        // a missing one must not throw away the workout in progress.
+        val legacy = """{"id":"s","startedAt":0,"plan":{"title":"T","exercises":[]},"sets":[]}"""
+
+        val decoded = legacyJson.decodeFromString<SessionState>(legacy)
+
+        assertEquals(DEFAULT_REST_SECONDS, decoded.restSeconds)
+    }
+
+    @Test
+    fun `grouping keeps every set and first-appearance order`() {
+        val sets = listOf(
+            set("Bench Press", 60.0, 8, warmup = true),
+            set("Bench Press", 90.0, 4),
+            set("Lateral Raise", 7.5, 12)
+        )
+
+        val groups = SessionEngine.groupedByExercise(sets)
+
+        assertEquals(listOf("Bench Press", "Lateral Raise"), groups.map { it.exercise })
+        assertEquals(2, groups.first().sets.size)
+        assertEquals(1, groups.first().workingSets.size)
+        assertEquals(360.0, groups.first().volumeKg, 0.001)
     }
 }

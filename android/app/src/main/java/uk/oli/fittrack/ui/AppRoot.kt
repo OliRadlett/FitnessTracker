@@ -99,6 +99,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     history = history,
                     onLog = vm::logSet,
                     onUndo = vm::undoLastSet,
+                    onAdjustRest = vm::adjustRest,
                     onBack = { nav.popBackStack() },
                     onFinish = { nav.navigate(Routes.DONE) }
                 )
@@ -113,8 +114,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 DoneScreen(
                     session = current,
                     previous = history.firstOrNull { it.planTitle == current.plan.title },
-                    onDone = {
-                        vm.finishSession()
+                    onDone = { note, rpe ->
+                        vm.finishSession(note, rpe)
                         nav.popBackStack(Routes.TODAY, false)
                     }
                 )
@@ -138,7 +139,22 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             if (finished == null) {
                 LaunchedEffect(Unit) { nav.popBackStack() }
             } else {
-                SessionDetailScreen(finished, onBack = { nav.popBackStack() })
+                SessionDetailScreen(
+                    session = finished,
+                    onBack = { nav.popBackStack() },
+                    onEditSet = { index, edit -> vm.editSet(finished.id, index, edit) },
+                    onDeleteSet = { index -> vm.deleteSet(finished.id, index) },
+                    onDeleteSession = {
+                        vm.deleteSession(finished.id)
+                        nav.popBackStack()
+                    },
+                    onEditSession = { days, focus, note -> vm.editSession(finished.id, days, focus, note) },
+                    onAddSets = { exercise, specs -> vm.addSets(finished.id, exercise, specs) },
+                    canRepeat = session == null,
+                    onRepeat = {
+                        if (vm.repeatSession(finished.id)) nav.navigate(Routes.LIVE)
+                    }
+                )
             }
         }
 

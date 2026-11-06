@@ -1,6 +1,7 @@
 package uk.oli.fittrack.net
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import uk.oli.fittrack.domain.FinishedSession
@@ -21,9 +22,10 @@ class LiftingPushTest {
         startedAt = at("2026-11-05", 18),
         endedAt = at("2026-11-05", 19),
         sets = listOf(
-            LoggedSet("Bench Press", 90.0, 4, 7, 0),
-            LoggedSet("Close Grip Bench Press", 70.0, 12, 7, 0),
-            LoggedSet("Bench Press", 92.5, 4, 8, 0)
+            LoggedSet("Bench Press", 90.0, 4, 7.0, 0),
+            LoggedSet("Close Grip Bench Press", 70.0, 12, 7.0, 0),
+            LoggedSet("Bench Press", 92.5, 4, 8.0, 0),
+            LoggedSet("Bench Press", 60.0, 8, 4.0, 0, isWarmup = true, note = "ramp")
         )
     )
 
@@ -31,8 +33,8 @@ class LiftingPushTest {
     fun `set numbers restart per exercise while order stays global`() {
         val body = LiftingPush.body(session(), zone)
 
-        assertEquals(listOf(1, 1, 2), body.sets.map { it.set_number })
-        assertEquals(listOf(0, 1, 2), body.sets.map { it.order_index })
+        assertEquals(listOf(1, 1, 2, 3), body.sets.map { it.set_number })
+        assertEquals(listOf(0, 1, 2, 3), body.sets.map { it.order_index })
     }
 
     @Test
@@ -48,7 +50,10 @@ class LiftingPushTest {
         val second = LiftingPush.body(session(), zone).sets.map { it.client_id }
 
         assertEquals(first, second)
-        assertEquals(listOf("phone-session-1:0", "phone-session-1:1", "phone-session-1:2"), first)
+        assertEquals(
+            listOf("phone-session-1:0", "phone-session-1:1", "phone-session-1:2", "phone-session-1:3"),
+            first
+        )
     }
 
     @Test
@@ -63,8 +68,23 @@ class LiftingPushTest {
     fun `weights and rpe survive the round trip`() {
         val body = LiftingPush.body(session(), zone)
 
-        assertEquals(listOf(90.0, 70.0, 92.5), body.sets.map { it.weight_kg })
-        assertEquals(listOf(7, 7, 8), body.sets.map { it.rpe })
+        assertEquals(listOf(90.0, 70.0, 92.5, 60.0), body.sets.map { it.weight_kg })
+        assertEquals(listOf(7.0, 7.0, 8.0, 4.0), body.sets.map { it.rpe })
         assertTrue(body.sets.all { it.reps > 0 })
+    }
+
+    @Test
+    fun `warm-up and note flags reach the wire`() {
+        val warmup = LiftingPush.body(session(), zone).sets.last()
+
+        assertTrue(warmup.is_warmup)
+        assertEquals("ramp", warmup.notes)
+    }
+
+    @Test
+    fun `a set with no rpe is sent as null instead of invented`() {
+        val noRpe = session().copy(sets = listOf(LoggedSet("Bench Press", 90.0, 4, null, 0)))
+
+        assertNull(LiftingPush.body(noRpe, zone).sets.single().rpe)
     }
 }

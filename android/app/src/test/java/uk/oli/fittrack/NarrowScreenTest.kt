@@ -47,10 +47,13 @@ class NarrowScreenTest {
         compose.waitForIdle()
         save("narrow-2-live")
 
-        // The whole point of the Live screen: the commit button and the set list
-        // are both reachable without scrolling at 360dp.
+        // The whole point of the Live screen: the commit button, the flags and
+        // the current RPE are all reachable without scrolling at 360dp. The RPE
+        // grid expands on tap, so it is collapsed by default.
         compose.onNodeWithText("Log set").assertIsDisplayed()
-        compose.onNodeWithText("RPE").assertIsDisplayed()
+        compose.onNodeWithTag("rpe-pill").assertIsDisplayed()
+        compose.onNodeWithText("Warm-up").assertIsDisplayed()
+        compose.onNodeWithText("AMRAP").assertIsDisplayed()
     }
 
     private fun save(name: String) {

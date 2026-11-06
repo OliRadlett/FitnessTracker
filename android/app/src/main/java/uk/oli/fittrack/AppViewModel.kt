@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import uk.oli.fittrack.auth.GoogleSignIn
 import uk.oli.fittrack.auth.TokenStore
 import uk.oli.fittrack.data.HistoryStore
@@ -23,11 +24,13 @@ import uk.oli.fittrack.data.withSet
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.HistoryEngine
 import uk.oli.fittrack.domain.LoggedSet
-import uk.oli.fittrack.domain.REST_MILLIS
 import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.net.ApiException
 import uk.oli.fittrack.net.AuthApi
 import uk.oli.fittrack.net.LiftingApi
+import uk.oli.fittrack.net.LiftingSessionPatch
+import uk.oli.fittrack.net.NewSetBody
+import uk.oli.fittrack.net.SetEdit
 
 data class AuthUiState(
     val token: String? = null,
@@ -207,22 +210,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         store.save(fresh)
     }
 
-    fun logSet(weightKg: Double, reps: Int, rpe: Int) {
+    /**
+     * Start today from a session that already happened: same exercises, same
+     * working-set count, last time's load and reps as the target.
+     *
+     * Refuses while another session is in progress — a repeat must never throw
+     * away sets you have already logged — and returns whether it started.
+     */
+    fun repeatSession(sessionId: String): Boolean {
+        if (_session.value != null) return false
+        val source = _history.value.firstOrNull { it.id == sessionId } ?: return false
+        val plan = uk.oli.fittrack.domain.SessionEngine.planFrom(source)
+        if (plan.exercises.isEmpty()) return false
+        val fresh = emptySession(plan)
+        _session.value = fresh
+        store.save(fresh)
+        return true
+    }
+
+    fun logSet(entry: uk.oli.fittrack.domain.SetEntry) {
         val current = _session.value ?: return
         val next = current.withSet(
             LoggedSet(
                 exercise = current.plan.exercises
                     .first { it.name == currentExerciseName(current) }
                     .name,
-                weightKg = weightKg,
-                reps = reps,
-                rpe = rpe,
-                at = System.currentTimeMillis()
+                weightKg = entry.weightKg,
+                reps = entry.reps,
+                rpe = entry.rpe,
+                at = System.currentTimeMillis(),
+                isWarmup = entry.isWarmup,
+                isAmrap = entry.isAmrap
             )
         )
         _session.value = next
         store.save(next)
-        startRest()
+        // A ramp-up is not a working set: the full rest belongs to the work.
+        if (!entry.isWarmup) startRest()
     }
 
     /**
@@ -239,13 +263,274 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _restUntil.value = null
     }
 
+    // ── editing finished sessions ────────────────────────────────────────────
+    //
+    // A session that is already on the server is a *remote* edit: the optimistic
+    // local copy is what you see, and a failure puts it back with a reason. A
+    // session that has never been pushed has nothing to tell, so it just edits.
+
+    private val writeLock = kotlinx.coroutines.sync.Mutex()
+
+    fun editSet(sessionId: String, index: Int, edit: SetEdit) {
+        val session = _history.value.firstOrNull { it.id == sessionId } ?: return
+        val old = session.sets.getOrNull(index) ?: return
+        val updated = old.copy(
+            weightKg = edit.weight_kg,
+            reps = edit.reps,
+            rpe = edit.rpe,
+            isWarmup = edit.is_warmup,
+            isAmrap = edit.is_amrap,
+            note = edit.notes?.takeIf { it.isNotBlank() }
+        )
+        replaceSet(sessionId, index, updated)
+
+        val setId = old.serverId
+        if (!session.synced || setId == null) return
+        val token = _auth.value.token
+        if (token == null) {
+            replaceSet(sessionId, index, old)
+            _syncError.value = "Sign in to edit a session that is on the server."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                try {
+                    liftingApi.updateSet(token, setId, edit)
+                    _syncError.value = null
+                } catch (e: Exception) {
+                    replaceSet(sessionId, index, old)
+                    _syncError.value = e.message ?: "Could not save the set."
+                }
+            }
+        }
+    }
+
+    fun deleteSet(sessionId: String, index: Int) {
+        val session = _history.value.firstOrNull { it.id == sessionId } ?: return
+        val old = session.sets.getOrNull(index) ?: return
+        removeSet(sessionId, index)
+
+        val setId = old.serverId
+        if (!session.synced || setId == null) return
+        val token = _auth.value.token
+        if (token == null) {
+            replaceSet(sessionId, index, old)
+            _syncError.value = "Sign in to delete a set that is on the server."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                try {
+                    liftingApi.deleteSet(token, setId)
+                    _syncError.value = null
+                } catch (e: Exception) {
+                    replaceSet(sessionId, index, old)
+                    _syncError.value = e.message ?: "Could not delete the set."
+                }
+            }
+        }
+    }
+
+    fun deleteSession(sessionId: String) {
+        val snapshot = _history.value
+        val session = snapshot.firstOrNull { it.id == sessionId } ?: return
+        _history.value = HistoryEngine.newestFirst(snapshot.filterNot { it.id == sessionId })
+        historyStore.save(_history.value)
+
+        if (!session.synced) return
+        val token = _auth.value.token
+        if (token == null) {
+            _history.value = snapshot
+            historyStore.save(snapshot)
+            _syncError.value = "Sign in to delete a session that is on the server."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                try {
+                    liftingApi.deleteSession(token, sessionId)
+                    _syncError.value = null
+                } catch (e: Exception) {
+                    _history.value = snapshot
+                    historyStore.save(snapshot)
+                    _syncError.value = e.message ?: "Could not delete the session."
+                }
+            }
+        }
+    }
+
+    /**
+     * Edit the session's own fields: its date (by whole days), its focus and its
+     * note. Optimistic like a set edit, and reverted the same way.
+     */
+    fun editSession(sessionId: String, dayDelta: Long, focus: String?, note: String?) {
+        val old = _history.value.firstOrNull { it.id == sessionId } ?: return
+        val title = focus?.trim()?.takeIf { it.isNotEmpty() } ?: "Lifting"
+        val updated = HistoryEngine.shifted(old, dayDelta).copy(
+            planTitle = title,
+            note = note?.trim()?.takeIf { it.isNotEmpty() }
+        )
+        if (updated == old) return
+        replaceSession(old, updated)
+
+        if (!old.synced) return
+        val token = _auth.value.token
+        if (token == null) {
+            replaceSession(updated, old)
+            _syncError.value = "Sign in to edit a session that is on the server."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                try {
+                    liftingApi.updateSession(token, sessionId, LiftingSessionPatch.of(updated))
+                    _syncError.value = null
+                } catch (e: Exception) {
+                    replaceSession(updated, old)
+                    _syncError.value = e.message ?: "Could not save the session."
+                }
+            }
+        }
+    }
+
+    /**
+     * Append sets to a finished session — a missed set, or a whole exercise you
+     * forgot to log. Local rows appear immediately; a synced session posts each
+     * set and swaps the row for the server's, which carries the id an edit
+     * needs later.
+     */
+    fun addSets(sessionId: String, exercise: String, specs: List<SetEdit>) {
+        if (specs.isEmpty()) return
+        val session = _history.value.firstOrNull { it.id == sessionId } ?: return
+        val name = exercise.trim().ifBlank { return }
+        val now = System.currentTimeMillis()
+        val local = specs.map { spec ->
+            LoggedSet(
+                exercise = name,
+                weightKg = spec.weight_kg,
+                reps = spec.reps,
+                rpe = spec.rpe,
+                at = now,
+                isWarmup = spec.is_warmup,
+                isAmrap = spec.is_amrap,
+                note = spec.notes?.takeIf { it.isNotBlank() },
+                clientId = "$sessionId:add:${java.util.UUID.randomUUID()}"
+            )
+        }
+        mutateSession(sessionId) { it.copy(sets = it.sets + local) }
+
+        if (!session.synced) return
+        val token = _auth.value.token
+        if (token == null) {
+            removeByClientIds(sessionId, local.mapNotNull { it.clientId })
+            _syncError.value = "Sign in to add a set to a session that is on the server."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                var added = 0
+                for (set in local) {
+                    val number = session.sets.count { it.exercise == set.exercise } + added + 1
+                    try {
+                        val created = liftingApi.addSet(
+                            token,
+                            sessionId,
+                            NewSetBody(
+                                exercise_name = set.exercise,
+                                set_number = number,
+                                weight_kg = set.weightKg,
+                                reps = set.reps,
+                                rpe = set.rpe,
+                                is_warmup = set.isWarmup,
+                                is_amrap = set.isAmrap,
+                                notes = set.note,
+                                client_id = set.clientId ?: "$sessionId:add:$number"
+                            )
+                        )
+                        replaceByClientId(sessionId, set.clientId, created.copy(at = set.at))
+                        added++
+                    } catch (e: Exception) {
+                        removeByClientIds(sessionId, listOfNotNull(set.clientId))
+                        val kept = if (added == 0) "" else " — $added of ${local.size} were saved"
+                        _syncError.value = (e.message ?: "Could not add the set.") + kept
+                        return@withLock
+                    }
+                }
+                _syncError.value = null
+            }
+        }
+    }
+
+    private fun replaceSession(old: FinishedSession, new: FinishedSession) {
+        val updated = _history.value.map { if (it.id == old.id) new else it }
+        _history.value = HistoryEngine.newestFirst(updated)
+        historyStore.save(_history.value)
+    }
+
+    private fun replaceByClientId(
+        sessionId: String,
+        clientId: String?,
+        replacement: uk.oli.fittrack.domain.LoggedSet
+    ) {
+        if (clientId == null) return
+        mutateSession(sessionId) { session ->
+            session.copy(
+                sets = session.sets.map { if (it.clientId == clientId) replacement else it }
+            )
+        }
+    }
+
+    private fun removeByClientIds(sessionId: String, clientIds: List<String>) {
+        if (clientIds.isEmpty()) return
+        mutateSession(sessionId) { session ->
+            session.copy(sets = session.sets.filterNot { it.clientId in clientIds })
+        }
+    }
+
+    private fun replaceSet(sessionId: String, index: Int, set: uk.oli.fittrack.domain.LoggedSet) {
+        mutateSession(sessionId) { session ->
+            session.copy(
+                sets = session.sets.mapIndexed { i, existing -> if (i == index) set else existing }
+            )
+        }
+    }
+
+    private fun removeSet(sessionId: String, index: Int) {
+        mutateSession(sessionId) { session ->
+            session.copy(sets = session.sets.filterIndexed { i, _ -> i != index })
+        }
+    }
+
+    private fun mutateSession(
+        sessionId: String,
+        transform: (FinishedSession) -> FinishedSession
+    ) {
+        val updated = _history.value.map { if (it.id == sessionId) transform(it) else it }
+        _history.value = HistoryEngine.newestFirst(updated)
+        historyStore.save(_history.value)
+    }
+
     private fun currentExerciseName(state: SessionState): String =
         uk.oli.fittrack.domain.SessionEngine.currentExercise(state)?.name
             ?: state.plan.exercises.last().name
+    /**
+     * Change the rest target. A running rest restarts with the new length, so
+     * "I need another minute" is one tap rather than finish-and-re-log.
+     */
+    fun adjustRest(deltaSeconds: Int) {
+        val current = _session.value ?: return
+        val next = uk.oli.fittrack.domain.SessionEngine.restTarget(current.restSeconds, deltaSeconds)
+        if (next == current.restSeconds) return
+        val updated = current.copy(restSeconds = next)
+        _session.value = updated
+        store.save(updated)
+        if (_restUntil.value != null) startRest()
+    }
 
     private fun startRest() {
         restJob?.cancel()
-        val until = System.currentTimeMillis() + REST_MILLIS
+        val seconds = _session.value?.restSeconds ?: uk.oli.fittrack.domain.DEFAULT_REST_SECONDS
+        val until = System.currentTimeMillis() + seconds * 1000L
         _restUntil.value = until
         _now.value = System.currentTimeMillis()
         restJob = viewModelScope.launch {
@@ -265,17 +550,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * prefill from it), then the in-progress state is cleared. A session with no
      * sets is discarded rather than written as an empty entry.
      */
-    fun finishSession() {
+    fun finishSession(note: String? = null, rpeSession: Double? = null) {
         val current = _session.value
         var justFinished = false
         if (current != null && current.sets.isNotEmpty()) {
-            val entry = FinishedSession(
-                id = current.id,
-                planTitle = current.plan.title,
-                startedAt = current.startedAt,
-                endedAt = current.sets.maxOf { it.at },
-                sets = current.sets
-            )
+            val entry = uk.oli.fittrack.domain.SessionEngine.finished(current, note, rpeSession)
             val updated = HistoryEngine.newestFirst(_history.value + entry).take(HistoryStore.MAX)
             _history.value = updated
             historyStore.save(updated)

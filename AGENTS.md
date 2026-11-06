@@ -85,14 +85,45 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
 - **History sync**: `GET /lifting/sessions` on sign-in, mapped in
   [`net/LiftingApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/LiftingApi.kt)
   from a captured live payload and merged into the local log. Warm-up sets are
-  dropped so prefill never comes from an empty bar. Finishing uploads via
+  **kept and flagged** (`is_warmup`), never dropped: the detail screen shows them
+  as the website does, while `SessionEngine.workingSets` keeps them out of
+  prefill, volume and set counts. Finishing uploads via
   `POST /lifting/sessions` with `live_key` = the phone's session id, which makes
   the retry idempotent; on success the local id becomes the server's, so the next
   pull cannot duplicate it. Fail-open: no signal means no sync, never a blocked
   workout.
-- **Not built yet**: the real training plan (still `SeedPlan`), and the
-  Train/Ride/Body tabs — those render an explicit "not built yet" screen rather
-  than an empty shell.
+- **Editing history**: [`SessionDetailScreen`](android/app/src/main/java/uk/oli/fittrack/ui/log/SessionDetailScreen.kt)
+  shows every set grouped by exercise (W/AMRAP badges, per-set notes, session
+  note and RPE); tapping a set edits it inline, `+ Set` adds a missed set,
+  `+ Add exercise` adds a whole exercise, and `Edit` changes the session's date
+  (by whole days), focus and note. A synced row calls `PATCH`/`DELETE`/`POST`
+  and **reverts with a reason** if the server refuses, so a failed edit never
+  silently diverges from the website. Local-only rows edit in place. `PATCH`
+  bodies use `LiftingPatchJson` (`encodeDefaults` + `explicitNulls`) so a cleared
+  RPE is sent as `null` rather than omitted; a day move uses `plusDays` on a
+  zoned time so an 18:00 session stays 18:00 across a DST boundary. "Repeat this
+  session" starts today from a finished one (`SessionEngine.planFrom`), copying
+  working sets only.
+- **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
+  holds the website-versus-app matrix and the phase list (P0–P7, device pass at
+  the end).
+- **Progress**: Today's third segment computes PRs, best-by-rep-range and a
+  per-exercise estimated-1RM line from the cached history
+  ([`domain/Progress.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Progress.kt)),
+  with no network in the path. Warm-ups never count; empty rep ranges are shown
+  as empty rather than omitted.
+- **Browsing the log**: Today's Log segment filters on free text (focus, note,
+  exercise names), focus, exercise and a date window
+  ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
+  all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
+  better than the website's months.
+- **Finishing**: the summary asks for the session's own RPE and a note, and
+  `SessionEngine.finished()` turns the session in progress into history with
+  both. A blank note is null, not an empty string.
+- **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
+  tabs (explicit "not built yet" screens). Parity phase P7 (the device pass) is
+  next. A manual PR (one with no session behind it) would need
+  `GET /lifting/prs`, which has never been captured.
 
 ## Architecture
 

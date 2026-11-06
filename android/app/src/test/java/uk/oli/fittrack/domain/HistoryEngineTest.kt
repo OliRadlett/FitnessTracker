@@ -1,6 +1,7 @@
 package uk.oli.fittrack.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.LocalDate
@@ -13,8 +14,14 @@ class HistoryEngineTest {
     private fun at(date: String, hour: Int = 18): Long =
         LocalDate.parse(date).atTime(hour, 0).atZone(zone).toInstant().toEpochMilli()
 
-    private fun set(exercise: String, kg: Double, reps: Int, rpe: Int = 7, whenAt: Long = 0L) =
-        LoggedSet(exercise, kg, reps, rpe, whenAt)
+    private fun set(
+        exercise: String,
+        kg: Double,
+        reps: Int,
+        rpe: Int = 7,
+        whenAt: Long = 0L,
+        warmup: Boolean = false
+    ) = LoggedSet(exercise, kg, reps, rpe.toDouble(), whenAt, isWarmup = warmup)
 
     private fun finished(
         date: String,
@@ -51,7 +58,25 @@ class HistoryEngineTest {
 
         assertEquals(92.5, last!!.weightKg, 0.001)
         assertEquals(3, last.reps)
-        assertEquals(8, last.rpe)
+        assertEquals(8.0, last.rpe!!, 0.001)
+    }
+
+    @Test
+    fun `a warm-up is never the last set of an exercise`() {
+        val history = listOf(
+            finished(
+                "2026-11-04",
+                sets = listOf(
+                    set("Bench Press", 60.0, 8, rpe = 4, warmup = true),
+                    set("Bench Press", 90.0, 4, rpe = 8)
+                )
+            )
+        )
+
+        val last = HistoryEngine.lastSetFor(history, "Bench Press")
+
+        assertEquals(90.0, last!!.weightKg, 0.001)
+        assertFalse(last.isWarmup)
     }
 
     @Test
@@ -109,5 +134,37 @@ class HistoryEngineTest {
         val strip = HistoryEngine.dailyVolume(history, nowMillis = at("2026-11-05", 12), days = 7, zone = zone)
 
         assertEquals(360.0, strip.sumOf { it.second }, 0.001)
+    }
+
+    @Test
+    fun `moving a session a day keeps its clock time across the dst boundary`() {
+        // British Summer Time ends at 02:00 on 2026-10-25. Adding 86,400,000 ms
+        // would land this 18:00 session at 17:00; plusDays keeps 18:00.
+        val session = finished("2026-10-24", sets = listOf(set("Squat", 120.0, 5)))
+
+        val moved = HistoryEngine.shifted(session, 1, zone)
+        val start = java.time.Instant.ofEpochMilli(moved.startedAt).atZone(zone)
+
+        assertEquals(LocalDate.parse("2026-10-25"), start.toLocalDate())
+        assertEquals(18, start.hour)
+        assertEquals(session.endedAt - session.startedAt, moved.endedAt - moved.startedAt)
+    }
+
+    @Test
+    fun `moving a session backwards keeps its clock time`() {
+        val session = finished("2026-10-26", sets = listOf(set("Squat", 120.0, 5)))
+
+        val moved = HistoryEngine.shifted(session, -2, zone)
+        val start = java.time.Instant.ofEpochMilli(moved.startedAt).atZone(zone)
+
+        assertEquals(LocalDate.parse("2026-10-24"), start.toLocalDate())
+        assertEquals(18, start.hour)
+    }
+
+    @Test
+    fun `a zero-day move is the same session`() {
+        val session = finished("2026-10-24", sets = listOf(set("Squat", 120.0, 5)))
+
+        assertEquals(session, HistoryEngine.shifted(session, 0, zone))
     }
 }

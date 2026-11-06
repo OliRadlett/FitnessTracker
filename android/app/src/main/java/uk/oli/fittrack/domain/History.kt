@@ -16,7 +16,11 @@ data class FinishedSession(
      * After a successful push the id becomes the server id, so the following pull
      * cannot bring the same workout back under a different one.
      */
-    val synced: Boolean = false
+    val synced: Boolean = false,
+    /** What you wrote about the session. Shown on the detail screen, editable later. */
+    val note: String? = null,
+    /** The session's own RPE (a whole-session effort rating, not a per-set one). */
+    val rpeSession: Double? = null
 ) {
     val volumeKg: Double get() = SessionEngine.volumeKg(sets)
 }
@@ -28,16 +32,40 @@ object HistoryEngine {
         history.sortedByDescending { it.endedAt }
 
     /**
-     * The most recent set you performed for an exercise, across sessions.
-     * This is what "last time" means, and what the next session prefills from.
+     * The most recent **working** set you performed for an exercise, across
+     * sessions. This is what "last time" means, and what the next session
+     * prefills from — a warm-up is not a reference lift.
      */
     fun lastSetFor(history: List<FinishedSession>, exercise: String): LoggedSet? =
         newestFirst(history).firstNotNullOfOrNull { session ->
-            session.sets.lastOrNull { it.exercise == exercise }
+            session.sets.lastOrNull { it.exercise == exercise && !it.isWarmup }
         }
 
     /** The most recent finished session, whatever it was. */
     fun lastSession(history: List<FinishedSession>): FinishedSession? = newestFirst(history).firstOrNull()
+
+    /**
+     * Move a session by whole days, keeping its time of day and its duration.
+     *
+     * `plusDays` on a zoned time is the only arithmetic that survives a DST
+     * boundary: adding 86,400,000 ms to the instant would move a 18:00 session
+     * to 17:00 or 19:00 the day the clocks change.
+     */
+    fun shifted(
+        session: FinishedSession,
+        days: Long,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault()
+    ): FinishedSession {
+        if (days == 0L) return session
+        fun shift(millis: Long): Long =
+            java.time.Instant.ofEpochMilli(millis).atZone(zone).plusDays(days)
+                .toInstant().toEpochMilli()
+
+        return session.copy(
+            startedAt = shift(session.startedAt),
+            endedAt = shift(session.endedAt)
+        )
+    }
 
     /** Volume per local day for the last [days] days, oldest first, zero-filled. */
     fun dailyVolume(

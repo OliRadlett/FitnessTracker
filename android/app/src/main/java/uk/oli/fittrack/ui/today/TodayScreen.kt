@@ -43,6 +43,7 @@ import uk.oli.fittrack.ui.NavKind
 import uk.oli.fittrack.ui.PrimaryButton
 import uk.oli.fittrack.ui.formatWeight
 import uk.oli.fittrack.ui.log.LogScreen
+import uk.oli.fittrack.ui.progress.ProgressScreen
 import uk.oli.fittrack.ui.theme.Tokens
 import java.time.Instant
 import java.time.LocalDate
@@ -111,6 +112,7 @@ fun TodayScreen(
             Text(
                 when {
                     mode == 1 -> "Your log."
+                    mode == 2 -> "Your progress."
                     session != null -> "In progress."
                     else -> "${active.title}."
                 },
@@ -130,8 +132,10 @@ fun TodayScreen(
                     Spacer(Modifier.height(18.dp))
                     WeekStrip(strip, weekVolume)
                 }
-            } else {
+            } else if (mode == 1) {
                 LogScreen(history, onOpenSession)
+            } else {
+                ProgressScreen(history)
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -168,7 +172,7 @@ fun TodayScreen(
 @Composable
 private fun ModePills(mode: Int, onSelect: (Int) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        listOf("Today", "Log").forEachIndexed { index, label ->
+        listOf("Today", "Log", "Progress").forEachIndexed { index, label ->
             val selected = index == mode
             Box(
                 Modifier
