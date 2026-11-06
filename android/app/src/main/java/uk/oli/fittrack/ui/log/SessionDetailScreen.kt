@@ -48,6 +48,7 @@ import uk.oli.fittrack.domain.LoggedSet
 import uk.oli.fittrack.domain.LinkedActivity
 import uk.oli.fittrack.domain.SessionEngine
 import uk.oli.fittrack.domain.humaniseLabel
+import uk.oli.fittrack.net.SessionAnalysis
 import uk.oli.fittrack.net.SetEdit
 import uk.oli.fittrack.ui.Label
 import uk.oli.fittrack.ui.formatDuration
@@ -81,11 +82,17 @@ fun SessionDetailScreen(
     onLoadLinkable: () -> Unit = {},
     onLinkActivity: (LinkedActivity?) -> Unit = {},
     onCancelLink: () -> Unit = {},
+    analysis: SessionAnalysis? = null,
+    analysisBusy: Boolean = false,
+    onLoadAnalysis: () -> Unit = {},
+    onAnalyse: () -> Unit = {},
     canRepeat: Boolean = true,
     onRepeat: () -> Unit = {}
 ) {
     val zone = ZoneId.systemDefault()
     val start = Instant.ofEpochMilli(session.startedAt).atZone(zone)
+    // Ask for the cached analysis once, when the screen opens.
+    androidx.compose.runtime.LaunchedEffect(session.id) { onLoadAnalysis() }
     val working = SessionEngine.workingSets(session.sets)
     val warmups = session.sets.size - working.size
     val topSet = working.maxByOrNull { it.weightKg }
@@ -200,6 +207,66 @@ fun SessionDetailScreen(
                         Label("NOTES")
                         Spacer(Modifier.height(6.dp))
                         Text(note, fontSize = 14.sp, color = Tokens.Fg)
+                    }
+                }
+            }
+
+            // The analysis is the server's, so it is asked for once on open and
+            // then cached; generating one is an explicit tap.
+            item {
+                Spacer(Modifier.height(12.dp))
+                Label("AI ANALYSIS")
+                Spacer(Modifier.height(8.dp))
+                if (analysis != null) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Tokens.Surface)
+                            .padding(16.dp)
+                    ) {
+                        // The model answers in markdown; the screen is plain
+                        // text, so the markers are stripped rather than shown.
+                        Text(
+                            uk.oli.fittrack.domain.AnalysisText.plain(analysis.text),
+                            fontSize = 14.sp,
+                            color = Tokens.Fg
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                analysis.model.ifBlank { "analysis" },
+                                fontSize = 11.sp,
+                                color = Tokens.Muted,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Text(
+                                if (analysisBusy) "Analysing…" else "Run again",
+                                fontSize = 12.sp,
+                                color = Tokens.Accent,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable(enabled = !analysisBusy) { onAnalyse() }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Tokens.Surface)
+                            .clickable(enabled = !analysisBusy) { onAnalyse() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            if (analysisBusy) "Analysing…" else "Analyse this session",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Tokens.Accent
+                        )
                     }
                 }
             }

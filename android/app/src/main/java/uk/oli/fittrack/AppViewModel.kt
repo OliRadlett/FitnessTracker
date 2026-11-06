@@ -63,6 +63,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val authApi = AuthApi(BuildConfig.API_BASE_URL)
     private val liftingApi = LiftingApi(BuildConfig.API_BASE_URL)
     private val planApi = uk.oli.fittrack.net.PlanApi(BuildConfig.API_BASE_URL)
+    private val prApi = uk.oli.fittrack.net.PrApi(BuildConfig.API_BASE_URL)
+    private val todayApi = uk.oli.fittrack.net.TodayApi(BuildConfig.API_BASE_URL)
+    private val bodyApi = uk.oli.fittrack.net.BodyApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -119,6 +122,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadTodayPlan(token)
                 loadWarmupTemplates(token)
                 loadPlanWeek(token)
+                loadRecords(token)
+                loadBrief(token)
+                loadWeight(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -193,6 +199,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _restDay.value = false
         _planWeek.value = null
         _warmupTemplates.value = emptyList()
+        _records.value = emptyList()
+        _brief.value = null
+        _weightTrend.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -224,20 +233,208 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _restDay = MutableStateFlow(false)
     val restDay: StateFlow<Boolean> = _restDay.asStateFlow()
 
+    /** The day's brief from `/dashboard/today`; null when signed out or offline. */
+    private val _brief = MutableStateFlow<uk.oli.fittrack.net.TodayBrief?>(null)
+    val brief: StateFlow<uk.oli.fittrack.net.TodayBrief?> = _brief.asStateFlow()
+
+    private suspend fun loadBrief(token: String) {
+        runCatching { todayApi.brief(token) }.getOrNull()?.let { _brief.value = it }
+    }
+
+    /** The Today screen asks for a fresh brief when it opens. */
+    fun refreshBrief() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadBrief(token) }
+    }
+
+    /** Analyses already fetched this session, by session id. */
+    private val _analyses =
+        MutableStateFlow<Map<String, uk.oli.fittrack.net.SessionAnalysis>>(emptyMap())
+    val analyses: StateFlow<Map<String, uk.oli.fittrack.net.SessionAnalysis>> =
+        _analyses.asStateFlow()
+
+    private val _analysisBusy = MutableStateFlow<String?>(null)
+    val analysisBusy: StateFlow<String?> = _analysisBusy.asStateFlow()
+
+    /** The cached analysis for an open session, if it has been fetched. */
+    fun loadAnalysis(sessionId: String) {
+        val token = _auth.value.token ?: return
+        if (_analyses.value.containsKey(sessionId)) return
+        viewModelScope.launch {
+            runCatching { liftingApi.sessionAnalysis(token, sessionId) }
+                .onSuccess { analysis ->
+                    if (analysis != null) {
+                        _analyses.value = _analyses.value + (sessionId to analysis)
+                    }
+                }
+        }
+    }
+
+    /**
+     * Generate an analysis. Slow by nature (a model reads the session), so the
+     * screen shows which session is busy rather than a generic spinner.
+     */
+    fun requestAnalysis(sessionId: String) {
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to analyse a session."
+            return
+        }
+        if (_analysisBusy.value != null) return
+        _analysisBusy.value = sessionId
+        viewModelScope.launch {
+            try {
+                val analysis = liftingApi.requestSessionAnalysis(token, sessionId)
+                if (analysis != null) {
+                    _analyses.value = _analyses.value + (sessionId to analysis)
+                }
+                _syncError.value = null
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not analyse the session."
+            } finally {
+                _analysisBusy.value = null
+            }
+        }
+    }
+
     /** This week's plan, for the Train tab. Null when signed out or offline. */
     private val _planWeek = MutableStateFlow<uk.oli.fittrack.net.PlanWeek?>(null)
     val planWeek: StateFlow<uk.oli.fittrack.net.PlanWeek?> = _planWeek.asStateFlow()
 
+    /** How far the Train tab's Week view is paged from this week; 0 is today's. */
+    private val _weekOffset = MutableStateFlow(0)
+    val weekOffset: StateFlow<Int> = _weekOffset.asStateFlow()
+
+    /** Page the Week view. Clamping to the plan's extent happens in the API call. */
+    fun shiftWeek(delta: Int) {
+        val next = (_weekOffset.value + delta).coerceIn(-52, 52)
+        if (next == _weekOffset.value) return
+        _weekOffset.value = next
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadPlanWeek(token) }
+    }
+
+    fun thisWeek() {
+        if (_weekOffset.value == 0) return
+        _weekOffset.value = 0
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadPlanWeek(token) }
+    }
+
     private suspend fun loadPlanWeek(token: String) {
-        runCatching { planApi.weekPlan(token, java.time.LocalDate.now()) }
-            .getOrNull()
-            ?.let { _planWeek.value = it }
+        val week = runCatching { planApi.weekPlan(token, java.time.LocalDate.now(), _weekOffset.value) }
+            .getOrNull() ?: return
+        _planWeek.value = week
+        // The server clamps to the plan's extent, so paging past the end comes
+        // back as the same week. Re-derive the offset from what actually loaded,
+        // otherwise "This week" appears while this week is already on screen.
+        _weekOffset.value = week.weekNumber - week.thisWeekNumber
     }
 
     /** The Train tab asks for a refresh when it opens. */
     fun refreshPlanWeek() {
         val token = _auth.value.token ?: return
         viewModelScope.launch { loadPlanWeek(token) }
+    }
+
+    /** The server's records, including manual ones with no session behind them. */
+    private val _records = MutableStateFlow<List<uk.oli.fittrack.domain.PersonalRecord>>(emptyList())
+    val records: StateFlow<List<uk.oli.fittrack.domain.PersonalRecord>> = _records.asStateFlow()
+
+    private suspend fun loadRecords(token: String) {
+        runCatching { prApi.prs(token) }.getOrNull()?.let { _records.value = it }
+    }
+
+    /**
+     * Turn the warm-ups already logged for the current exercise into a saved
+     * template, so the ramp you actually did is the one offered next time.
+     */
+    fun saveWarmupsAsTemplate() {
+        val current = _session.value ?: return
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to save a template."
+            return
+        }
+        val exercise = currentExerciseName(current)
+        val steps = current.sets
+            .filter { it.isWarmup && it.exercise.trim() == exercise }
+            .map { uk.oli.fittrack.domain.WarmupStep(it.weightKg, it.reps, it.note) }
+        if (steps.isEmpty()) {
+            _syncError.value = "Log a warm-up set first."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val saved = liftingApi.createWarmupTemplate(
+                    token,
+                    "$exercise warmup",
+                    exercise,
+                    steps
+                )
+                if (saved != null) {
+                    _warmupTemplates.value = (_warmupTemplates.value + saved).distinctBy { it.id }
+                    _syncError.value = null
+                }
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not save the template."
+            }
+        }
+    }
+
+    /** Delete a template, putting it back if the server refuses. */
+    fun deleteWarmupTemplate(id: String) {
+        val old = _warmupTemplates.value
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to delete a template."
+            return
+        }
+        _warmupTemplates.value = old.filterNot { it.id == id }
+        viewModelScope.launch {
+            try {
+                liftingApi.deleteWarmupTemplate(token, id)
+                _syncError.value = null
+            } catch (e: Exception) {
+                _warmupTemplates.value = old
+                _syncError.value = e.message ?: "Could not delete the template."
+            }
+        }
+    }
+
+    /**
+     * Type in a record for a session the phone never saw. The server is the only
+     * place manual PRs can live, so this needs a token and a signal; it reverts
+     * nothing because it never touched local history.
+     */
+    fun addRecord(exercise: String, weightKg: Double, reps: Int, note: String?) {
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to add a record."
+            return
+        }
+        val name = exercise.trim()
+        if (name.isEmpty() || weightKg <= 0.0 || reps <= 0) {
+            _syncError.value = "A record needs an exercise, a weight and reps."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val saved = prApi.addPr(
+                    token,
+                    name,
+                    weightKg,
+                    reps,
+                    java.time.LocalDate.now(),
+                    note
+                )
+                if (saved != null) {
+                    _records.value = (_records.value + saved).distinctBy { it.id }
+                        .sortedByDescending { it.e1rm }
+                    _syncError.value = null
+                }
+                // Re-read so the server's own e1RM and ordering win.
+                loadRecords(token)
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not save the record."
+            }
+        }
     }
 
     /** Saved warm-up templates, offered on the Live screen. */
@@ -352,6 +549,100 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             uk.oli.fittrack.net.PlanLookup.Unavailable -> Unit
         }
+    }
+
+    /** Bodyweight history, for the Body tab. */
+    private val _weightTrend = MutableStateFlow<uk.oli.fittrack.domain.BodyTrend?>(null)
+    val weightTrend: StateFlow<uk.oli.fittrack.domain.BodyTrend?> = _weightTrend.asStateFlow()
+
+    private suspend fun loadWeight(token: String) {
+        runCatching { bodyApi.weight(token) }.getOrNull()?.let { _weightTrend.value = it }
+    }
+
+    /** The Body tab refreshes on open. */
+    fun refreshWeight() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadWeight(token) }
+    }
+
+    fun logWeight(weightKg: Double) {
+        val token = _auth.value.token ?: run {
+            _syncError.value = "Sign in to log your weight."
+            return
+        }
+        if (!uk.oli.fittrack.domain.plausibleWeight(weightKg)) {
+            _syncError.value = "That weight looks wrong — 20 to 400 kg."
+            return
+        }
+        viewModelScope.launch {
+            try {
+                bodyApi.addWeight(token, weightKg)
+                // Re-read: the server dedups by date and owns the rolling average.
+                loadWeight(token)
+                _syncError.value = null
+            } catch (e: Exception) {
+                _syncError.value = e.message ?: "Could not save the weight."
+            }
+        }
+    }
+
+    /** Delete a manual weigh-in, putting it back if the server refuses. */
+    fun deleteWeight(id: String) {
+        val token = _auth.value.token ?: return
+        val old = _weightTrend.value
+        _weightTrend.value = old?.copy(entries = old.entries.filterNot { it.id == id })
+        viewModelScope.launch {
+            try {
+                bodyApi.deleteWeight(token, id)
+                loadWeight(token)
+                _syncError.value = null
+            } catch (e: Exception) {
+                _weightTrend.value = old
+                _syncError.value = e.message ?: "Could not delete the weight."
+            }
+        }
+    }
+
+    /**
+     * What the session in progress would set a record for, judged against the
+     * history *before* it — the session is not in history until it is finished,
+     * so this is a preview, not a claim.
+     */
+    fun sessionRecords(): List<uk.oli.fittrack.domain.PersonalBest> {
+        val current = _session.value ?: return emptyList()
+        val finished = uk.oli.fittrack.domain.SessionEngine.finished(current, null, null)
+        return uk.oli.fittrack.domain.ProgressEngine.sessionRecords(finished, _history.value)
+    }
+
+    /**
+     * Start a session from a planned day — including one that is not today, so
+     * you can look at Thursday and start it.
+     *
+     * Refuses while another session is in progress, and returns whether it
+     * started, so the caller can navigate only when there is something to open.
+     */
+    fun startFromDay(day: uk.oli.fittrack.net.PlanDaySummary): Boolean {
+        if (_session.value != null) {
+            _syncError.value = "Finish the session in progress first."
+            return false
+        }
+        if (!day.canStart) return false
+        val plan = uk.oli.fittrack.domain.Plan(
+            title = day.focus ?: "Planned session",
+            exercises = day.exercises.map { exercise ->
+                // Last time's load is the only sensible target a planned entry
+                // can have: the plan says sets and reps, not kilos.
+                val last = uk.oli.fittrack.domain.HistoryEngine.lastSetFor(
+                    _history.value,
+                    exercise.name
+                )
+                exercise.copy(weightKg = last?.weightKg ?: 0.0)
+            }
+        )
+        val fresh = emptySession(plan)
+        _session.value = fresh
+        store.save(fresh)
+        return true
     }
 
     fun startSession() {

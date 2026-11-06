@@ -12,6 +12,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
+import uk.oli.fittrack.ui.body.BodyScreen
 import uk.oli.fittrack.ui.done.DoneScreen
 import uk.oli.fittrack.ui.live.LiveScreen
 import uk.oli.fittrack.ui.log.SessionDetailScreen
@@ -52,6 +53,12 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val warmupTemplates by vm.warmupTemplates.collectAsStateWithLifecycle()
     val linkCandidates by vm.linkCandidates.collectAsStateWithLifecycle()
     val planWeek by vm.planWeek.collectAsStateWithLifecycle()
+    val records by vm.records.collectAsStateWithLifecycle()
+    val analyses by vm.analyses.collectAsStateWithLifecycle()
+    val analysisBusy by vm.analysisBusy.collectAsStateWithLifecycle()
+    val brief by vm.brief.collectAsStateWithLifecycle()
+    val weightTrend by vm.weightTrend.collectAsStateWithLifecycle()
+    val weekOffset by vm.weekOffset.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -74,6 +81,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 planFromServer = planFromServer,
                 plannedPlanName = plannedPlanName,
                 restDay = restDay,
+                brief = brief,
+                onRefreshBrief = vm::refreshBrief,
                 onEditPlan = { nav.navigate(Routes.PLAN_EDIT) },
                 onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                 onSignIn = { nav.navigate(Routes.SIGNIN) },
@@ -109,6 +118,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     history = history,
                     warmupTemplates = warmupTemplates,
                     onApplyWarmup = vm::applyWarmupTemplate,
+                    onDeleteWarmup = { vm.deleteWarmupTemplate(it.id) },
+                    onSaveWarmups = vm::saveWarmupsAsTemplate,
                     onLog = vm::logSet,
                     onUndo = vm::undoLastSet,
                     onAdjustRest = vm::adjustRest,
@@ -126,6 +137,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 DoneScreen(
                     session = current,
                     previous = history.firstOrNull { it.planTitle == current.plan.title },
+                    records = vm.sessionRecords(),
                     onDone = { note, rpe ->
                         vm.finishSession(note, rpe)
                         nav.popBackStack(Routes.TODAY, false)
@@ -166,6 +178,10 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     onLoadLinkable = { vm.loadLinkableActivities(finished.id) },
                     onLinkActivity = { activity -> vm.linkActivity(finished.id, activity) },
                     onCancelLink = vm::clearLinkCandidates,
+                    analysis = analyses[finished.id],
+                    analysisBusy = analysisBusy == finished.id,
+                    onLoadAnalysis = { vm.loadAnalysis(finished.id) },
+                    onAnalyse = { vm.requestAnalysis(finished.id) },
                     canRepeat = session == null,
                     onRepeat = {
                         if (vm.repeatSession(finished.id)) nav.navigate(Routes.LIVE)
@@ -188,8 +204,21 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 "train" -> TrainScreen(
                     history = history,
                     planWeek = planWeek,
+                    records = records,
+                    onAddRecord = vm::addRecord,
+                    onStartDay = { day -> if (vm.startFromDay(day)) nav.navigate(Routes.LIVE) },
+                    weekOffset = weekOffset,
+                    onShiftWeek = vm::shiftWeek,
+                    onThisWeek = vm::thisWeek,
                     onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                     onRefreshWeek = vm::refreshPlanWeek,
+                    onTab = nav::switchTab
+                )
+                "body" -> BodyScreen(
+                    trend = weightTrend,
+                    onLogWeight = vm::logWeight,
+                    onDeleteWeight = vm::deleteWeight,
+                    onRefresh = vm::refreshWeight,
                     onTab = nav::switchTab
                 )
                 else -> PlaceholderScreen(tab = name, onTab = nav::switchTab)
@@ -199,6 +228,15 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
 }
 
 private fun NavHostController.switchTab(kind: NavKind) {
+    // Today is its own destination, not a "tab/{name}" placeholder: routing it
+    // through the tab route showed "NOT BUILT YET / Today" — found on device.
+    if (kind == NavKind.Today) {
+        navigate(Routes.TODAY) {
+            popUpTo(Routes.TODAY) { inclusive = false }
+            launchSingleTop = true
+        }
+        return
+    }
     navigate(Routes.tab(kind)) {
         popUpTo(Routes.TODAY) { inclusive = false }
         launchSingleTop = true

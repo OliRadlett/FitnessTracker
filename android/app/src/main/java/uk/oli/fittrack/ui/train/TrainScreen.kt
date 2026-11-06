@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import uk.oli.fittrack.domain.FinishedSession
@@ -52,6 +53,12 @@ import java.util.Locale
 fun TrainScreen(
     history: List<FinishedSession>,
     planWeek: PlanWeek?,
+    records: List<uk.oli.fittrack.domain.PersonalRecord> = emptyList(),
+    onAddRecord: (String, Double, Int, String?) -> Unit = { _, _, _, _ -> },
+    onStartDay: (PlanDaySummary) -> Unit = {},
+    weekOffset: Int = 0,
+    onShiftWeek: (Int) -> Unit = {},
+    onThisWeek: () -> Unit = {},
     onOpenSession: (String) -> Unit,
     onRefreshWeek: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -94,8 +101,15 @@ fun TrainScreen(
 
             when (mode) {
                 0 -> LogScreen(history, onOpenSession)
-                1 -> ProgressScreen(history)
-                else -> WeekPlan(planWeek, onRefreshWeek)
+                1 -> ProgressScreen(history, records, onAddRecord)
+                else -> WeekPlan(
+                    week = planWeek,
+                    weekOffset = weekOffset,
+                    onRefresh = onRefreshWeek,
+                    onShiftWeek = onShiftWeek,
+                    onThisWeek = onThisWeek,
+                    onStartDay = onStartDay
+                )
             }
             Spacer(Modifier.height(20.dp))
         }
@@ -131,7 +145,14 @@ private fun ModePills(mode: Int, onSelect: (Int) -> Unit) {
  * the phone's job here is to tell you what is coming, not to rewrite it.
  */
 @Composable
-private fun WeekPlan(week: PlanWeek?, onRefresh: () -> Unit) {
+private fun WeekPlan(
+    week: PlanWeek?,
+    weekOffset: Int,
+    onRefresh: () -> Unit,
+    onShiftWeek: (Int) -> Unit,
+    onThisWeek: () -> Unit,
+    onStartDay: (PlanDaySummary) -> Unit
+) {
     if (week == null) {
         Text("No plan loaded.", fontSize = 15.sp, color = Tokens.Fg)
         Spacer(Modifier.height(6.dp))
@@ -155,23 +176,68 @@ private fun WeekPlan(week: PlanWeek?, onRefresh: () -> Unit) {
 
     Column {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Label(week.planName.uppercase(Locale.UK))
-            Spacer(Modifier.weight(1f))
+            // At 360dp a long plan name would push the arrows off screen, so the
+            // name gives way first: the controls are the interactive things.
+            Box(Modifier.weight(1f)) {
+                Text(
+                    week.planName.uppercase(Locale.UK),
+                    fontSize = 12.sp,
+                    letterSpacing = 1.sp,
+                    color = Tokens.Muted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            // Paging is the point of a week view: you look ahead, and you look
+            // back. An arrow is dead at the plan's edge rather than silently
+            // returning the same week.
+            Text(
+                "‹",
+                fontSize = 18.sp,
+                color = if (week.canPageBack) Tokens.Muted else Tokens.Muted.copy(alpha = 0.3f),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(enabled = week.canPageBack) { onShiftWeek(-1) }
+                    .padding(horizontal = 10.dp, vertical = 2.dp)
+            )
             Text("week ${week.weekNumber}", fontSize = 12.sp, color = Tokens.Muted)
+            Text(
+                "›",
+                fontSize = 18.sp,
+                color = if (week.canPageForward) Tokens.Muted else Tokens.Muted.copy(alpha = 0.3f),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(enabled = week.canPageForward) { onShiftWeek(1) }
+                    .padding(horizontal = 10.dp, vertical = 2.dp)
+            )
         }
         Spacer(Modifier.height(4.dp))
-        Text(
-            "${shortDate(week.weekStart)} – ${shortDate(week.weekEnd)}",
-            fontSize = 12.sp,
-            color = Tokens.Muted
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "${shortDate(week.weekStart)} – ${shortDate(week.weekEnd)}",
+                fontSize = 12.sp,
+                color = Tokens.Muted
+            )
+            if (weekOffset != 0) {
+                Spacer(Modifier.weight(1f))
+                Text(
+                    "This week",
+                    fontSize = 12.sp,
+                    color = Tokens.Accent,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onThisWeek() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(10.dp))
-        week.days.forEach { day -> DayRow(day) }
+        week.days.forEach { day -> DayRow(day, onStartDay) }
     }
 }
 
 @Composable
-private fun DayRow(day: PlanDaySummary) {
+private fun DayRow(day: PlanDaySummary, onStartDay: (PlanDaySummary) -> Unit) {
     val date = runCatching { LocalDate.parse(day.date) }.getOrNull()
     val title = day.focus?.let { humaniseLabel(it) }
         ?: when (day.sport) {
@@ -185,6 +251,7 @@ private fun DayRow(day: PlanDaySummary) {
             .padding(vertical = 2.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(if (day.isToday) Tokens.Surface else Tokens.Bg)
+            .clickable(enabled = day.canStart) { onStartDay(day) }
             .padding(horizontal = 10.dp, vertical = 10.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -212,24 +279,29 @@ private fun DayRow(day: PlanDaySummary) {
                 color = if (day.sport == "rest") Tokens.Muted else Tokens.Fg,
                 modifier = Modifier.weight(1f)
             )
-            if (day.exercises > 0) {
-                Text("${day.exercises} ex", fontSize = 12.sp, color = Tokens.Muted)
+            if (day.exercises.isNotEmpty()) {
+                Text(
+                    "${day.exercises.size} ex" + if (day.canStart) " ›" else "",
+                    fontSize = 12.sp,
+                    color = if (day.canStart) Tokens.Accent else Tokens.Muted
+                )
                 Spacer(Modifier.width(10.dp))
             }
             Text(
-                when (day.status) {
-                    "completed" -> "✓"
-                    "partial" -> "◐"
-                    "missed" -> "missed"
-                    "rest" -> "rest"
-                    else -> if (day.isToday) "today" else ""
-                },
+                // Today is an anchor: a completed session should not hide which
+                // day you are looking at, so the marker and the status coexist.
+                listOfNotNull(
+                    if (day.isToday) "today" else null,
+                    when (day.status) {
+                        "completed" -> "✓"
+                        "partial" -> "◐"
+                        "missed" -> "missed"
+                        "rest" -> "rest"
+                        else -> null
+                    }
+                ).joinToString(" "),
                 fontSize = 12.sp,
-                color = when (day.status) {
-                    "completed" -> Tokens.Accent
-                    "missed" -> Tokens.Muted
-                    else -> Tokens.Muted
-                }
+                color = if (day.status == "completed") Tokens.Accent else Tokens.Muted
             )
         }
     }

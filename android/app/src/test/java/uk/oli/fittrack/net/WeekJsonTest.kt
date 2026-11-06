@@ -34,9 +34,30 @@ class WeekJsonTest {
         assertEquals("cycle", week.days[0].sport)
         assertNull(week.days[0].focus)
         assertEquals("push", week.days[1].focus)
-        assertEquals(1, week.days[1].exercises)
+        // The prescription travels with the day, ready to become a session.
+        assertEquals(listOf("Bench Press"), week.days[1].exercises.map { it.name })
+        assertEquals(4, week.days[1].exercises.single().sets)
         assertEquals("completed", week.days[2].status)
         assertEquals(listOf(false, false, true), week.days.map { it.isToday })
+    }
+
+    @Test
+    fun `only a strength day with exercises can be started`() {
+        val body = """
+            {"week_number":1,"days":[
+              {"day_date":"2026-11-02","sport":"cycle"},
+              {"day_date":"2026-11-03","sport":"strength","planned_focus":"push"},
+              {"day_date":"2026-11-04","sport":"strength","planned_focus":"legs",
+               "planned_exercises":[{"exercise":"Back Squat","sets":5,"reps":3}]}
+            ]}
+        """.trimIndent()
+
+        val week = WeekJson.decode(body, "Block", today)!!
+
+        assertEquals(listOf(false, false, true), week.days.map { it.canStart })
+        // A blank or unusable prescription is dropped, so it cannot be started
+        // either.
+        assertEquals(1, week.days[2].exercises.size)
     }
 
     @Test

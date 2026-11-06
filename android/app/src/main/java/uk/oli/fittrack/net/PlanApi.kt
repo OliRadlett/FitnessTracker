@@ -138,15 +138,41 @@ sealed interface PlanLookup {
     data object Unavailable : PlanLookup
 }
 
+/**
+ * Week arithmetic for the plan's `/week/{n}`, which counts Monday-based weeks
+ * from the plan's own start rather than from the calendar year.
+ */
+internal object PlanWeeks {
+
+    private fun mondayOf(date: LocalDate): LocalDate =
+        date.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
+
+    /** 1 for the week the plan starts in, 2 for the next, and so on. */
+    fun weekNumber(start: LocalDate, date: LocalDate): Int =
+        (java.time.temporal.ChronoUnit.WEEKS.between(mondayOf(start), mondayOf(date)) + 1)
+            .toInt()
+            .coerceAtLeast(1)
+
+    /** How many weeks the plan spans, inclusive of the partial first and last. */
+    fun totalWeeks(start: LocalDate, end: LocalDate): Int =
+        weekNumber(start, end).coerceAtLeast(1)
+
+    /** Keep a paged week inside the plan, so an arrow never asks for week 0. */
+    fun clamp(weekNumber: Int, total: Int): Int = weekNumber.coerceIn(1, total.coerceAtLeast(1))
+}
+
 /** One day of the plan's week, as the Train tab lists it. */
 data class PlanDaySummary(
     val date: String,
     val sport: String,
     val focus: String?,
     val status: String,
-    val exercises: Int,
+    /** The day's prescription, ready to become a session (empty on a rest day). */
+    val exercises: List<PlanExercise>,
     val isToday: Boolean
-)
+) {
+    val canStart: Boolean get() = sport == "strength" && exercises.isNotEmpty()
+}
 
 /** The week around today, from the active plan. */
 data class PlanWeek(
@@ -154,8 +180,15 @@ data class PlanWeek(
     val weekNumber: Int,
     val weekStart: String,
     val weekEnd: String,
-    val days: List<PlanDaySummary>
-)
+    val days: List<PlanDaySummary>,
+    /** The week containing today, so a pager can tell how far it has moved. */
+    val thisWeekNumber: Int = weekNumber,
+    /** The plan's last week; paging past it would ask for a week that is not there. */
+    val totalWeeks: Int = weekNumber
+) {
+    val canPageBack: Boolean get() = weekNumber > 1
+    val canPageForward: Boolean get() = weekNumber < totalWeeks
+}
 
 @Serializable
 private data class WeekDto(
@@ -183,12 +216,21 @@ object WeekJson {
         val week = runCatching { json.decodeFromString<WeekDto>(body) }.getOrNull() ?: return null
         val days = week.days.mapNotNull { day ->
             val date = day.day_date ?: return@mapNotNull null
+            // A planned entry carries no load, so the weight starts at zero and
+            // the view model fills it in from what you lifted last time.
+            val exercises = day.planned_exercises.orEmpty().mapNotNull { planned ->
+                val name = planned.exercise.trim()
+                if (name.isEmpty() || planned.sets <= 0 || planned.reps <= 0) {
+                    return@mapNotNull null
+                }
+                PlanExercise(name = name, sets = planned.sets, reps = planned.reps, weightKg = 0.0)
+            }
             PlanDaySummary(
                 date = date,
                 sport = day.sport ?: "rest",
                 focus = day.planned_focus?.trim()?.takeIf { it.isNotBlank() },
                 status = if (day.completed) "completed" else day.day_status,
-                exercises = day.planned_exercises.orEmpty().size,
+                exercises = exercises,
                 isToday = date == today.toString()
             )
         }
@@ -215,22 +257,32 @@ class PlanApi(private val baseUrl: String) {
      * The active plan's week around [today], or null when there is no plan or
      * no signal. Weeks are Monday-based, as the API's `/week/{n}` is.
      */
-    suspend fun weekPlan(token: String, today: LocalDate): PlanWeek? = withContext(Dispatchers.IO) {
+    /**
+     * The active plan's week [weekOffset] weeks from today's (0 = this week),
+     * or null when there is no plan or no signal. Weeks are Monday-based, as
+     * the API's `/week/{n}` is, and the number is clamped to the plan's extent
+     * so paging past either end stays on a real week.
+     */
+    suspend fun weekPlan(
+        token: String,
+        today: LocalDate,
+        weekOffset: Int = 0
+    ): PlanWeek? = withContext(Dispatchers.IO) {
         val plansBody = runCatching { get("$baseUrl/training-plans", token) }.getOrNull()
             ?: return@withContext null
         val active = PlanJson.activePlan(PlanJson.plans(plansBody), today) ?: return@withContext null
 
         val start = active.start_date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
             ?: return@withContext null
-        val startMonday = start.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
-        val todayMonday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY))
-        val weekNumber = (java.time.temporal.ChronoUnit.WEEKS.between(startMonday, todayMonday) + 1)
-            .toInt()
-            .coerceAtLeast(1)
+        val end = active.end_date?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val thisWeek = PlanWeeks.weekNumber(start, today)
+        val total = end?.let { PlanWeeks.totalWeeks(start, it) } ?: thisWeek
+        val weekNumber = PlanWeeks.clamp(thisWeek + weekOffset, total)
 
         val body = runCatching { get("$baseUrl/training-plans/${active.id}/week/$weekNumber", token) }
             .getOrNull() ?: return@withContext null
         WeekJson.decode(body, active.name, today)
+            ?.copy(thisWeekNumber = thisWeek, totalWeeks = total)
     }
 
     /**

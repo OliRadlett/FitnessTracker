@@ -20,9 +20,43 @@ data class RepRange(val label: String, val minReps: Int, val maxReps: Int?) {
  *
  * The website reads its PRs from a server table; this reads the same sets
  * locally, so the screen works on a phone with no signal and cannot disagree
- * with the log it is drawn from. Manual PRs (no session behind them) are the one
- * thing that needs the server, and the app does not offer them yet.
+ * with the log it is drawn from. Manual PRs (no session behind them) come from
+ * `GET /lifting/prs` instead, and are shown beside these rather than merged
+ * into them — a computed best and a typed-in one should not be mistaken for
+ * each other.
  */
+/**
+ * A record the server holds, including the ones typed in by hand — a PR with no
+ * session behind it cannot be derived from the phone's own history, so it has
+ * to be read back from the API like the website does.
+ */
+@kotlinx.serialization.Serializable
+data class PersonalRecord(
+    val id: String,
+    val exercise: String,
+    val weightKg: Double,
+    val reps: Int,
+    /** The server's estimate when it has one, else the app's Brzycki figure. */
+    val e1rm: Double,
+    val achievedDate: String? = null,
+    /** True when no session is behind it. */
+    val manual: Boolean = false,
+    val note: String? = null,
+    val recordType: String = "1rm"
+)
+
+/**
+ * One row per lift, best first: a phone screen wants the standing record for
+ * each exercise, not fifty historical ones.
+ */
+fun recordsByExercise(records: List<PersonalRecord>): List<PersonalRecord> =
+    records
+        .map { it.copy(exercise = it.exercise.trim()) }
+        .filter { it.exercise.isNotEmpty() }
+        .groupBy { it.exercise }
+        .mapNotNull { (_, group) -> group.maxByOrNull { it.e1rm } }
+        .sortedByDescending { it.e1rm }
+
 object ProgressEngine {
 
     val REP_RANGES = listOf(
@@ -53,6 +87,32 @@ object ProgressEngine {
                     ?.let { PersonalBest(name, it.weightKg, it.reps, it.at) }
             }
             .sortedByDescending { it.estimated1rm }
+
+    /**
+     * The records a session just set, judged against everything before it.
+     *
+     * A lift you have never logged counts: the first time you do it *is* the
+     * record. An equal estimate does not — a record has to be beaten, or every
+     * session at the same weight would claim one.
+     */
+    fun sessionRecords(
+        session: FinishedSession,
+        history: List<FinishedSession>
+    ): List<PersonalBest> {
+        val before = personalBests(history)
+        return SessionEngine.workingSets(session.sets)
+            .filter { it.weightKg > 0.0 && it.reps > 0 }
+            .groupBy { it.exercise.trim() }
+            .mapNotNull { (exercise, sets) ->
+                val best = sets.maxByOrNull { estimated1rm(it.weightKg, it.reps) }
+                    ?: return@mapNotNull null
+                val previous = before.firstOrNull { it.exercise == exercise }
+                val estimate = estimated1rm(best.weightKg, best.reps)
+                if (previous != null && estimate <= previous.estimated1rm) return@mapNotNull null
+                PersonalBest(exercise, best.weightKg, best.reps, best.at)
+            }
+            .sortedByDescending { it.estimated1rm }
+    }
 
     /**
      * The heaviest set in each rep bucket for one exercise, with an empty bucket

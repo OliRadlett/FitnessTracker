@@ -56,6 +56,30 @@ class NarrowScreenTest {
         compose.onNodeWithText("AMRAP").assertIsDisplayed()
     }
 
+    @Test
+    fun theNewTabsFitAtTheNarrowestWidth() {
+        // Signed out, both tabs show their empty state: that is still the layout
+        // that has to fit, and the one a first-run user sees.
+        compose.onNodeWithText("Train").performClick()
+        compose.waitForIdle()
+        save("narrow-3-train")
+        compose.onNodeWithText("Sessions.").assertExists()
+
+        compose.onNodeWithText("Week").performClick()
+        compose.waitForIdle()
+        save("narrow-4-week")
+        compose.onNodeWithText("No plan loaded.").assertExists()
+
+        compose.onNodeWithText("Body").performClick()
+        compose.waitForIdle()
+        save("narrow-5-body")
+        compose.onNodeWithText("No weigh-ins yet.").assertExists()
+        // The primary action of the tab is reachable without scrolling.
+        compose.onNodeWithText("Save").assertIsDisplayed()
+
+        compose.onNodeWithText("Progress").assertDoesNotExist()
+    }
+
     private fun save(name: String) {
         val view: View = compose.activity.window.decorView
         val bitmap = Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888)
