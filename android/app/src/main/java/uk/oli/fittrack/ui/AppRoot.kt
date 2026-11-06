@@ -45,6 +45,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val auth by vm.auth.collectAsStateWithLifecycle()
     val history by vm.history.collectAsStateWithLifecycle()
     val plan by vm.plan.collectAsStateWithLifecycle()
+    val planFromServer by vm.planFromServer.collectAsStateWithLifecycle()
+    val plannedPlanName by vm.plannedPlanName.collectAsStateWithLifecycle()
+    val restDay by vm.restDay.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -64,6 +67,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 plan = plan,
                 signedIn = auth.signedIn,
                 history = history,
+                planFromServer = planFromServer,
+                plannedPlanName = plannedPlanName,
+                restDay = restDay,
                 onEditPlan = { nav.navigate(Routes.PLAN_EDIT) },
                 onOpenSession = { id -> nav.navigate(Routes.session(id)) },
                 onSignIn = { nav.navigate(Routes.SIGNIN) },

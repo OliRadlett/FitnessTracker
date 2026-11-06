@@ -66,10 +66,10 @@ against those decisions.
 
 ## What does not work yet
 
-- **The plan is still a seeded constant** (`data/SessionStore.kt › SeedPlan`).
-  It does not come from the training-plan API yet, so the app prescribes the
-  same push day until that lands.
-- **Lifting parity is in progress** — the phase list P0–P7 in
+- **Offline plan**: today's session comes from the training plan when signed in
+  (`GET /training/plans`). Signed out — or before the first sync — the app
+  prescribes the seeded push day from `data/SessionStore.kt › SeedPlan`.
+- **Lifting parity is in progress** — the phase list P0–P8 in
   [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md) is
   complete and has been run on a real phone (OnePlus 11, 360×804 dp) against
   prod. Still on the matrix: session labels/AI tags, a linked Strava activity,
