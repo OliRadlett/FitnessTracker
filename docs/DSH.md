@@ -103,17 +103,33 @@ install it once. The current `desktop` profile links it from its `package.json`.
 Four inputs are required (FEATURE, SURFACE, USER JOB, OWNER); the other seven
 may stay placeholders, which the delivered prompt marks with one `UNFILLED:`
 line. The control previews the exact message through the host before sending,
-and shows the run's deliverable ticks afterwards. Run records live in
-`.dsh/plugins/feature-quality/.state/` (gitignored).
+opens the session it created, and shows the run's deliverable ticks afterwards.
+Run records live in `.dsh/plugins/feature-quality/.state/` (gitignored).
 
-Verify after changing it:
+The bundle also ships the run's mechanics as repo files, so any session can call
+them — installed or not:
+
+```bash
+node .dsh/plugins/feature-quality/tools/quality.mjs new "<feature>" --surface page --owner Oli
+node .dsh/plugins/feature-quality/tools/quality.mjs check <slug>    # exit 1 until the run is real
+node .dsh/plugins/feature-quality/tools/quality.mjs status <slug>
+node .dsh/plugins/feature-quality/tools/contact-sheet.mjs --out sheet.png frames/*.png
+```
+
+`check` is evidence, not judgement: it knows the contract is filled and an
+artifact exists, not whether the artifact is good. The prompt and the
+`feature-quality` skill both name these tools, because a tool nobody is told
+about costs the same as no tool.
+
+Verify after changing the bundle:
 
 ```bash
 node .dsh/plugins/feature-quality/eval/harness.mjs   # delivered text == prompt.md, CRLF-safe
 node .dsh/plugins/feature-quality/eval/wiring.mjs    # apply(), routes, scan, client interaction
+node .dsh/plugins/feature-quality/eval/tools.mjs     # quality.mjs new/check/status, contact sheet
 ```
 
-Both exit non-zero on failure. Reinstalling the bundle re-imports the host half:
+All three exit non-zero on failure. Reinstalling the bundle re-imports the host half:
 after the v2 reinstall, `/preview` and `/status` answered 401 (registered) where
 they had answered 404 (unregistered) seconds earlier, with no app restart. An
 app restart is the fallback if a host change does not take; a client-half change
