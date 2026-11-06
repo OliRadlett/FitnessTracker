@@ -1,6 +1,6 @@
 # Jev Decision Layer — Free-Text Tagging & Match Arbitration
 
-> **Status**: Design proposal — not approved, no code written. Companion to the Jev use-case
+> **Status**: **superseded** by the shipped Jev tagging/classification (`services/jev_client.py`, `jev_tagging.py`, `jev_classification.py`, migration 081). Originally a design proposal, not approved.
 > exploration; covers use cases **3 (free-text tagging)** and **4 (heuristic match arbitration)**
 > only.
 > **Type**: New product capability, optional third-party integration (TypeSafe Jev / "System One").

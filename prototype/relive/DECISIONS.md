@@ -148,7 +148,7 @@ Compared the real old `Replay3D` against the new Google 3D world on the **same
 Lake Geneva ride**, normalized to noon/clear and run through a full-quality
 headless harness. Evidence:
 [`COMPARISON.md`](COMPARISON.md),
-[`qa/out/compare-old-vs-new.png`](qa/out/compare-old-vs-new.png).
+`qa/out/compare-old-vs-new.png` (not committed).
 
 - **Old:** floating terrain slab in the real-fixture run; dark plane with a tiny
   3D bike in chase; ribbon + floating route in drone. The synthetic baseline

@@ -1,6 +1,6 @@
 # Route Merging Overhaul — Modal-Assisted Route Matching
 
-> Status: **Phase 1a + 1b implemented** (2026-09-26) — pure engine + tests,
+> Status: **Phase 1a + 1b and Phase 2 shipped** (migration 080, road matching + embeddings). Originally Phase 1a + 1b implemented (2026-09-26) — pure engine + tests,
 > config tiers, non-destructive merge + merge log + undo, Modal similarity
 > graph + weekly Celery task, cache-backed duplicates/undo/similar APIs,
 > review-queue UX. Rebased onto `main` (migration **079**). Pending: Phase-2

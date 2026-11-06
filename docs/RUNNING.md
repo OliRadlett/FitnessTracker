@@ -5,10 +5,10 @@
 ## Host Environment
 
 - **OS**: Windows 11 (`win32`)
-- **Shell**: PowerShell 5.1 on the host; OpenCode is configured with `"shell": "pwsh"` in [`opencode.json`](../opencode.json)
+- **Shell**: PowerShell, run through the DSH `pwsh` tool. Commands below use PowerShell syntax; there is no bash.
 - **No bash**: Do NOT use bash syntax. Specifically:
   - `&&` does not work → use `cmd1; if ($?) { cmd2 }`
-  - No `grep`, `sed`, `awk`, `cat`, `ls -la` → use `Select-String`, `Get-Content`, `Get-ChildItem` or the OpenCode Grep/Read/Glob tools
+  - No `grep`, `sed`, `awk`, `cat`, `ls -la` → use `Select-String`, `Get-Content`, `Get-ChildItem`, or the DSH `grep`/`read`/`glob` tools
   - Quote paths with spaces using double quotes
   - Env vars: `$env:VAR = "value"`, not `VAR=value cmd`
 
@@ -32,15 +32,17 @@ python fittrack.py patch-cert       # Fix SSL cert errors (regen Caddy CA + inst
 
 ### Executing commands inside containers
 
-⚠️ **`docker compose exec` does NOT work in this setup** (Pitfall #3). Use:
+⚠️ **`docker compose exec` does NOT work in this setup** (pitfall 3 — [`docs/PITFALLS.md`](PITFALLS.md)). Use:
 
 ```bash
 python fittrack.py exec <service> <command>
 # e.g.
-python fittrack.py exec backend pytest tests/ -v --tb=short
 python fittrack.py exec backend python -c "from app.main import app; print('OK')"
 python fittrack.py exec backend alembic current
 ```
+
+Tests are the exception: run them host-side (below), because the container has
+no mount for `tests/` (pitfall 23).
 
 ### Hot reload behaviour
 
@@ -55,7 +57,7 @@ python fittrack.py exec backend alembic current
 
 ### Backend (pytest)
 
-Run from the host. Dev compose mounts only `backend/app` + `backend/alembic`, so `tests/` is baked into the image and a container run tests stale code after any edit (see AGENTS.md pitfall #23).
+Run from the host. Dev compose mounts only `backend/app` + `backend/alembic`, so `tests/` is baked into the image and a container run tests stale code after any edit (see [`docs/PITFALLS.md`](PITFALLS.md) #23).
 
 ```powershell
 # A fresh worktree needs .env copied in, then the CI env vars
@@ -81,7 +83,7 @@ Markers (defined in [`backend/pyproject.toml`](../backend/pyproject.toml)):
 
 pytest config: `asyncio_mode = "auto"` — async test functions need no decorator.
 
-Or use the OpenCode command: `/test` runs both suites.
+For the full check sequence, load the `finalise` skill or run the commands above.
 
 ### Frontend (vitest + Playwright)
 
@@ -109,11 +111,11 @@ npm run lint              # next lint
 npx tsc --noEmit          # typecheck
 ```
 
-OpenCode auto-formats `.py` files with ruff on save (configured in `opencode.json`). `/lint` runs both ruff steps.
+DSH does not auto-format on save — run both ruff commands yourself before committing.
 
 ## Database Migrations
 
-⚠️ Revisions run from `"001"` but the numbers are not contiguous. `003` and `073` were never used, and filenames do not always match revision ids (see AGENTS.md pitfall 6), so trust the `revision` and `down_revision` headers. Current head is `119`, and [`backend/tests/test_doc_claims.py`](../backend/tests/test_doc_claims.py) fails if this line goes stale.
+⚠️ Revisions run from `"001"` but the numbers are not contiguous. `003` and `073` were never used, and filenames do not always match revision ids (see [`docs/PITFALLS.md`](PITFALLS.md) #6), so trust the `revision` and `down_revision` headers. Current head is `119`, and [`backend/tests/test_doc_claims.py`](../backend/tests/test_doc_claims.py) fails if this line goes stale.
 
 ```bash
 # Generate
@@ -154,7 +156,7 @@ once the local run is green on a real video.
 ### Video analysis eval harness
 
 Measure pipeline changes against the labelled production set (see
-[`plans/video-analysis-rewrite.md`](plans/video-analysis-rewrite.md)):
+[`plans/video-analysis-rewrite.md`](../plans/video-analysis-rewrite.md)):
 
 ```powershell
 # Download the 12 prod videos + seed labels (SSHes to fittrack-prod; gitignored)
@@ -173,13 +175,18 @@ C:\Users\oradl\.venvs\fittrack-video\Scripts\python.exe -m pytest --noconftest `
     backend/tests/test_pose_analysis.py backend/tests/test_video_analysis.py -q
 ```
 
-## OpenCode Permissions
+## DSH Execution Notes
 
-Pre-approved bash patterns (in `opencode.json` → `permission.bash`): `python fittrack.py *`, `docker compose *`, `npm *`, `npx *`, `pip *`, `alembic *`, `ruff *`, `uvicorn *`, `git *`. Everything else prompts. Add patterns with `/allow <pattern>`.
+DSH runs commands through the `pwsh` tool; there is no OpenCode-style bash
+allowlist and no `/allow` command. Approval policy is session-level: when
+approvals are disabled, an action that would need approval is rejected, so state
+the blast radius before destructive commands and follow `AGENTS.md` rules 1–14.
 
-> **Note**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers around `python fittrack.py` — use either interchangeably. DEPLOY.md references the shell scripts; AGENTS.md and this file use `python fittrack.py` directly.
-
-Specialized agents (`@backend`, `@frontend`, `@debugger`, `@sync-engineer`) already allow `python fittrack.py exec backend *`.
+Subagents get their own context — see [`docs/DSH.md`](DSH.md) for the prompt
+contract. `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell)
+are thin wrappers around `python fittrack.py` — use either interchangeably.
+DEPLOY.md references the shell scripts; AGENTS.md and this file use
+`python fittrack.py` directly.
 
 ## Git Discipline
 

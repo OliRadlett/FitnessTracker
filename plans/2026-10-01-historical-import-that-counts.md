@@ -1,5 +1,7 @@
 # Design Spec — Section 5: Historical Import That Actually Counts
 
+> **Status**: implemented — `services/import_dedup.py` (fingerprint + fuzzy tiers) shipped.
+
 > **Date**: 2026-10-01 · **Type**: bug fix (data integrity) + feature · **Surface**: `/activities` import menu, `POST /activities/import-*`
 >
 > **Origin**: brainstorm `plans/brainstorm-2026-09-30-open-agenda.md` inventory item

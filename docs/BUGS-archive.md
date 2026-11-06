@@ -1,13 +1,21 @@
 # FitTrack Bug Report — Archive (Fixed Bugs)
 
-> **98 total bugs** — **82 fixed / already-fixed** archived here for historical reference.
+> **61 archived bugs** — fixed / already-fixed, kept here for historical reference.
 > Full detail with root-cause analysis and fix descriptions preserved in git history:
 > ```bash
 > git log --all -- docs/BUGS.md
 > ```
-> The active tracker (`BUGS.md`) retains only the 5 open/deferred/investigating bugs.
+> The active tracker (`BUGS.md`) retains only the 2 open/deferred bugs.
 
 All bugs below are **FIXED** or resolved — kept for root-cause learning. Do not attempt to fix again.
+
+## FIXED 2026-11-06 (documentation correctness review)
+
+| ID | Title | Key Learning |
+|----|-------|-------------|
+| BUG-025 | OAuth `redirect_uri` built client-side | The backend mints the authorize URL via `GET /auth/oauth/{provider}/connect-state`; the client only redirects, so the callback and token exchange agree |
+| BUG-048 | Caddyfile placeholder ACME email | `email {$ACME_EMAIL:o.radlett@gmail.com}` — a real default, env-overridable per deploy |
+| BUG-068 | Nutrition fuel plan "Could not load fuel plan" | `tests/integration/test_nutrition_api.py` pins 200/null and 200/plan; the endpoint returns `RideFuelPlanRead \| None`, never an unlogged 500 |
 
 ## CRITICAL (all fixed)
 

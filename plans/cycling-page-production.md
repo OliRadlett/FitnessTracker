@@ -1,13 +1,13 @@
 # Cycling page — production plan
 
-> **Status: HELD (2026-11-05, owner decision).** The plan is approved; implementation waits for the
+> **Status: SHIPPED (2026-11-06)** — the Form · Rides · Power page is on `main` and `prod`; the HELD condition below is moot. Original note: HELD (2026-11-05, owner decision). The plan is approved; implementation waits for the
 > `/health` overhaul to land, because step 1 moves `WeightPanel` into a page another session is
 > currently rewriting. **Unblock condition:** `plans/health-page-production-plan-2026-11-04.md`'s
 > weight surface is merged to `main`, and this checkout is fast-forwarded to `origin/main` (it is
 > 78 commits behind — the shipped cycling page carries `WahooZonesCard`, which this tree lacks).
 >
-> **Source**: [`prototype/cycling/`](../prototype/cycling/) (gate passed 17/17, 2026-11-05) ·
-> contract: [`cycling-page-overhaul-2026-11-05.md`](cycling-page-overhaul-2026-11-05.md)
+> **Source**: `prototype/cycling/` (lab, not committed; gate passed 17/17, 2026-11-05) ·
+> contract: `cycling-page-overhaul-2026-11-05.md` (not committed)
 > **Target**: `frontend/src/app/(app)/cycling/page.tsx` on `origin/main` (`5fd4061`).
 > **Port decisions, not shortcuts.** No lab file is copied into `frontend/`; the lab is deleted
 > when this ships.

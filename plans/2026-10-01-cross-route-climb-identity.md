@@ -1,5 +1,7 @@
 # Design Spec — Section 3: Cross-Route Climb Identity (`geo_cluster_id`)
 
+> **Status**: implemented — `services/geo_clusters.py`, `segments.geo_cluster_id` and `/segments/climbs/{id}` shipped.
+
 > **Date**: 2026-10-01 · **Type**: feature (data model + UI) · **Surface**: `/segments`, route detail
 > **Origin**: brainstorm `plans/brainstorm-2026-09-30-open-agenda.md` item C2b, re-baselined
 > against the code. Chosen scope: **3B** (persist `geo_cluster_id`) over read-time

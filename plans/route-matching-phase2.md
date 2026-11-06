@@ -1,6 +1,6 @@
 # Route Matching Phase 2 — OSM Road-Graph Map-Matching + Route Embeddings
 
-> Status: implemented (2026-09-27) on `feature/route-matching-phase2`.
+> Status: **merged to `main`** (migration 080, `services/road_matching.py`, `route_road_graph.py`, `map_match_routes`). Originally implemented on `feature/route-matching-phase2`.
 > OSM data must be bootstrapped once (`python -m app.scripts.osm_bootstrap`) —
 > until then `map_match_routes` is a no-op and matching stays Phase-1 geometric.
 > Builds on Phase 1 (`plans/route-merging-overhaul.md`): the pure geometric
@@ -93,7 +93,7 @@ supplied (both routes map-matched), the composite becomes
   roads, sub-section Jaccard, detour).
 - `route_embedding`: feature determinism, cosine, learned metric improves
   positive-vs-negative separation on synthetic pairs.
-- Modal worker modules import without `app.config`/pydantic (AGENTS pitfall #33).
+- Modal worker modules import without `app.config`/pydantic (pitfall 16 — `docs/PITFALLS.md`).
 
 ## 8. Out of scope
 

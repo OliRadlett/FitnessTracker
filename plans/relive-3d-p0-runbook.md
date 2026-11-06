@@ -1,5 +1,7 @@
 # Relive 3D — P0 Runbook: standard key + never-spend cap
 
+> **Status**: historical — superseded by the Google 3D viewer (#339); the key/cap runbook is retained for reference.
+
 > Goal: a standard Google 3D key that **cannot spend money**. Expected usage is
 > $0 within the 5,000 free Immersive Maps loads/month. The cap is the
 > **`no spend` spend-cap budget** (0 GBP, project + Maps service) plus

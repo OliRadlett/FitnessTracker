@@ -1,7 +1,6 @@
 # Jev — Strength Session Classification (split + intent)
 
-> **Status**: **Phase 0 + the Phase 1 label producer are implemented** on
-> `feature/jev-session-classification` — migration `100`, `services/jev_classification.py`,
+> **Status**: **shipped** — migration 100, `services/jev_classification.py`, inline + weekly triggers, chips/filters and split/lift conformity are on `main`. Originally Phase 0 + Phase 1 on `feature/jev-session-classification` — migration `100`, `services/jev_classification.py`,
 > inline + weekly triggers, and tests (migration round-trip verified; 189 backend tests green).
 > Still open in Phase 1: the `build_strength_conformity` split/lift comparison (§6.2) and the
 > frontend chips/filters. The whole consumer surface lives in

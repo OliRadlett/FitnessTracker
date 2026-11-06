@@ -1,5 +1,7 @@
 # Android lifting parity
 
+> **Status**: complete — P0–P20 and the device pass are done; plan editing stays on the website.
+
 **Objective**: the lifting system in the Android app reaches parity with the
 website's `/lifting` surface, then a device pass proves it. Parity means
 *features*, not layouts: every action and every number the website offers for a

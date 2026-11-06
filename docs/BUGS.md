@@ -1,35 +1,20 @@
 # FitTrack Bug Report — Active Bugs
 
-> **Updated**: 2026-11-04 | Total tracked: 99 | **Open: 5** | Fixed: 84 (archived, see `BUGS-archive.md` and git history)
+> **Updated**: 2026-11-06 | **Open: 2** (BUG-045 deferred, BUG-099 open) |
+> **Archived: 61** (see `BUGS-archive.md` and git history).
 >
-> BUG-013 (the file is `004_add_pr_notes.py` with `revision = "004"`) and BUG-015
-> (double-commit removed) were fixed long ago; they are no longer listed as open.
+> Bug IDs are identifiers, not a count: they are non-contiguous (014–044 and
+> others were never filed). BUG-013 and BUG-015 were fixed long ago and are no
+> longer listed. BUG-025, BUG-048 and BUG-068 were verified fixed on
+> 2026-11-06 and moved to the archive.
 
 ## Open Bugs
-
-### BUG-025: OAuth `redirect_uri` Constructed Client-Side
-- **Status:** DEFERRED (needs architecture change)
-- **File:** `frontend/src/app/(app)/settings/page.tsx`
-- **Issue:** The `callbackUrl` for OAuth is constructed using client-side env vars. If these don't match the backend's `settings.public_url` exactly, the OAuth callback will be rejected by the provider (Pitfall #5).
-- **Fix:** Have the backend generate the redirect_uri server-side and return it in the authorize response.
 
 ### BUG-045: Live Secrets in Working Directory `.env`
 - **Status:** DEFERRED (manual rotation required)
 - **File:** `.env`
 - **Issue:** Contains real credentials: Komoot password, Gemini API key, SECRET_KEY, NEXTAUTH_SECRET. While gitignored, this file should never contain production credentials on a shared machine.
 - **Fix:** Rotate all exposed credentials immediately. Use a secrets manager or only store credentials on the production server.
-
-### BUG-048: Caddyfile Placeholder Email for ACME
-- **Status:** DEFERRED (deployment-specific — should be set per-deploy)
-- **File:** `infra/Caddyfile`
-- **Issue:** `email admin@example.com` is a placeholder. When deploying to a real domain, Caddy will attempt ACME challenges using this unreachable email. No certificate expiry warnings.
-- **Fix:** Use the actual domain owner's email in the deploy script.
-
-### BUG-068: Nutrition Fuel Plan "Could not load fuel plan"
-- **Status:** INVESTIGATING (latent defects fixed)
-- **File:** `frontend/src/components/cycling/FuelPlanCard.tsx`, `backend/app/api/nutrition.py`
-- **Issue:** GET /fuel-plan/activity/{id} consistently errors. Root cause unclear from static analysis — needs live diagnosis (possible missing migration, auth edge, or serialization issue). Latent defects fixed: actuals clearing now works (empty string → null), regenerate/delete buttons added, error message now shows actual error detail, FuelPlanCard consolidated to use API helpers.
-- **Fix:** Added error logging to backend endpoint, improved frontend error display, fixed actuals clearing semantics, added regenerate/delete UI.
 
 ### BUG-099: Adaptive Rest-Day Advice Carries No Apply Action
 - **Status:** OPEN (the emission is guarded; the fix needs a product call)

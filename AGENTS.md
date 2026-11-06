@@ -1,23 +1,38 @@
 # FitTrack — Agent Context Guide
 
-> **Rule**: Update this file when changing the codebase. Keep additions concise; prefer CODEMAP files for detail. Move feature status to `plans/*.md`.
+> **Rule**: Update this file when changing the codebase, but keep it **lean** —
+> DSH injects it into every session. Detail belongs in the linked docs and
+> CODEMAP files; feature status belongs in [`plans/README.md`](plans/README.md).
+> Budget: **24 KB**, guarded by `backend/tests/test_agent_docs.py`.
+
+## How to use this file
+
+DSH loads this file automatically at session start. Everything else is loaded
+on demand:
+
+- **Skills** — project skills live in `.dsh/skills/` and appear in the session
+  skill catalog. Load one with the `skill` tool when its description matches;
+  don't load them speculatively.
+- **Docs** — read only what the routing table points at.
+- **Tooling** — how DSH is wired for this repo (tools, subagents, plugins,
+  approvals): [`docs/DSH.md`](docs/DSH.md).
 
 ## Context Routing
 
-Read only the sections relevant to your task:
-
-| Task Type | Read Sections |
-|-----------|--------------|
-| Backend API/service | Architecture, Conventions>Backend, Database, Critical Pitfalls |
-| Frontend component/page | Architecture, Conventions>Frontend, Critical Pitfalls |
-| Integration/sync | Architecture, Key Algorithms, Conventions>Backend, Critical Pitfalls |
-| Database/model | Database, Conventions>Backend, Critical Pitfalls |
-| Debugging | Critical Pitfalls, Development Lessons, Agent Efficiency Rules |
-| Production issues (SSH) | Critical Pitfalls, Agent Efficiency Rules (use `@production` agent) |
-| New feature planning | Overview, Architecture, `plans/*.md` |
-| Running any command/tests | @running (`docs/RUNNING.md`) |
-| OpenCode TUI/config | @opencode (`docs/OPENCODE.md`) |
-| Historical bug reference | `docs/BUGS.md` (active bugs only; fixed bugs archived in `docs/BUGS-archive.md`) |
+| Task Type | Read |
+|-----------|------|
+| Backend API/service | Architecture, Conventions>Backend, Database, [`docs/PITFALLS.md`](docs/PITFALLS.md) |
+| Frontend component/page | Architecture, Conventions>Frontend, [`docs/PITFALLS.md`](docs/PITFALLS.md) |
+| Integration/sync | Architecture, Key Algorithms, Conventions>Backend, [`docs/PITFALLS.md`](docs/PITFALLS.md) |
+| Database/model | Database, Conventions>Backend, [`docs/PITFALLS.md`](docs/PITFALLS.md) |
+| Debugging | [`docs/PITFALLS.md`](docs/PITFALLS.md), Development Lessons, Agent Efficiency Rules |
+| Production issues (SSH) | [`docs/PITFALLS.md`](docs/PITFALLS.md), `ssh-production-debugger` skill |
+| Android app | [`docs/ANDROID.md`](docs/ANDROID.md), [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md) |
+| New feature planning | Overview, Architecture, [`plans/README.md`](plans/README.md) |
+| Running commands/tests | [`docs/RUNNING.md`](docs/RUNNING.md) |
+| Agent tooling / DSH | [`docs/DSH.md`](docs/DSH.md) |
+| Historical bug reference | [`docs/BUGS.md`](docs/BUGS.md) (active bugs only; fixed bugs archived in `docs/BUGS-archive.md`) |
+| Deployment | [`docs/DEPLOY.md`](docs/DEPLOY.md) |
 
 ## Agent Efficiency Rules
 
@@ -36,25 +51,21 @@ Read only the sections relevant to your task:
 13. **No shell-based in-place edits to source files**: Never use PowerShell/Shell (`Set-Content`, `[IO.File]::WriteAllText`, `-replace`, `sed`) to mutate source files in place. The Edit tool preserves encoding and line-endings and makes each change visible. Scripted text mutation is only for temp/generated artifacts.
 14. **Verify before destructive writes**: After any multi-file change, review `git diff --stat` and spot-read at least 2 changed files *before* running typecheck/lint. Never let the first verification come after all writes are complete.
 
-## Subagent Delegation Rules
+## Delegation in DSH
 
-Delegate to specialized agents when the task clearly fits their domain:
+DSH has no `@agent` syntax. Delegate with the `subagent` tool; a child starts
+with a fresh context, so the prompt must be self-contained.
 
-| When to Delegate | Agent | Example Prompt |
-|-----------------|-------|----------------|
-| Backend API/service changes | `@backend` | "Add a new endpoint for X following the pattern in @backend/app/api/activities.py" |
-| Frontend component/page changes | `@frontend` | "Create a new settings page following the pattern in @frontend/src/app/(app)/settings/" |
-| Debugging errors/logs | `@debugger` | "The Strava sync is failing with 401 — investigate token refresh in @backend/app/integrations/strava_client.py" |
-| OAuth/integration/sync issues | `@sync-engineer` | "Whoop token refresh is broken — check @backend/app/services/whoop.py and @backend/app/integrations/whoop_client.py" |
-| Production issues (SSH) | `@production` | "Users reporting 500 errors — check backend logs on the Droplet and verify DB connectivity" |
-| Q&A / code explanation | `@ask` | "Explain the token refresh flow in @backend/app/services/connection_health.py" |
-| Adding a new AI analysis endpoint | `@add-ai-analysis` | "Add a Gemini-powered analysis endpoint for cycling power distribution" |
-| Adding a new chart | `@add-chart` | "Add a VO2max trend chart to the cycling page" |
-| Adding a new integration | `@add-integration` | "Add a Garmin Connect OAuth integration" |
-
-**When NOT to delegate**: Quick single-file edits, AGENTS.md updates, config changes, or tasks under 3 tool calls. Just do it directly.
-
-**Delegation pattern**: Always include the specific files/paths to investigate in the prompt.
+- **When**: self-contained work that would otherwise flood this session — a
+  scoped implementation, a multi-file investigation, a review, a migration
+  audit. Not for a single-file edit or anything under ~3 tool calls.
+- **Prompt**: repo path, task, files to read first, constraints (these rules, no
+  commits, don't touch another session's files), and the exact deliverable.
+- **Fork**: `subagent_fork` when the child needs this conversation's context.
+- **Parallel**: put independent delegations in one message.
+- **Fan-out**: the `workflow` tool only for many independent pieces.
+- **Personas**: the old OpenCode agent prompts remain as prompt material in
+  `.opencode/agents/*.md`; they are not callable agents in DSH.
 
 ## Overview
 
@@ -62,193 +73,9 @@ FitTrack: personal fitness tracker for **powerlifting + cycling**. Aggregates St
 
 **Stack**: Python 3.12/FastAPI/SQLAlchemy 2.0 (async) · Next.js 14/React 18/TypeScript/Tailwind/Recharts · PostgreSQL 16 · Redis 7 · Celery + Beat · NextAuth.js · Docker Compose + Caddy · Prometheus · ReportLab (PDF) · Kotlin/Compose Android client
 
-## Android app (`android/`)
-
-Native Kotlin + Compose client, v0.1 — the gym flow. It is **not** a port of the
-web UI: its decisions come from [`prototype/android/`](prototype/android/README.md)
-(frames, gate, parity matrix), and the code was written fresh against them.
-
-- **Build**: `cd android && gradle :app:assembleDebug`. Tests and screenshots:
-  `gradle :app:testDebugUnitTest` — JVM only, no emulator (Robolectric draws the
-  real `MainActivity`).
-- **Rules belong in [`SessionEngine`](android/app/src/main/java/uk/oli/fittrack/domain/Session.kt)**:
-  prefill, current exercise, volume, completion. Pure and unit-tested; screens
-  must not re-derive them.
-- **State**: one session at a time in [`AppViewModel`](android/app/src/main/java/uk/oli/fittrack/AppViewModel.kt),
-  persisted as JSON by [`SessionStore`](android/app/src/main/java/uk/oli/fittrack/data/SessionStore.kt)
-  after every set, so process death mid-workout costs nothing.
-- **Sign-in**: Google via Credential Manager → `POST /api/v1/auth/mobile/google`,
-  which verifies the ID token against Google's JWKS before minting a JWT
-  ([`services/google_id.py`](backend/app/services/google_id.py)). Setup and the
-  failure table live in [`docs/ANDROID-AUTH.md`](docs/ANDROID-AUTH.md). Sign-in is
-  **not** a gate: the gym flow works before you authenticate.
-- **History sync**: `GET /lifting/sessions` on sign-in, mapped in
-  [`net/LiftingApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/LiftingApi.kt)
-  from a captured live payload and merged into the local log. Warm-up sets are
-  **kept and flagged** (`is_warmup`), never dropped: the detail screen shows them
-  as the website does, while `SessionEngine.workingSets` keeps them out of
-  prefill, volume and set counts. Finishing uploads via
-  `POST /lifting/sessions` with `live_key` = the phone's session id, which makes
-  the retry idempotent; on success the local id becomes the server's, so the next
-  pull cannot duplicate it. Fail-open: no signal means no sync, never a blocked
-  workout.
-- **Editing history**: [`SessionDetailScreen`](android/app/src/main/java/uk/oli/fittrack/ui/log/SessionDetailScreen.kt)
-  shows every set grouped by exercise (W/AMRAP badges, per-set notes, session
-  note and RPE); tapping a set edits it inline, `+ Set` adds a missed set,
-  `+ Add exercise` adds a whole exercise, and `Edit` changes the session's date
-  (by whole days), focus and note. A synced row calls `PATCH`/`DELETE`/`POST`
-  and **reverts with a reason** if the server refuses, so a failed edit never
-  silently diverges from the website. Local-only rows edit in place. `PATCH`
-  bodies use `LiftingPatchJson` (`encodeDefaults` + `explicitNulls`) so a cleared
-  RPE is sent as `null` rather than omitted; a day move uses `plusDays` on a
-  zoned time so an 18:00 session stays 18:00 across a DST boundary. "Repeat this
-  session" starts today from a finished one (`SessionEngine.planFrom`), copying
-  working sets only.
-- **Lifting parity target**: [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)
-  holds the website-versus-app matrix and the phase list (P0–P19, device pass at
-  the end).
-- **Progress**: Train's Progress view computes PRs, best-by-rep-range and a
-  per-exercise estimated-1RM line from the cached history
-  ([`domain/Progress.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Progress.kt)),
-  with no network in the path. Warm-ups never count; empty rep ranges are shown
-  as empty rather than omitted. The chart defaults to the exercise with the
-  longest **session** record, not the strongest lift — a one-off PR has no line
-  to draw.
-- **Browsing the log**: Train's **Sessions** view filters on free text (focus,
-  note, exercise names), focus, exercise, a date window and the classifier's
-  TYPE (split) and CLASS
-  ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
-  all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
-  better than the website's months.
-- **Train tab**: [`ui/train/TrainScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/train/TrainScreen.kt)
-  holds Sessions · Progress · **Week** (the active plan's current week from
-  `GET /training-plans/{id}/week/{n}`, Monday-numbered from the plan's start,
-  with completed/partial/missed/rest and today marked). A strength day carries
-  its prescription, so tapping it starts that session (load = last time's) —
-  `AppViewModel.startFromDay`, refused while one is already in progress. The
-  header pages between weeks (`‹ week N ›` plus "This week"); the number is
-  Monday-based from the plan's start and clamped to its extent by `PlanWeeks`.
-  Today is today-only; the two tabs stay different things.
-- **Labels, templates, links**: the session detail shows the classifier's
-  split/lift/class chips and any linked Strava activity (link/unlink through
-  `/sessions/{id}/linkable-activities` and `PUT /sessions/{id}/link`); the Live
-  screen offers saved warm-up templates (`/lifting/warmup-templates`) that log
-  their steps as flagged warm-ups for the current exercise, locally, with no
-  signal — plus `×` to delete one and "Save these N warm-ups as a template" to
-  capture the ramp you just did (`POST`, steps numbered by position). Renaming
-  and editing a template stays on the website's Templates tab.
-- **Names are trimmed at the boundary**: the server has held both `Legs` and
-  `Legs `, and an untrimmed name silently splits a lift's history in two. The
-  decoder trims, and every grouping/comparison trims, so one lift is one row.
-- **Finishing**: the summary asks for the session's own RPE and a note, and
-  `SessionEngine.finished()` turns the session in progress into history with
-  both. A blank note is null, not an empty string. It also shows the session's
-  **new records** (`ProgressEngine.sessionRecords` against the history *before*
-  the session): a lift you have never logged counts, an equal estimate does not,
-  and warm-ups/bodyweight sets never do.
-- **Today's session comes from the training plan**: `GET /training-plans` → the
-  plan whose dates bracket today → `GET /training-plans/{id}` → today's
-  `sport == "strength"` day, mapped in
-  [`net/PlanApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/PlanApi.kt)
-  (focus as the title, prescribed sets/reps, last time's load as the weight).
-  A rest day shows "Rest day." and "Start anyway"; a failed request leaves the
-  current plan alone rather than inventing a rest day. `SeedPlan` is only the
-  fallback when signed out or offline, and the phone's plan editor is hidden
-  while a server plan is showing.
-- **Today's verdict**: `/dashboard/today` → the unified verdict card at the top
-  of Today ([`net/TodayApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/TodayApi.kt)):
-  the server's headline, up to three reasons, and TSB/recovery. It shows the
-  server's sentence rather than composing one, keeps an unavailable engine in
-  the list as "unavailable", and renders nothing at all when there is no verdict.
-- **Today is the dashboard**: [`ui/today/DashboardCards.kt`](android/app/src/main/java/uk/oli/fittrack/ui/today/DashboardCards.kt)
-  renders the website's dashboard on the phone — LOAD (CTL/ATL/TSB + form in
-  words + 7-day delta, `/cycling/training-load`), THIS WEEK (from the log and
-  rides, with a 28-day line), TODAY SO FAR (`/dashboard/today`), READINESS +
-  sleep debt (`/metrics/readiness`, `/metrics/sleep-debt`), GOALS (`/goals`,
-  progress from the starting value) and RECENT (lifts and rides merged). Data
-  comes from [`net/DashboardApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/DashboardApi.kt),
-  four independent fetches that each fail alone. The plan and the verdict stay
-  **above** the review — the opposite of the website, because Today's job is to
-  say what you are doing.
-- **AI analysis**: the session detail asks for the cached analysis (`GET
-  /lifting/sessions/{id}/ai-analysis`, JSON `null` before one exists) and can
-  generate one (`POST`, on a 120 s client because a model is reading the
-  session). The text is cached per session in the view model; `501` is surfaced
-  as the reason on the button.
-- **Records**: `GET /lifting/prs` is read ([`net/PrApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/PrApi.kt)),
-  including the manual PRs that have no session behind them, and `POST
-  /lifting/prs` types one in. Progress lists them above the computed bests with
-  a "manual" badge — a typed number and a proven one must not look the same.
-- **Analytics**: [`domain/Analytics.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Analytics.kt)
-  computes eight Monday-based weeks of volume, volume by focus (with an "Other"
-  tail) and the most-trained lifts from the cached history — no `/charts` calls,
-  no network, warm-ups excluded. Same rule as Progress: it cannot disagree with
-  the log it is drawn from.
-- **Body tab**: bodyweight from `GET /metrics/weight?days=90`
-  ([`net/BodyApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/BodyApi.kt),
-  [`ui/body/BodyScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/body/BodyScreen.kt)):
-  latest weigh-in, 30-day change, the **7-day rolling average** as a line, and
-  the weigh-ins with their source. `POST` logs one (the API upserts by date) and
-  `DELETE` removes only a `manual` entry. 20–400 kg is enforced before sending.
-- **Ride tab is the cycling page**: [`ui/ride/RideScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/ride/RideScreen.kt)
-  replicates the website's `/cycling` — seven-day tiles with the server's trend
-  arrows (`GET /cycling/metrics-summary`: TSS, rides, km, time, elevation, FTP and
-  W/kg), the power curve and its CP/W'/Pmax fit (`/cycling/power-curve`,
-  `/cycling/power-model`), time in zones (`/cycling/power-zones?days=30`), FTP
-  history with the change and VO2max (`/cycling/ftp-history`, `/cycling/vo2max`),
-  then the rides from `GET /activities`. Data comes from
-  [`net/CyclingApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/CyclingApi.kt):
-  six independent fetches that each fail alone, so a rider with no power meter
-  still gets the summary and the list. Read-only — a ride comes from Strava or
-  Komoot, and the phone is not where it gets edited.
-- **Goals page**: [`ui/goals/GoalsScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/goals/GoalsScreen.kt)
-  replicates `/goals` — every goal with progress from its starting value, a
-  check-in form and history per goal, status changes (achieved/archived/
-  reactivate), delete, and a create form whose metric chips come from
-  `GET /goals/metrics` (a metric that needs a filter is not offered, because the
-  phone cannot fill one in). Data and writes live in
-  [`net/GoalsApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/GoalsApi.kt).
-  Reached from You and from the dashboard's GOALS card. **One goal model**:
-  [`domain/Goals.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Goals.kt)
-  `Goal` is what both the dashboard card and this page use, so their percentages
-  cannot disagree.
-- **Routes page**: [`ui/routes/RoutesScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/routes/RoutesScreen.kt)
-  replicates `/routes` as a **shape-led atlas**: every route is drawn from its
-  own `preview_polyline` ([`domain/Polyline.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Polyline.kt)
-  decodes Google's format, `normalise` keeps the aspect at the route's latitude),
-  because a shape is what tells one route from another and it needs no tiles, no
-  key and no signal. Filters (All / Loops / Unridden / Favourites), favourites
-  first then longest, and tapping one shows locality, loop/point-to-point,
-  surface, quality and whether it is starred. Data from
-  [`net/RoutesApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/RoutesApi.kt).
-  Reached from You → Routes. The web's map, segments and duplicate-maintenance
-  screen are deliberately not here.
-- **Editing a plan day**: Train › Week rows carry `edit` for any day the server
-  gave an id to, opening [`ui/train/PlanDayEditScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/train/PlanDayEditScreen.kt):
-  sport, focus, the exercise list (name / sets / reps / kg, add and remove) and
-  notes, saved as **one** `PATCH /training-plans/{id}/days/{day}` through
-  `PlanApi.saveDay`. Only the changed fields go in the body, so a focus edit
-  cannot rewrite the prescription. A refusal (409 — the date already holds
-  another session of that sport) is shown verbatim above the button; success
-  reloads the week and today and pops the screen. This is the phone's only
-  writing surface into a plan: the website keeps the full editor, program matrix
-  and block tools.
-- **Health and calendar**: [`ui/health/HealthScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/health/HealthScreen.kt)
-  holds both. **Health** is four answers, not ten charts: recovery (score/HRV/RHR
-  from `/metrics/readiness`, shared with the dashboard), sleep debt
-  (`/metrics/sleep-debt`), sleep timing (`/metrics/sleep-consistency` — its score,
-  spread and average bedtime) and breathing rate (`/metrics/respiratory-rate`,
-  with the change against the baseline). **Calendar** is a Monday-first month
-  grid from `GET /activities/calendar?start_date=&end_date=`: a lift dot, a ride
-  dot and a recovery tint per cell, month paging (`‹ This month ›`), and tapping
-  a day opens its entries plus recovery/sleep/HRV/RHR/strain. Data lives in
-  [`net/HealthApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/HealthApi.kt),
-  which reuses the dashboard's readiness and sleep debt rather than fetching
-  them twice under a different key. Reached from You.
-- **Not built yet**: nothing is a placeholder any more. The lifting matrix is
-  complete (phase list P0–P20 in
-  [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the
-  device pass has run, and plan *editing* is deliberately left to the website.
+**Android** (`android/`): native Kotlin + Compose, v0.1 — the gym flow, not a web
+port. Build with `gradle :app:assembleDebug` from `android/`; rules live in
+`SessionEngine`; full feature map in [`docs/ANDROID.md`](docs/ANDROID.md).
 
 ## Architecture
 
@@ -272,28 +99,25 @@ Quick reference maps in each package — use these for orientation before readin
 ### Authentication (two systems bridged)
 
 1. **Frontend**: NextAuth.js (Google/GitHub OAuth) → `signIn` callback checks email allowlist → `jwt` callback calls `POST /api/v1/auth/sync-user` → gets JWT → stored as `token.backendToken` → `session()` callback copies to `session.backendToken`
-2. **Backend**: JWT via [`create_access_token()`](backend/app/services/auth.py:24) (7-day HS256). [`get_current_user`](backend/app/services/auth.py) decodes `Authorization: Bearer <token>`
-3. **Fitness integrations**: Separate OAuth flows → [`/api/v1/auth/oauth/{provider}/authorize`](backend/app/api/auth.py:115) → tokens stored in [`OAuthConnection`](backend/app/models/user.py:88)
+2. **Backend**: JWT via [`create_access_token()`](backend/app/services/auth.py) (30-day HS256). [`get_current_user`](backend/app/services/auth.py) decodes `Authorization: Bearer <token>`
+3. **Fitness integrations**: Separate OAuth flows → `/api/v1/auth/oauth/{provider}/authorize` ([`backend/app/api/auth.py`](backend/app/api/auth.py)) → tokens stored in `OAuthConnection` ([`backend/app/models/user.py`](backend/app/models/user.py))
 
 ## Key Algorithms & Thresholds
 
 See [`docs/algorithms.md`](docs/algorithms.md) for scoring algorithms, TSS/CTL/ATL formulas, chart system, and specialised algorithms (VO2max, decoupling, workout planner, encryption, lifting TSS). Full Celery task list in [`backend/app/tasks/scheduler.py`](backend/app/tasks/scheduler.py).
 
-## Database (46 tables, UUID PKs)
+## Database
 
-| Parent | Children | Link |
-|--------|----------|------|
-| `User` | `OAuthConnection`, `Activity`, `LiftingSession`, `DailyMetric`, `SleepLog`, `PersonalRecord`, `HealthAlert`, `HealthEvent`, `WarmupTemplate`, `Route`, `FtpHistory`, `WeightLog`, `Goal`, `TrainingPlan`, `Event`, `LlmAnalysis`, `Exercise`, `Notification`, `LiftVideo`, `LiftVideoAnalysis`, `RpeCalibration`, `RideFuelPlan`, `CrossDomainInsight`, `PushSubscription`, `AthleteInsight`, `UndoLog` | has many |
-| `User` | `CyclingProfile` | has one |
-| `Activity` | `ActivitySource`, `ActivityStream` | has many |
-| `Activity` | `LiftingSession`, `Route` | optionally linked |
-| `LiftingSession` | `LiftingSet` | has many |
-| `Route` | `RouteSource`, `RouteTag` (via `RouteTagging`), `Segment`, `RouteQuality` | has many / one |
-| `RouteCollection` | `RouteCollectionItem` | has many (manual + smart JSON rules) |
-| `WarmupTemplate` | `WarmupTemplateStep` | has many |
-| `TrainingPlan` | `TrainingPlanDay` | has many |
-| `Goal` | `GoalCheckIn` | has many |
-| `User` | `StravaWebhookEvent` | has many (async webhook queue) |
+**57 tables, UUID PKs**; every model must be registered in `app/models/__init__.py`
+(import **and** `__all__` — pitfall 14). The authoritative model and relationship
+map is [`backend/app/models/CODEMAP.md`](backend/app/models/CODEMAP.md). Core
+shape:
+
+- `User` → activities, lifting sessions, daily metrics, goals, plans, routes, events
+- `Activity` → sources/streams; optionally one lifting session and one route
+- `LiftingSession` → sets, ordered by `order_index` (pitfall 30)
+- `Course` → routes → rides (`Activity.route_link_status` must be `confirmed`)
+- `TrainingPlan` → days + stored blocks; `Goal` → check-ins
 
 ## Modal Intelligence Platform
 
@@ -334,51 +158,55 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 - **PWA**: `manifest.ts` + `public/sw.js` + `PwaRegister.tsx`. Runtime caching (no build-time precache). SW registers in production only. **API calls must be network-only** (not cached).
 - **Error boundary**: [`ErrorBoundary`](frontend/src/components/ui/ErrorBoundary.tsx) wraps all app pages
 
-## Critical Pitfalls
+## Critical Pitfalls — index
 
-1. **Celery tasks must use `asyncio.run()`** with a fresh DB session via `task_session()` — workers are synchronous
-2. **NextAuth `jwt` callback token sync timing**: Calls `POST /api/v1/auth/sync-user` with a backoff (`SYNC_RETRY_BACKOFF_S = 3600s`). If sync fails, `token.backendToken` stays stale → every API call 401s until the next retry window (up to 1 hour). The `signIn` callback only checks the email allowlist — it does NOT call sync-user.
-3. **`docker compose exec` doesn't work**: Use `python fittrack.py exec backend <command>`
-4. **Frontend `API_BASE_URL` must be `''`**: Client fetches use relative URLs. **Never** set `NEXT_PUBLIC_API_URL` to a full URL
-5. **OAuth `redirect_uri` must match exactly**: Backend must use same URL via `settings.public_url`. ⚠️ NextAuth v4 builds redirect_uri as `<NEXTAUTH_URL>/callback/<provider>` — `NEXTAUTH_URL` MUST include `/api/auth` (e.g. `https://oliradlett.co.uk/fittrack/api/auth`), otherwise Google returns `redirect_uri_mismatch`
-6. **Alembic numbering**: Revisions are sequential `"001"`→head. Filenames don't always match revisions — `003_add_pr_notes.py` carries `revision = "004"`. Trust `revision`/`down_revision` headers, not filenames
-7. **EncryptedString**: OAuth tokens are encrypted in DB. `decrypt_token()` falls back to raw value for non-Fernet ciphertext (pre-migration rows)
-8. **Token refresh commits immediately**: `refresh_connection()` commits rotated tokens/health state on its own so a later per-user rollback can't discard them. It also `SELECT … FOR UPDATE`s the row — don't "optimise" that away
-9. **Webhook POSTs are queued, not processed**: `POST /webhooks/strava` only HMAC-verifies (empty secret → 503) and persists to `strava_webhook_events`; the `process_strava_webhook_events` Celery task drains the queue. Add new event handling in `app/services/strava/webhook_queue.py`, not inline
-10. **ServiceWorker must not cache API responses**: Use `event.respondWith(fetch(request))` network-only for `/api/v1/` paths. Always return a `Response` object in `.catch()` — never `undefined`. Bump `CACHE_NAME` to force SW update on fixes
-11. **React Query `enabled: !!token` required for auth queries**: Without this, queries fire before `session.backendToken` is ready, causing 401s that SWs swallow
-12. **Remove IntersectionObserver for essential queries**: Lazy-loading via `enabled: visibleSections.has('powerCurve')` causes intermittent data not loading. Core power data, daily TSS, and weight trends should load eagerly
-13. **FastAPI route ordering**: Register static single-segment routes (`/tags`, `/collections`, `/quality`, `/duplicates`, `/orphans`) **before** any `/{param}` dynamic route in the same router, else `422`. ⚠️ "Before" means above the *earliest* dynamic handler, wherever it sits — not grouped with the other static routes at the bottom of the file. In `api/routes.py`, `PATCH /{route_id}` lives mid-file at line 831, so `/orphans` was first added beside `/duplicates` near the end (following the file's own comment) and was shadowed by it: the endpoint existed, the docs said it was ordered correctly, and the request 422'd. A test that asserts the *index* of `/orphans` in the decorator order catches this; one that asserts the handler is defined catches nothing
-14. **New models must be registered in `app/models/__init__.py`**: A model class not imported into `__init__.py` is invisible to `Base.metadata.create_all()` → `UndefinedTableError` at runtime. Add to both the import **and** `__all__`
-15. **Modals must portal to `document.body`**: `Modal` sets `<main inert>` while open — rendering a dialog inside `<main>` makes it inert too (clicks/inputs dead). Always `createPortal(dialog, document.body)`
-16. **Modal remote workers must import only stdlib at module scope**: Each compute integration decorates a module-global worker; Modal imports the whole module in a bare image. An `app.config` import at module scope drags in `pydantic_settings` (not installed) → crash-loop. Keep app/config imports inside functions (`_modal_configured`). Guarded by `tests/test_modal_workers.py::test_worker_modules_import_without_config_or_pydantic`
-17. **Modal module mounting**: Every module a Modal function imports must be mounted into its image via `_get_modal_image` `add_local_file`s in `modal_client.py`
-18. **`extract_pose_track` lists are index-aligned**: `world` is `None`-padded to match `landmarks`/`timestamps`. Never use `if world:` — guard on `any(w is not None for w in world)`
-19. **Bilateral weights are per-arm, always**: Dumbbell/dual-handle-cable moves log ONE implement (`PER_ARM_EXERCISES` + `weight_convention()` in `exercise_db.py`, migration 072). New bilateral exercises go in the set, not ad-hoc halving
-20. **Caddy routing**: [`Caddyfile`](infra/Caddyfile) routes `/fittrack*` → frontend (with `/api/auth*` redirected to `/fittrack` for NextAuth basePath), `/api/v1/*` → backend, `/health` → backend
-21. **Purge migrations must use provenance, not a mutable field**: Migration 085 deleted legacy Wahoo rows by filtering on `activities.source = 'wahoo'`, but rows that had already been merged with Strava had `source` flipped to `'strava'` — so 28 mislabelled rows survived. Filter on `EXISTS (FROM activity_sources WHERE provider = 'wahoo')` instead — migration 087 does exactly that, fixing the 28 survivors forward (085 is already applied to `prod`, so editing it would be a no-op). Migration 087 also added `sport_type` to `_MERGE_FIELDS` so a higher-priority provider (Strava) correcting a lower-priority one (Wahoo) happens at sync time, not just in a one-off migration.
-22. **Dialect types need the dialect import**: `sa.JSONB()` does not exist — `JSONB` lives in `sqlalchemy.dialects.postgresql`, so write `from sqlalchemy.dialects import postgresql` and use `postgresql.JSONB()`. Migration 087 shipped with `sa.JSONB()`, which raised `AttributeError` under `alembic upgrade head`; because alembic uses **transactional DDL**, that reverted the *entire* migration and left `prod` at revision 086 while the code shipped as 087 — code declaring `activities.road_match*` columns that did not exist, and a Celery task filtering on them. `sa.UUID()`, `sa.JSON()`, `sa.Text()` are fine at top level (SQLAlchemy 2.0 exports those). Guarded by `tests/test_migration_dialect_types.py`, which AST-walks the whole chain — a `downgrade`/`upgrade` round-trip cannot catch this, because it only re-exercises migrations already applied everywhere. **A failed Deploy run means a half-applied release**: read the run, don't assume the merge deployed.
-23. **Backend tests run host-side, not via `exec`**: the `backend` service has no volume mount (code is baked into the image), so `python fittrack.py exec backend pytest` tests the *image* and silently cannot see test files you just wrote — it reports `file or directory not found`. Run `python -m pytest tests/ -q` from `backend/` on the host, with CI's env vars set (`SECRET_KEY`, `DEBUG=true`, `DATABASE_URL`, `TEST_DATABASE_URL`, `REDIS_URL`; see `.github/workflows/test.yml`). A worktree needs `.env` copied in, since it is gitignored.
-24. **A migration can be stamped without ever having run**: a table built by `create_all()` before the migration existed gets stamped by a later `alembic upgrade`, and the migration believes it created a table it did not. `lift_video_analyses` had exactly this shape — model expected `video_count`, production had `sample_count`, and 053's unique index was absent (that missing index is the tell). The resulting `UndefinedColumnError` **aborts its transaction**, so the follow-on query fails with `current transaction is aborted` and names the *wrong table* — always read further up the log for the real cause. Fixed by migration 090, whose test cross-checks the migration against the model so the two cannot drift again. **Edit nothing that is already applied**; add a forward migration.
-25. **Compare directions before asserting symmetry in a geometry gate**: §4's detour test is *one-directional* (ride vs course). Run symmetrically it asks how far the course strays from the ride, so a 6.7 km lap of a 20 km course measured 13.3 km of false divergence and was rejected. When a gate compares two things that are not interchangeable, decide which is the reference and assert that direction in a test.
-26. **`ALLOWED_SPORT_TYPES` is an allowlist, and empty means allow-all**: ingestion is gated in `app/services/sport_filter.py`, consulted *before* duplicate detection at every provider (a blocked sport merged onto a live activity would rewrite its `sport_type` and undo the purge). Blank must degrade open — otherwise a typo silently stops all syncing, and the symptom (an empty dashboard) gives no hint that config is at fault.
-27. **Neither workflow has `workflow_dispatch`**: a `prod` push that registers no CI run cannot be retried cleanly, and the only lever is a no-op commit. Add `workflow_dispatch` to `test.yml` and `deploy.yml` — it happened once during the quarantine release and cost a stray empty commit on `prod`.
-28. **Assigning `None` to a `JSONB` column writes JSON `null`, not SQL `NULL`**: SQLAlchemy defaults to `none_as_null=False`, so the Python value `None` is serialised as the JSON value `null`. `IS NULL` does not match it. The road-match and terrain columns are cleared by assigning `None` (when geometry changes, and in `merge_routes`) and the map-matching tasks select on `WHERE road_match IS NULL`, so a cleared row was silently never re-matched. **No unit test can see this** — the attribute reads back as `None` either way; only a round-trip through Postgres as raw SQL distinguishes them. Five columns now declare `JSONB(none_as_null=True)` (`Route.road_match`/`road_embedding`/`terrain_classification`, `Activity.road_match`/`road_embedding`) and migration 092 repairs the rows already written — the two halves have to move together, and `tests/test_json_null_migration.py` fails if they drift. Deliberately *not* applied to all ~50 JSONB columns: a column holding a real JSON `null` inside a document must keep it.
-29. **An "exclude from X" filter is load-bearing for every other X** — ask what else `X` gates before adding one. `active_routes_clause()` was added to `find_duplicate_route` by the quarantine feature itself (`b18ba3e`) to keep quarantined routes out of *matching*. It also made them invisible to *dedupe*, and since sync looks a route up by source id first and geometry second, a quarantined route whose id was stored in a second spelling fell through both and got **recreated from scratch**. Twelve Komoot tours ended up stored twice — nine of them by one 18:00 sync — and in eight the live row was the newer one, i.e. merges the user had already performed were silently reverted. Quarantine means "set aside", not "no longer exists". The distinction is now encoded in `find_identical_geometry_route`, which is consulted *before* `find_duplicate_route` and can see quarantined rows; it matches on byte-identical `encoded_polyline` **and** `distance_meters`, so it cannot fire on a sub-section of a longer route. Guarded by `tests/integration/test_identical_geometry_dedupe.py`, including a re-sync regrowth test and a sub-section false-positive test. When adding a filter, check whether the excluded set is *also* the set something else needs to reach.
-30. **`now()` is the transaction timestamp, so it cannot order rows written together**: Postgres `now()` returns the *transaction* start time, so every row inserted by one request carries an identical `created_at`. Ordering a collection by `created_at` is therefore a coin flip for anything created in a single call — `LiftingSession.sets` did exactly this, and `api/export.py` worked around it by re-sorting alphabetically by `exercise_name` on export. An explicit `order_index` column is the fix; `LiftingSet.order_index` (migration 093) and the relationship's `(order_index, created_at, id)` order make it deterministic, with `created_at`/`id` as tiebreaks for un-backfilled rows.
-31. **A dedup key that can be NULL needs a PARTIAL unique index**: `unique(user_id, import_fingerprint)` over thousands of NULL provider rows is a constraint on NULLs that does not mean what you want. `activities.import_fingerprint` (migration 094) uses `postgresql_where=sa.text("import_fingerprint IS NOT NULL")`.
-32. **A row-returning lookup that a caller will enrich must eager-load**: `services/import_dedup.py` returns an `Activity` that `_enrich_activity_read` reads `route`/`sources`/`lifting_session` off; lazy loading is illegal in async, so the duplicate path 500'd while the create path (which re-queries with `selectinload`) did not. Same shape as pitfall 19's `.data` warning.
-33. **The integration `db_session` fixture is committed out from under itself**: `get_db` is overridden to yield `db_session`, and `get_db` *commits* on a successful request — so any integration test that calls an endpoint commits the fixture's wrapping transaction. Teardown therefore cannot rely on `Base.metadata.drop_all`'s inferred ordering. The fixture now does `DROP SCHEMA public CASCADE` + `CREATE SCHEMA public`, which is order-independent. CASCADE is strictly more destructive than the `drop_all` it replaced, so `_assert_is_test_database` refuses unless the DB name contains "test" — a tripwire against the obvious mistake, not a proof. A bare `rollback()` inside a test is equally destructive; use `begin_nested()` for a scoped undo.
-34. **A migration revision number is not branch-local**: pitfall 6 warns that filenames need not match revisions; this is the worse one — while a branch is open, `main` can ship *the same* revision number. This branch wrote 092/093/094; `main` shipped `092_json_null_to_sql_null` in flight, so two files claimed `revision = "092"` and alembic failed with `KeyError: '092'` from `get_heads()` — no head, so *every* migration command fails, `current` included, which reads as a corrupt environment rather than a duplicate number. Check `git ls-tree origin/main backend/alembic/versions/` for numbers at or above your base before assuming your chain resolves, and renumber **your own** file rather than editing the trunk's. Renumbering an *unreleased* migration is safe and is not what pitfall 24 forbids (that covers *applied* revisions) — but only after confirming it was never pushed and never applied to a shared database. Cheap to check at branch-start, expensive to discover at PR time.
-35. **Pitfall 13 is about *colliding path shapes*, not registration order generally**: the rule bites when a **single-segment** static route (`/tags`, `/orphans`, `/climbs`) competes with a single-segment dynamic one (`/{param}`). `/climbs/{geo_cluster_id}` vs `/{segment_id}` does **not** collide — two segments versus one, and `[^/]+` cannot span a slash, so the dynamic route is never a candidate and order is irrelevant. The §3 spec asserted the ordering requirement anyway; building a router in the wrong order and getting a 200 from the specific handler proved it wrong, so the code asserts the *shape* instead, and a test shows the single-segment variant genuinely is shadowed. An ordering assertion there would have locked the over-caution in permanently while checking nothing.
-36. **A pure clustering key and a persisted one have different stability requirements**: `segments.cluster_id` comes from DBSCAN over gradient/length/gain *shape* with **no coordinates**, so it answers "which climbs train alike" — the right primitive for borrowing efforts in `_predict_segment_effort`, and the wrong one for identity. `segments.geo_cluster_id` is the geographic answer, and its key (smallest member id) shifts whenever membership changes. That is fine *only* because every reader groups by the current value; persisting it therefore requires carrying it across `sync_route_segments`'s delete-and-recreate via an **explicit allowlist** (`_CARRIED_FIELDS`) — an automatic "every non-geometry column" rule would eventually copy a recomputed leaderboard total and serve stale data.
-37. **`SegmentEffort.is_pr` was assigned nowhere**: the column existed in the model, schema and read path but was never written, so the PR badge could never render. The general shape — a denormalised column that is read and displayed but has no writer — is invisible to type checking and to tests that build rows directly rather than through the code path that should set it.
-38. **The pre-commit hook is ruff-only, not a test runner**: `.githooks/pre-commit` lints staged backend Python and fails open when ruff is absent. CI is the authority for the test suite. An earlier belief that the hook ran pytest (and exported local test defaults) was stale; do not rely on a local commit to catch a test regression.
-39. **`asyncio.gather` on one `AsyncSession` is not a concurrency test**: SQLAlchemy serialises both coroutines onto a single connection, so the second one always observes the first one's writes and the test passes against the very bug it exists to catch. `UndoLog`'s claim-before-restore ordering (§8) was guarded by a `gather` "race" that **passed when the claim was moved after the restore** — a false green. The fix is a test that is concurrent *in shape*: a restorer that re-enters `undo` for the same claim, which can only be refused if the claim is already visible. Removing the early claim entirely makes that test fail, which is how it was verified.
-40. **A JSONB payload is JSON-native on the way back out, not just in**: a `uuid.UUID` written to `UndoLog.payload` returns as a `str`, so a restorer that skips `uuid.UUID(value)` works in-process and fails the first time it reads a real row. `record_undo` now proves the round-trip with `json.dumps` and names the offending payload, rather than letting it surface as a driver-level `TypeError` at flush time — after the operation that wrote it has already run.
-41. **Order by `(created_at, id)`, and do not claim insertion order**: two rows written in one transaction share `created_at` (pitfall 28), so `created_at DESC` alone is a coin flip. The id tiebreak makes the order *total and stable across calls* — which is what a list driving an undo button needs. It does **not** recover insertion order and cannot: random UUIDs carry no sequence. Say so in the code rather than letting a reader assume the tiebreak implies chronology.
-42. **A composite verdict must report the engines that stayed silent, or it reads as unanimous**: `/today` composed five recommendation engines and emitted a `consensus[]` row only for those that had something to say. With no active plan and no cross-domain run — most users, most days — the result was a three-row consensus that read as agreement. Every engine now emits a row, and one that is silent or degraded emits `available: false` with the reason. The test for this is that the row count is constant, not that the values are right; removing a single unavailable row fails 3 of the 25.
-43. **Degrade per-component when a response is a composite**: `compute_today_verdict` wraps each engine independently so one broken weekly job cannot cost the user the whole verdict, and the endpoint has a second, outer fail-open that nulls `verdict` rather than 500ing. `/today`'s job is to answer "what today", and an endpoint that errors has not answered it — the page falls back to the legacy rest-only banner and then to the client-side verdict.
+Full detail in [`docs/PITFALLS.md`](docs/PITFALLS.md). Numbering is stable; code,
+plans and reviews cite "pitfall N". Read the full entry before changing the area
+it names.
+
+1. Celery tasks: `asyncio.run()` + `task_session()`.
+2. NextAuth `jwt` sync failure leaves a stale `backendToken` (401s up to 1h).
+3. `docker compose exec` doesn't work — use `python fittrack.py exec`.
+4. Frontend `API_BASE_URL` must be `''`; never set `NEXT_PUBLIC_API_URL`.
+5. OAuth `redirect_uri` must match `settings.public_url`; `NEXTAUTH_URL` includes `/api/auth`.
+6. Alembic: trust `revision`/`down_revision`, not filenames.
+7. `EncryptedString`: `decrypt_token()` falls back to raw pre-migration ciphertext.
+8. Token refresh commits immediately and `SELECT … FOR UPDATE`s the row.
+9. Webhook POSTs are queued; drain via `process_strava_webhook_events`.
+10. ServiceWorker: API calls network-only; `.catch()` must return a `Response`.
+11. React Query auth queries need `enabled: !!token`.
+12. Don't IntersectionObserver-gate essential queries.
+13. FastAPI: single-segment static routes precede `/{param}` — check the *earliest* dynamic handler.
+14. Register new models in `app/models/__init__.py` (import + `__all__`).
+15. Modals portal to `document.body` (`<main inert>`).
+16. Modal workers: stdlib imports only at module scope.
+17. Modal: mount every imported module in `_get_modal_image`.
+18. `extract_pose_track` lists are index-aligned; guard on `any(w is not None ...)`.
+19. Bilateral weights are per-arm; add to `PER_ARM_EXERCISES`.
+20. Caddy routing: `/fittrack*`, `/api/v1/*`, `/health`.
+21. Purge migrations filter on provenance (`activity_sources`), not mutable `source`.
+22. Dialect types need the dialect import (`postgresql.JSONB()`); transactional DDL means a failed migration is a half-release.
+23. Backend tests run host-side, not via `exec` (image is stale).
+24. A migration can be stamped without running; edit nothing applied, add a forward migration.
+25. Geometry gates: decide the reference direction before asserting symmetry.
+26. `ALLOWED_SPORT_TYPES` empty = allow-all; blank must degrade open.
+27. A `prod` push with no CI run can't be retried — keep `workflow_dispatch` on both workflows.
+28. `None` → JSONB writes JSON `null`; use `none_as_null=True` where NULL is meaningful.
+29. An "exclude from X" filter is load-bearing for every other X.
+30. `now()` is the transaction timestamp; order with an explicit `order_index`.
+31. Nullable dedup keys need a PARTIAL unique index.
+32. Row-returning lookups that get enriched must eager-load.
+33. Integration `db_session` is committed out from under itself; teardown drops the schema.
+34. A migration revision number is not branch-local; check `origin/main` before renumbering.
+35. Pitfall 13 is about colliding path shapes, not registration order generally.
+36. Pure clustering keys and persisted keys have different stability requirements.
+37. `SegmentEffort.is_pr` was read but never written — denormalised columns need a writer.
+38. The pre-commit hook is ruff-only, not a test runner.
+39. `asyncio.gather` on one `AsyncSession` is not a concurrency test.
+40. A JSONB payload comes back JSON-native (UUID → str).
+41. Order by `(created_at, id)`; it does not recover insertion order.
+42. A composite verdict must report silent engines.
+43. Composite responses degrade per component.
 
 ## Development Lessons
 
@@ -391,137 +219,11 @@ Serverless containers handle compute-heavy features. Data flows in via JSON args
 
 ## Active Planning
 
-**Routes atlas** — [`plans/routes-atlas-2026-11-05.md`](plans/routes-atlas-2026-11-05.md)
-replaces the Routes IA: **Browse** (a map that draws every route as a line, a
-shape-led list, one-scroll detail, facet/sort URL state) and **Maintain**
-(library health). The list API carries **`RouteSummary.preview_polyline`** — a
-display-only ~90-point shape (`polyline_utils.preview_polyline`); the full
-polyline stays on `GET /routes/{id}` for GPX/3D/matching. Duplicate scanning is
-a **background job** (`services/route_similarity.py`): `POST
-/routes/duplicates/refresh` queues it, `GET /routes/duplicates/status` reports
-`never/queued/running/ready/failed`, and `GET /routes/duplicates` never scans on
-read. Route intelligence: the Komoot surface parser now reads the real
-`summary.surfaces` list, so **surface 50/86** (Komoot; OSM map-matching now
-carries `surface` tags and fills the gap when the road graph runs) and **terrain
-86/86** — Strava writes no elevation profile, so `services/route_elevation.py`
-resamples the source activity's altitude stream onto the route; quality is
-**86/86**. `services/route_intelligence_refresh.py` backfills profiles,
-classifies missing terrain and rescores quality after sync/import (and `POST
-/routes/intelligence/refresh`); the composite is effort 40 / terrain 35 /
-completeness 25 with popularity and surface as zero-weight context. The detail
-shows terrain and surface; the page renders no quality controls. Audit:
-[`docs/route-intelligence-audit-2026-11-05.md`](docs/route-intelligence-audit-2026-11-05.md).
-Evidence lives in [`prototype/routes/`](prototype/routes/README.md).
-
-**Route courses** — [`plans/route-courses-2026-11-05.md`](plans/route-courses-2026-11-05.md).
-The model is **Course → Route → Ride**: `Course` is the identity, `Route` is a
-concrete variant (geometry, direction, start/end, provider sources), `Activity`
-is the ride. Migration **117** adds `courses` + `routes.course_id` +
-`course_link_log` and backfills **one course per existing route** (1:1); it does
-not group variants or delete routes. Migration **118** adds
-`activities.route_link_status/source/confidence/confirmed_at`; every existing
-ride→route link is backfilled **`suggested` + `legacy`** because those links
-came from the WIP matcher. Course history/PRs must read `confirmed` only.
-Migration **119** stores durable suggestion dismissals; the suggestion query
-skips both pair orientations. Grouping is an `UPDATE routes SET course_id`, not
-a merge; `merge_routes` stays
-for identical variants. The API is `/api/v1/courses` (`GET/POST /`, `GET
-/uncoursed`, `GET /suggestions` (review-tier pairs from `route_similarity`), `GET /merge-candidates` (same-name courses below the geometry floor),
-group/ungroup under `/{course_id}/routes/{route_id}`, merge
-`/{target_id}/merge/{source_id}`, `PATCH /{course_id}` (rename), list dismissed suggestions at
-`/suggestions/dismissed`, dismiss/restore a pair at
-`/suggestions/{a}/{b}/dismiss`, confirm/reject at
-`/ride-links/{activity_id}/...`, manual pickers at `/routes/search` and
-`/rides/search`, and a manual confirmed link at `/ride-links/{activity_id}/link`);
-the UI is `/courses` (More → Courses),
-built on `lib/api/courses.ts`. The 86-route investigation (11 cached pairs,
-start-offset collapse, 86 → 79 grouping) lives in `prototype/route-merging/` on
-the main worktree and is not merged.
-
-**Data-integrity programme** (branch `feature/data-integrity-2026-10`, Waves 0–4 landed;
-Waves 0–2 merged to `main` as PR #234, Waves 3–4 in review). Nine specs in
-[`plans/`](plans/) from a re-baselined brainstorm, plus
-[`plans/2026-10-01-data-integrity-integration-plan.md`](plans/2026-10-01-data-integrity-integration-plan.md)
-for sequencing and the cross-section conflicts. Every one of those specs named a *missing
-feature* that turned out to be shipped with a silent correctness defect underneath — import
-existed but produced load-invisible rides, offline writes existed but one bad set could
-wedge a workout, undo existed but never retracted its announcement. Read the integration
-plan first: it decides CSV import and the `exercise→FK` migration (both rejected) and
-records that §1 must not ship before §5.
-
-Wave 3 (`UndoLog`, §8) landed the mechanism: `models/undo.py` + `services/undo.py`
-(typed per-kind restorers, claim-before-restore, 30-day `expires_at`, daily prune task).
-**At Wave 3 it had no HTTP surface and no registered production kind** — `RouteMergeLog` was
-deliberately *not* migrated onto it, because that would impose a 30-day expiry on a
-working, tested undo. Wave 4 (§1 unified daily verdict) landed `services/today.py`:
-five engines composed with a `consensus[]` that reports silence as `available: false`.
-**New migrations continue from `120`** — main's head was `116` (`provider_webhook_events`);
-this branch adds `117` courses, `118` link trust and `119` suggestion dismissals, so this
-branch's head is `119`. `096` is `undo_logs`, and this branch was renumbered **four times**
-in one sitting because `main` kept claiming the numbers (pitfall 34). Check
-`git ls-tree origin/main backend/alembic/versions/` immediately before renumbering, and again
-before opening the PR.
-
-**Training page overhaul** — [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md)
-(IA + editor) with companion [`plans/training-strength-programming.md`](plans/training-strength-programming.md)
-(programming). Removes the Build/Week editor split in favour of **one Plan mode** (instant field
-edits + atomic Move/Swap/Add/Delete operations), a plan spine with **Plan · Review · Peaks** modes,
-and a **Program matrix** for multi-week strength targets with weight suggestions. **Backend was in
-scope throughout, and is shipped**: Phases 0–4 (shell + the one-editor Plan mode, Review, Peaks +
-load strip, mobile), companion S1–S4 (progression engine, Program matrix, block tools, coaching
-aids), and follow-ons C1–C6 (block/phase model, generation inputs, persisted weekly reviews,
-autoregulation, propagation timing, undoable structural ops). Migrations: `099` (S1
-`strength_progression`), `101` (C3 plan-review snapshots), `102` (C1 `training_plan_blocks`).
-**C1 landed the stored block/phase model**, so the load strip's phase names are now the user's own
-blocks instead of derived guesses; **C6 gave `UndoLog` its first HTTP surface** (`/api/v1/undo`)
-plus an undoable plan-day delete. Supersedes the *scope* of
-[`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (whose V3 widgets are reused;
-its prod deploy is still open). The remaining/deferred register is §15 of the redesign plan.
-
-**2026-11 — the surface was rebuilt around coverage.** The redesign above fixed the editor and
-left the measuring stick: every phase's acceptance criterion was behavioural, so `PlanSpine` shipped
-printing `47/49 · 96%` — a denominator of *authored* days — for a plan whose written content had
-stopped nineteen days earlier. [`plans/training-overhaul-2026-11.md`](plans/training-overhaul-2026-11.md)
-records the rebuild: **Week · Plan** replaces the four-mode switch, the spine states the plan's
-*written extent*, the week is rows (one per session, so two sports on a date never overwrite), and
-conformity/adaptive/week-ahead collapse into one reconciled "What should change" panel.
-`WeeklyView`, `WeekMasterBar`, `DayCell`, `PlanSpine`, `ModeSwitch`, `LoadStrip`,
-`ConformitySummaryCard`, `ConformityTrendCard`, `LintPanel`, `UnplannedStrip` and `WeatherForecast`
-are deleted. Two e2e-harness bugs surfaced while verifying it: `playwright.config.ts` reuses port
-3000 (`reuseExistingServer`), so it can silently test *another checkout's* build; and the PWA
-service worker escapes `page.route()`, so mocked API calls leak to the real backend unless
-`serviceWorkers: 'block'`.
-
-**Jev strength-session classification** — three specs. [`plans/jev-strength-session-classification.md`](plans/jev-strength-session-classification.md)
-defines the label producer: Jev classifies **every** lifting session (note or not) into three typed axes —
-`session_split` (push/pull/legs/upper/lower/full_body), `session_lift` (squat/bench/deadlift/overhead_press/accessory)
-and `session_class` (max_strength/volume_hypertrophy/speed_power/technique/accessory_conditioning/deload/test) —
-stored on `lifting_sessions` with a deterministic rule fallback and a `taxonomy_version`, best-effort and a
-no-op when Jev is unset. The vocabularies are aligned to `TrainingPlanDay.planned_focus` on purpose, so the
-split+lift axes cover the whole planned-day vocabulary and **label-level conformance ships in Phase 1**.
-[`plans/jev-strength-labels-utilisation.md`](plans/jev-strength-labels-utilisation.md) is what the labels are
-*for* (lift coverage, push/pull balance, phase detection, deload adherence, a `today.py` engine).
-[`plans/cycling-ride-labels-utilisation.md`](plans/cycling-ride-labels-utilisation.md) is the cycling
-counterpart — deliberately leaner and mostly **non-Jev** (the semantic `purpose` tag is already shipped and
-unread; the ride-quality axis is deterministic/power-derived).
-
-**Wahoo zone sync** — [`plans/wahoo-zone-sync.md`](plans/wahoo-zone-sync.md). Pushes FTP
-into the athlete's Wahoo power zone sets so the ELEMNT colours the live zone against
-current boundaries, and pushed structured workouts resolve their %FTP targets against a
-current FTP. Exercises `power_zones_read`/`power_zones_write`, requested since the
-planned-workout push and unused until now. **Backend landed** (migration 103
-`wahoo_zone_sets`, read/push/revert under `/cycling/wahoo-zones`, triggered from the five
-FTP write sites, `wahoo_zones` notification) — boundary writes **rescale a set's own
-values by the FTP ratio** rather than imposing our zone model, so the sync moves the
-anchor and not the athlete's zone shape. **HR zones remain impossible via the API** (no
-endpoint, no scope, `user_write` cannot carry THR): the card shows local HR zones
-read-only and says so. **App-scoping is settled** (HAWahooligan precedent): the API can
-only see sets *we* created, so the feature's value rests on a one-time manual
-"assign this set to your cycling profile" step, which the card states plainly. The write
-probe also settled that `ftp` alone does not recompute boundaries, so the ratio rescale
-is required, not optional.
-
-Feature plans live in [`plans/`](plans/). Current priority order: [`plans/backlog-2026-09-20.md`](plans/backlog-2026-09-20.md) (Phases 0–5 built; remaining items tracked there). Detailed spec plans: [`plans/lift-video-tracking-v2.md`](plans/lift-video-tracking-v2.md), [`plans/lifting-redesign-plan.md`](plans/lifting-redesign-plan.md) (redesign of `/lifting` page — tabbed IA, session cards, PR timeline, plan integration), [`plans/relive-3d-redesign.md`](plans/relive-3d-redesign.md), [`plans/relive-3d-next-level.md`](plans/relive-3d-next-level.md) (Phases A–D: atmosphere, director, perf, audio shipped; WebGPU/share/montage/AI open), [`plans/v3-planning-2026-10-12.md`](plans/v3-planning-2026-10-12.md) (training page redesign — V2.1 emoji pass shipped in `33a86e9`; V3.0 weekly master bar + `DayCell`/`ConformitySummaryCard`/`PlanGoalsStrip` shipped in `520edff`; missed-day quick-actions popover shipped in `cf18415`; prod deploy open), [`plans/route-matching-phase2.md`](plans/route-matching-phase2.md), [`plans/route-laps-and-variants.md`](plans/route-laps-and-variants.md), [`plans/routes-atlas-2026-11-05.md`](plans/routes-atlas-2026-11-05.md) (Routes Browse/Maintain rewrite — `preview_polyline`, background duplicate scan), [`plans/jev-implementation-plan-2026-09-27.md`](plans/jev-implementation-plan-2026-09-27.md), [`plans/wahoo-planned-workout-push.md`](plans/wahoo-planned-workout-push.md), [`plans/underdeveloped-features-2026-09-27.md`](plans/underdeveloped-features-2026-09-27.md), [`plans/training-aid-review.md`](plans/training-aid-review.md), [`plans/training-redesign-plan.md`](plans/training-redesign-plan.md) (training page overhaul — plan spine + one Plan-mode editor; supersedes the `v3-planning` surface scope), [`plans/training-strength-programming.md`](plans/training-strength-programming.md) (companion — multi-week strength targets + weight suggestions).
+Active programmes and their status live in [`plans/README.md`](plans/README.md);
+plan documents are snapshots of intent and the code is the truth. Start there
+before feature work. Headline programmes: routes atlas + courses, the
+data-integrity programme (Waves 0–4 landed), the training surface
+(Week · Plan), Jev strength labels, and Wahoo zone sync.
 
 ## Git & Deployment Strategy
 
@@ -547,28 +249,31 @@ python fittrack.py exec backend alembic revision --autogenerate -m "desc"
 python fittrack.py migrate         # Apply migrations
 ```
 
-Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Celery: no hot-reload, restart manually.
+Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Celery: no hot-reload, restart manually. Full command reference: [`docs/RUNNING.md`](docs/RUNNING.md).
 
 **Alternative entrypoints**: `./start.sh` (Linux/macOS/WSL) and `.\start.ps1` (Windows PowerShell) are thin wrappers. See [`docs/DEPLOY.md`](docs/DEPLOY.md).
 
-## OpenCode TUI Tips
+## DSH tips
 
-- **Paste on Windows**: `Ctrl+V` works — bound to Windows Terminal's paste action.
-- **Multiline input**: Use `Shift+Enter` (requires Windows Terminal config).
-- **File references**: Use `@filename` to include file context in prompts.
-- **Quick commands**: Use `!command` to run shell commands and include output.
-- **Plan mode**: Press `Tab` to switch to Plan mode for analysis without changes.
-- **Subagent delegation**: Use `@backend`, `@frontend`, `@debugger`, `@sync-engineer`, `@production`, or `@ask`.
+- **Skills**: project skills appear in the session skill catalog; load one with
+  the `skill` tool when its description matches. Don't load them speculatively.
+- **Subagents**: see Delegation above — `subagent` / `subagent_fork`, not `@`.
+- **Deliverables**: `present` a file only when the user needs a separate
+  artifact (Office docs, PDFs, images); otherwise answer inline.
+- **Approvals**: if the profile runs with approvals disabled, a tool that would
+  need approval is rejected — don't request escalation; follow the git rules.
+- **Long work**: `todo_write` for multi-step tasks; `create_goal` only for a
+  genuinely long-running objective that should survive turns.
 
 ## graphify
 
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
+This project has a knowledge graph at `graphify-out/` with god nodes, community
+structure, and cross-file relationships. Use the `graphify` skill for the full
+pipeline.
 
 Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
+- For codebase questions, first run `graphify query "<question>"` when `graphify-out/graph.json` exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
+- Dirty `graphify-out/` files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
+- If `graphify-out/wiki/index.md` exists, use it for broad navigation instead of raw source browsing.
+- Read `graphify-out/GRAPH_REPORT.md` only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).

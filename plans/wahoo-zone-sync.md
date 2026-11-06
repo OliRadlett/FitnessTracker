@@ -1,6 +1,6 @@
 # Push power / HR zones to Wahoo (auto-adjust on FTP & LTHR change)
 
-> **Status**: Phases 1 and 2 **built** on `feature/wahoo-zone-sync` (2026-10-16) —
+> **Status**: Phases 1 and 2 **shipped** (merged to `main` and `prod`; migration 103, `services/wahoo_zones.py`, `WahooZonesCard`). Original note: built on `feature/wahoo-zone-sync` (2026-10-16) —
 > backend (migration 103, model/schemas, client read/write, `GET/POST
 > /cycling/wahoo-zones`, `POST …/push`, `POST …/revert`, the automatic trigger from the
 > five FTP write sites, the `wahoo_zones` notification) and the card on `/cycling`

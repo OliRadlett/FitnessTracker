@@ -1,5 +1,10 @@
 # Route intelligence audit — quality, terrain, surface
 
+> **Historical snapshot (2026-11-05).** This records the state before and after
+> the route-intelligence redesign. The TL;DR describes the *before* state;
+> §"Quality after the redesign" and §"OSM clarification" describe what shipped.
+> Current weights live in `services/route_quality_service.py`.
+
 **Date:** 2026-11-05 · **Scope:** the three route intelligence fields the Routes
 atlas hides, plus the OSM path behind them · **Data:** local production-shaped
 DB, 1 user, 86 routes, 118 provider sources · **Owner:** feature lead.
@@ -111,7 +116,7 @@ popularity 0.15, effort_match 0.25.
 
 - `road_match_enabled` defaults to true, but the weekly task needs Modal plus a
   `great-britain` OSM graph built into the `fittrack-osm` volume
-  (`scripts/osm_bootstrap.py --build`). Without both it is a graceful no-op →
+  (`python -m app.scripts.osm_bootstrap --build`). Without both it is a graceful no-op →
   0/86.
 - Even when it runs, `RoadEdge` keeps way id/geometry only. `surface` is an OSM
   way tag that is not retained, so matching cannot produce `surface_profile`.
@@ -208,7 +213,7 @@ activity streams. The rest is surface (Komoot-only) and completeness.
   the `surface` tag, the GeoJSON cache carries it, `RoadEdge`/`snap_polyline`
   report a length-weighted `surface_mix`, and `store_road_matches` writes it as
   `surface_profile` **only when the route has none** (Komoot wins). Activation
-  is operational: run `scripts/osm_bootstrap.py --build`, set the Modal token
+  is operational: run `python -m app.scripts.osm_bootstrap --build`, set the Modal token
   and let `map_match_routes` run. Until then `road_match` is 0/86 and surface
   stays Komoot-only.
 
@@ -253,3 +258,6 @@ activity streams. The rest is surface (Komoot-only) and completeness.
 | Terrain run (local classifier) | `prototype/routes/qa/classify_terrain.py` |
 | Quality summary / counterfactual / source split | `prototype/routes/qa/quality_summary.py`, `quality_counterfactual.py`, `quality_groups.py` |
 | Parser tests | `backend/tests/test_komoot_surface.py` |
+
+> The `prototype/routes/qa/` scripts were local evidence and are not committed;
+> the parser test is.

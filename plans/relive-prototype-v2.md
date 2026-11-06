@@ -105,7 +105,7 @@ Lake Geneva full loop, 174.8 km, 10k samples with `latlng`. See
 [`prototype/relive/DECISIONS.md`](../prototype/relive/DECISIONS.md).
 
 The keyless candidate fails the six-pose gate
-([contact sheet](../prototype/relive/qa/out/contact-sheet.png)): flat map at
+(contact sheet, not committed): flat map at
 overview, flat lake at the shore, cardboard boxes at close range, invisible
 route (MapLibre line layers are not draped on terrain), cartoon rider.
 
@@ -130,7 +130,7 @@ The demo key **does** work with the Maps JavaScript API 3D (`maps3d`,
 `gmp-map-3d`). The prototype now defaults to `?world=google3d`. Photoreal
 buildings, trees, terrain, lake, and mountains; Lausanne/Montreux and the climb
 read as places; the route polyline follows the road. Evidence:
-[contact sheet](../prototype/relive/qa/out/contact-sheet-google3d.png).
+contact sheet (not committed).
 
 Open: the rider is a `gmp-marker-3d` placeholder (the `gmp-model-3d` element
 does not load models); the close pose has no rider; the summit is an aerial;
@@ -159,7 +159,7 @@ Compared the real old `Replay3D` against the new Google 3D world on the same
 Lake Geneva ride, normalized to noon/clear and run through a full-quality
 headless harness. Evidence:
 [`COMPARISON.md`](../prototype/relive/COMPARISON.md),
-[comparison sheet](../prototype/relive/qa/out/compare-old-vs-new.png).
+comparison sheet (not committed).
 
 - Old: floating terrain slab in the real-fixture run; dark plane + tiny 3D bike
   in chase; ribbon + floating route in drone. The synthetic baseline shows the

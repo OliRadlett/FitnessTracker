@@ -1,5 +1,7 @@
 # Android device pass
 
+> **Status**: complete — the device pass ran; see `android-lifting-parity.md`.
+
 The last clause of the parity objective is *"on device test at the end of
 development"*. Every feature below is already covered by JVM tests
 (`gradle :app:testDebugUnitTest`, 174 tests) — this pass is about the things a

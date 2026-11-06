@@ -1,6 +1,6 @@
 # Strength Session Labels — Utilisation Plan
 
-> **Status**: Design plan — no code yet. Companion to
+> **Status**: **mostly shipped** — the labels are consumed by charts, `today.py`, `goal_metrics.py` and strength insights; this doc records the remaining gaps. Originally a design plan with no code.
 > [`plans/jev-strength-session-classification.md`](jev-strength-session-classification.md)
 > (which covers how `session_split` / `session_lift` / `session_class` are **produced**).
 > This doc covers what those three labels are **for**: the deterministic consumers, charts,

@@ -17,7 +17,7 @@
   buildings, trees, or place. The old route uses the summary polyline; the new
   route uses `latlng`. This is a qualitative comparison, not a pixel match.
 
-![Old vs new](qa/out/compare-old-vs-new.png)
+Old vs new (image not committed)
 
 ## Scorecard
 

@@ -25,7 +25,7 @@ Toolchain expected outside the repo: JDK 17, Android SDK 35, Gradle 8.11.1 in
 | Path | What it is |
 |---|---|
 | `app/src/main/java/uk/oli/fittrack/lab/ui/` | The screens: `TodayScreen`, `LiveSetScreen`, `SessionDoneScreen`, `NavBar`, `Tokens` |
-| `app/src/test/.../FlowShotTest.kt` | Renders frames 1–5 and asserts the primary action's size and position |
+| `app/src/test/.../AppFlowTest.kt` | Renders frames 1–5 and asserts the primary action's size and position |
 | `qa/shoot.ps1` | One command: render, collect, check contrast |
 | `qa/contrast.ps1` | Reads tokens out of `Tokens.kt`, asserts every text pair ≥4.5:1 |
 | `qa/contact_sheet.py` | Assembles `qa/out/contact-sheet-flow.png` |

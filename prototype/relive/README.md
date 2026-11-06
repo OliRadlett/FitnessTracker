@@ -128,7 +128,7 @@ GLB UVs). The studio hero is on the drive side.
 
 ## Next
 
-- **Production:** [plans/relive-3d-production.md](../plans/relive-3d-production.md)
+- **Production:** [plans/relive-3d-production.md](../../plans/relive-3d-production.md)
   — standard key/budget/terms, data contracts, fallback, mobile/accessibility,
   migration, quality gate.
 - **v1:** the chase/director film after the production viewer.

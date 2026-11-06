@@ -22,7 +22,7 @@ Step-by-step guide for adding a new fitness provider integration to FitTrack.
 
 ## Reference Implementations
 
-- **Strava** (OAuth2, full sync): `backend/app/services/strava.py`
+- **Strava** (OAuth2, full sync): `backend/app/services/strava/` + `backend/app/integrations/strava_client.py`
 - **Wahoo** (OAuth2, simpler): `backend/app/services/wahoo.py`
 - **Whoop** (OAuth2, health data): `backend/app/services/whoop.py`
 - **Komoot** (Basic Auth, routes only): `backend/app/services/komoot.py`

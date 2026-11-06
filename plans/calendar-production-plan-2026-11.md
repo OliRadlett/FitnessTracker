@@ -1,7 +1,6 @@
 # Calendar overhaul — production plan
 
-> **Status:** Phase 1 (endpoint) and Phase 2 (frontend port) landed 2026-11-05;
-> the production gate + PR are next.
+> **Status:** **shipped** — Phases 1–2 merged (PR #392, `450539b4`) and deployed to `prod`.
 > **Source artifact:** `prototype/calendar/qa/out/contact-sheet.png` — the lab lives in a
 > separate prototype worktree and is deliberately **not** merged into this branch.
 > **Decisions / references:** `prototype/calendar/DECISIONS.md`, `prototype/calendar/REFERENCE.md`

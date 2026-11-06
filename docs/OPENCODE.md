@@ -1,5 +1,10 @@
-# OpenCode TUI Configuration Guide
+# OpenCode TUI Configuration Guide (legacy)
 
+> **Legacy tooling guide.** FitTrack's primary agent harness is DSH — see
+> [`docs/DSH.md`](DSH.md). This file documents the OpenCode TUI setup, kept for
+> reference and for anyone still using OpenCode. Its commands, `@agents`,
+> permission prompts and formatter do **not** exist in DSH.
+>
 > **Purpose**: Document all custom OpenCode features, configurations, and workflows for the FitTrack project.
 
 ## Table of Contents

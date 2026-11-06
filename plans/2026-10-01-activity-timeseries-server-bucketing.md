@@ -1,5 +1,7 @@
 # Design Spec — Section 4: Server-Side Activity Time Series (kill the fabricated zero)
 
+> **Status**: implemented — `/activities` aggregates are bucketed server-side (`api/activities.py` `bucket` param).
+
 > **Date**: 2026-10-01 · **Type**: bug fix (data integrity) + feature · **Surface**: `/activities` (stats & patterns views)
 > **Origin**: brainstorm `plans/brainstorm-2026-09-30-open-agenda.md` item T2 #4, framed as
 > "the 200-activity ceiling". Re-baselined against the code: the ceiling is real but it is
