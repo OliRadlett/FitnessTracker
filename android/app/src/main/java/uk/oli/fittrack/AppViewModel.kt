@@ -68,6 +68,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val bodyApi = uk.oli.fittrack.net.BodyApi(BuildConfig.API_BASE_URL)
     private val ridesApi = uk.oli.fittrack.net.RidesApi(BuildConfig.API_BASE_URL)
     private val dashboardApi = uk.oli.fittrack.net.DashboardApi(BuildConfig.API_BASE_URL)
+    private val cyclingApi = uk.oli.fittrack.net.CyclingApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -128,6 +129,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadBrief(token)
                 loadWeight(token)
                 loadRides(token)
+                loadCycling(token)
                 loadDashboard(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
@@ -207,6 +209,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _brief.value = null
         _weightTrend.value = null
         _rides.value = null
+        _cycling.value = null
         _dashboard.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
@@ -554,6 +557,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _planFromServer.value = true
             }
             uk.oli.fittrack.net.PlanLookup.Unavailable -> Unit
+        }
+    }
+
+    /** The cycling page's numbers, for the Ride tab. */
+    private val _cycling = MutableStateFlow<uk.oli.fittrack.net.CyclingSnapshot?>(null)
+    val cycling: StateFlow<uk.oli.fittrack.net.CyclingSnapshot?> = _cycling.asStateFlow()
+
+    private suspend fun loadCycling(token: String) {
+        _cycling.value = cyclingApi.snapshot(token)
+    }
+
+    /** The Ride tab refreshes on open. */
+    fun refreshCycling() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch {
+            loadRides(token)
+            loadCycling(token)
         }
     }
 

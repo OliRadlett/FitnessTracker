@@ -251,6 +251,16 @@ the end, because installing per-fix wastes the only real screen we have.
     already draws eight weeks of volume, and a year chart on a 360dp phone is a
     chart you cannot read).
 
+- [x] **P23 — the cycling page.** The website's `/cycling`, on the Ride tab:
+  seven-day tiles with the server's trend arrows (`/cycling/metrics-summary`),
+  the power curve with its CP/W'/Pmax fit (`/cycling/power-curve`,
+  `/cycling/power-model`), time in zones (`/cycling/power-zones?days=30`), FTP
+  history with the change and VO2max (`/cycling/ftp-history`, `/cycling/vo2max`),
+  and the rides underneath. Six independent fetches, each fail-open, so a rider
+  with no power meter still gets the summary and the list. Deliberately absent:
+  the weather analysis, the LLM card and the profile editor — the first two are
+  desktop reading, and a phone should not edit an FTP it cannot verify.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

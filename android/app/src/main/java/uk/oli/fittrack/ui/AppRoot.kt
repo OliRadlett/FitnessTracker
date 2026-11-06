@@ -63,6 +63,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val rides by vm.rides.collectAsStateWithLifecycle()
     val dashboard by vm.dashboard.collectAsStateWithLifecycle()
     val dashboardLoading by vm.dashboardLoading.collectAsStateWithLifecycle()
+    val cycling by vm.cycling.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -224,7 +225,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 )
                 "ride" -> RideScreen(
                     rides = rides,
-                    onRefresh = vm::refreshRides,
+                    cycling = cycling,
+                    load = dashboard?.load,
+                    onRefresh = vm::refreshCycling,
                     onTab = nav::switchTab
                 )
                 "body" -> BodyScreen(
