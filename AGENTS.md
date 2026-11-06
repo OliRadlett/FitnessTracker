@@ -33,6 +33,7 @@ on demand:
 | Agent tooling / DSH | [`docs/DSH.md`](docs/DSH.md) |
 | Historical bug reference | [`docs/BUGS.md`](docs/BUGS.md) (active bugs only; fixed bugs archived in `docs/BUGS-archive.md`) |
 | Deployment | [`docs/DEPLOY.md`](docs/DEPLOY.md) |
+| Documentation map / decisions | [`docs/README.md`](docs/README.md), [`docs/DECISIONS.md`](docs/DECISIONS.md) |
 
 ## Agent Efficiency Rules
 

@@ -25,6 +25,8 @@ PITFALLS = REPO / "docs" / "PITFALLS.md"
 # these must resolve; a broken link here is a broken instruction.
 STEERING_DOCS = [
     AGENTS,
+    REPO / "docs" / "README.md",
+    REPO / "docs" / "DECISIONS.md",
     REPO / "docs" / "DSH.md",
     REPO / "docs" / "RUNNING.md",
     REPO / "docs" / "PITFALLS.md",
@@ -239,6 +241,29 @@ def test_bug_tracker_counts_match_the_files():
     assert archived_header and int(archived_header.group(1)) == archived_count, (
         "docs/BUGS-archive.md header count disagrees with its rows"
     )
+
+
+def test_docs_index_lists_every_doc():
+    """The docs map must not silently omit a doc.
+
+    Adding a doc without a row means readers cannot tell whether it is current,
+    reference, historical or legacy.
+    """
+    index = _read(REPO / "docs" / "README.md")
+    docs = {
+        p.name for p in (REPO / "docs").glob("*.md") if p.name != "README.md"
+    }
+    missing = sorted(name for name in docs if name not in index)
+    assert not missing, (
+        "docs/README.md does not list: "
+        f"{missing}. Add a row with a status and a one-line purpose."
+    )
+
+
+def test_decisions_index_has_entries():
+    decisions = _read(REPO / "docs" / "DECISIONS.md")
+    assert "| D1 |" in decisions and "| D14 |" in decisions
+    assert "Superseded" in decisions, "the index must say how decisions are retired"
 
 
 def test_dsh_guide_exists_and_points_at_the_assets():
