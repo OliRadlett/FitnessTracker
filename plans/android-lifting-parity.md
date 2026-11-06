@@ -98,8 +98,25 @@ the end, because installing per-fix wastes the only real screen we have.
   sheet does, and both travel into history — the detail shows them, and a synced
   session carries them to the API. `SessionEngine.finished()` owns the
   conversion, so a blank note stays blank rather than becoming an empty string.
-- [ ] **P7 — device pass.** Install to the OnePlus 11 over Wi-Fi adb, run the
-  whole loop against prod, and capture the screens.
+- [x] **P7 — device pass.** Installed on the OnePlus 11 (CPH2449, 1080×2412
+  @480 dpi = 360×804 dp) over Wi-Fi adb and driven against **prod** end to end:
+  34 real sessions pulled, the log with its filters, Progress computed from that
+  real history (PRs, rep ranges, the e1RM line), a live set logged with the rest
+  card and plate caption, the finish sheet's RPE + note, the detail screen, a
+  set edited (360 → 370 kg), and the session deleted — gone after a restart and
+  resync, which is what proves the DELETE reached the server and not just the
+  local store.
+
+  The pass found two bugs no JVM test could:
+
+  1. Progress defaulted to the *strongest* lift, which was a one-off exercise, so
+     the chart said "two sessions and the line appears" on an account with 34
+     sessions. It now defaults to the exercise with the longest record, and the
+     chips are ordered by sessions rather than sets.
+  2. The FOCUS chips showed "Push · Pull · Legs · Legs · Pull": the server holds
+     both `Legs` and `Legs ` (a trailing space survives the website's form), and
+     the app grouped the raw strings. Focus and exercise names are now trimmed at
+     the decode boundary and in every comparison, so one lift is one row.
 
 ## Notes that future rounds should not have to rediscover
 

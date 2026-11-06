@@ -120,6 +120,32 @@ class HistoryFilterTest {
     }
 
     @Test
+    fun `a focus stored with a trailing space is the same focus`() {
+        // The real account has both "Legs" and "Legs "; two identical chips is a
+        // worse outcome than one chip that matches both.
+        val withSpace = listOf(
+            session("2026-11-01", title = "Legs", sets = listOf(set("Squat"))),
+            session("2026-11-02", title = "Legs ", sets = listOf(set("Squat")))
+        )
+
+        assertEquals(listOf("Legs"), HistoryFilter.focuses(withSpace))
+        assertEquals(2, HistoryFilter.apply(withSpace, HistoryQuery(focus = "Legs"), now).size)
+    }
+
+    @Test
+    fun `an exercise stored with a trailing space is the same exercise`() {
+        val withSpace = listOf(
+            session("2026-11-01", sets = listOf(set("Bench Press ")))
+        )
+
+        assertEquals(listOf("Bench Press"), HistoryFilter.exercises(withSpace))
+        assertEquals(
+            1,
+            HistoryFilter.apply(withSpace, HistoryQuery(exercise = "Bench Press"), now).size
+        )
+    }
+
+    @Test
     fun `exercise options exclude warm-ups and are ordered by frequency`() {
         val withWarmups = history + session(
             "2026-11-04",

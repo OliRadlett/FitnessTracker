@@ -46,8 +46,8 @@ object HistoryFilter {
 
         return history.filter { session ->
             (cutoff == null || session.endedAt >= cutoff) &&
-                (query.focus == null || session.planTitle == query.focus) &&
-                (query.exercise == null || session.sets.any { it.exercise == query.exercise }) &&
+                (query.focus == null || session.planTitle.trim() == query.focus) &&
+                (query.exercise == null || session.sets.any { it.exercise.trim() == query.exercise }) &&
                 (needle.isEmpty() || matches(session, needle))
         }
     }
@@ -58,19 +58,25 @@ object HistoryFilter {
         return session.sets.any { it.exercise.lowercase().contains(needle) }
     }
 
-    /** Focuses present in the history, most frequent first. */
+    /**
+     * Focuses present in the history, most frequent first.
+     *
+     * Grouped on the trimmed name: the server has held both "Legs" and "Legs "
+     * (a trailing space survives the website's form), and two visually identical
+     * chips are worse than useless.
+     */
     fun focuses(history: List<FinishedSession>): List<String> =
-        history.groupingBy { it.planTitle }
+        history.groupingBy { it.planTitle.trim() }
             .eachCount()
             .entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
             .map { it.key }
 
-    /** Exercises present in the history, most frequent first. */
+    /** Exercises present in the history, most frequent first, grouped the same way. */
     fun exercises(history: List<FinishedSession>, limit: Int = 8): List<String> =
         history.flatMap { it.sets }
             .filterNot { it.isWarmup }
-            .groupingBy { it.exercise }
+            .groupingBy { it.exercise.trim() }
             .eachCount()
             .entries
             .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key })
