@@ -117,6 +117,9 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   ([`domain/HistoryFilter.kt`](android/app/src/main/java/uk/oli/fittrack/domain/HistoryFilter.kt)),
   all pure and unit-tested. Week grouping is deliberate: a phone reads weeks
   better than the website's months.
+- **Finishing**: the summary asks for the session's own RPE and a note, and
+  `SessionEngine.finished()` turns the session in progress into history with
+  both. A blank note is null, not an empty string.
 - **Not built yet**: the real training plan (still `SeedPlan`), the Train/Ride/Body
   tabs (explicit "not built yet" screens). Parity phase P7 (the device pass) is
   next. A manual PR (one with no session behind it) would need

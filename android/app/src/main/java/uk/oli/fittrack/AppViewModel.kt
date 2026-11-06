@@ -550,17 +550,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * prefill from it), then the in-progress state is cleared. A session with no
      * sets is discarded rather than written as an empty entry.
      */
-    fun finishSession() {
+    fun finishSession(note: String? = null, rpeSession: Double? = null) {
         val current = _session.value
         var justFinished = false
         if (current != null && current.sets.isNotEmpty()) {
-            val entry = FinishedSession(
-                id = current.id,
-                planTitle = current.plan.title,
-                startedAt = current.startedAt,
-                endedAt = current.sets.maxOf { it.at },
-                sets = current.sets
-            )
+            val entry = uk.oli.fittrack.domain.SessionEngine.finished(current, note, rpeSession)
             val updated = HistoryEngine.newestFirst(_history.value + entry).take(HistoryStore.MAX)
             _history.value = updated
             historyStore.save(updated)

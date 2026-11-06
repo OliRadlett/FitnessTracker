@@ -101,6 +101,13 @@ class AppFlowTest {
         // Behaviour, not machine state: the summary is what must render here.
         compose.onNodeWithText("Session done.").assertExists()
 
+        // The finish captures the session's own effort and note, as the website
+        // does — they are about the hour, not about a set.
+        compose.onNodeWithText("8").performClick()
+        compose.onNodeWithTag("session-note").performTextInput("felt strong")
+        compose.waitForIdle()
+        save("app-6b-done-note")
+
         // Committing the summary turns it into history and returns to Today.
         compose.onNodeWithText("Done").performClick()
         compose.waitForIdle()
@@ -149,6 +156,8 @@ class AppFlowTest {
         // as it will on the website.
         compose.onNodeWithText("AMRAP").assertExists()
         compose.onAllNodesWithText("warm-up", substring = true).onFirst().assertExists()
+        // The finish note survived the round trip into history.
+        compose.onNodeWithText("felt strong").assertExists()
 
         // A logged set is editable after the fact: tap the row, bump the load,
         // save. The row and the session's volume must both move.

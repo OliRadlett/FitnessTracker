@@ -114,8 +114,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                 DoneScreen(
                     session = current,
                     previous = history.firstOrNull { it.planTitle == current.plan.title },
-                    onDone = {
-                        vm.finishSession()
+                    onDone = { note, rpe ->
+                        vm.finishSession(note, rpe)
                         nav.popBackStack(Routes.TODAY, false)
                     }
                 )

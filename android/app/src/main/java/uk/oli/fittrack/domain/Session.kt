@@ -151,6 +151,22 @@ object SessionEngine {
         (currentSeconds + deltaSeconds).coerceIn(MIN_REST_SECONDS, MAX_REST_SECONDS)
 
     /**
+     * Turn a session in progress into history. The session's own RPE and note
+     * are captured at the finish, as the website's finish sheet does — they are
+     * about the hour, not about any one set.
+     */
+    fun finished(state: SessionState, note: String?, rpeSession: Double?): FinishedSession =
+        FinishedSession(
+            id = state.id,
+            planTitle = state.plan.title,
+            startedAt = state.startedAt,
+            endedAt = state.sets.maxOfOrNull { it.at } ?: state.startedAt,
+            sets = state.sets,
+            note = note?.trim()?.takeIf { it.isNotEmpty() },
+            rpeSession = rpeSession
+        )
+
+    /**
      * The plan a repeat of a finished session should prescribe: the same
      * exercises in the same order, the same number of **working** sets, and the
      * last working set's load and reps as the target.
