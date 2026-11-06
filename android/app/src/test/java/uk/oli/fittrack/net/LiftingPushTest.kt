@@ -1,11 +1,11 @@
 package uk.oli.fittrack.net
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import uk.oli.fittrack.domain.FinishedSession
 import uk.oli.fittrack.domain.LoggedSet
-import uk.oli.fittrack.domain.SessionEngine
 import java.time.LocalDate
 import java.time.ZoneId
 
@@ -82,13 +82,9 @@ class LiftingPushTest {
     }
 
     @Test
-    fun `a set with no rpe still carries a number, because create needs one`() {
+    fun `a set with no rpe is sent as null instead of invented`() {
         val noRpe = session().copy(sets = listOf(LoggedSet("Bench Press", 90.0, 4, null, 0)))
 
-        assertEquals(
-            SessionEngine.DEFAULT_RPE.toDouble(),
-            LiftingPush.body(noRpe, zone).sets.single().rpe!!,
-            0.001
-        )
+        assertNull(LiftingPush.body(noRpe, zone).sets.single().rpe)
     }
 }

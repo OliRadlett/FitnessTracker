@@ -45,13 +45,30 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-2-live")
 
-        // Log the first set: Live -> resting.
-        compose.onNodeWithTag("primary").performClick()
+        // A warm-up is a real set with its own flag: log one at 85, and the plan
+        // must not advance, the volume must not move, and no rest starts.
+        compose.onNodeWithText("Warm-up").performClick()
+        compose.onAllNodesWithText("−").onFirst().performClick()
+        compose.onAllNodesWithText("−").onFirst().performClick()
         compose.waitForIdle()
-        save("app-3-rest")
+        compose.onNodeWithText("Log warm-up").performClick()
+        compose.waitForIdle()
+        save("app-3-warmup")
+        compose.onNodeWithText("warm-up").assertExists()
+        compose.onNodeWithText("set 1 of 4", substring = true).assertExists()
+        compose.onNodeWithText("RESTING").assertDoesNotExist()
 
+        // Then an AMRAP working set: it counts, so the plan advances.
+        compose.onNodeWithText("Warm-up").performClick()
+        compose.onNodeWithText("AMRAP").performClick()
+        compose.onAllNodesWithText("+").onFirst().performClick()
+        compose.onAllNodesWithText("+").onFirst().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Log set").performClick()
+        compose.waitForIdle()
         compose.onNodeWithText("RESTING").assertExists()
         compose.onNodeWithText("set 2 of 4", substring = true).assertExists()
+        compose.onAllNodesWithText("AMRAP").onFirst().assertExists()
         compose.onNodeWithText("Log set 2").assertExists()
 
         // Bump the weight on the stepper, then log again. The row must show what
@@ -95,6 +112,10 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-9-session-detail")
         compose.onNodeWithText("TOP SET").assertExists()
+        // The flags travelled with the sets, so the session reads the same here
+        // as it will on the website.
+        compose.onNodeWithText("AMRAP").assertExists()
+        compose.onAllNodesWithText("warm-up", substring = true).onFirst().assertExists()
 
         // A logged set is editable after the fact: tap the row, bump the load,
         // save. The row and the session's volume must both move.
@@ -105,7 +126,7 @@ class AppFlowTest {
 
         compose.onAllNodesWithText("+").onFirst().performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithText("Save").performScrollTo().performClick()
         compose.waitForIdle()
         save("app-11-set-edited")
         compose.onNodeWithText("92.5 kg × 4").assertExists()
@@ -118,6 +139,7 @@ class AppFlowTest {
         compose.onNodeWithTag("focus-field").performTextReplacement("Legs")
         compose.onAllNodesWithText("+").onFirst().performClick()
         compose.waitForIdle()
+        // The session editor sits above the scrolling list, so it needs no scroll.
         compose.onNodeWithText("Save").performClick()
         compose.waitForIdle()
         save("app-13-session-edited")
@@ -128,7 +150,7 @@ class AppFlowTest {
         compose.onNodeWithText("+ Set").performClick()
         compose.waitForIdle()
         save("app-14-add-set")
-        compose.onNodeWithText("Add").performClick()
+        compose.onNodeWithText("Add").performScrollTo().performClick()
         compose.waitForIdle()
         compose.onAllNodesWithText("92.5 kg × 4").assertCountEquals(2)
 
@@ -136,7 +158,7 @@ class AppFlowTest {
         compose.onNodeWithText("+ Add exercise").performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("exercise-name").performTextInput("Leg Press")
-        compose.onNodeWithText("Add").performClick()
+        compose.onNodeWithText("Add").performScrollTo().performClick()
         compose.waitForIdle()
         save("app-15-add-exercise")
         compose.onNodeWithText("Leg Press").assertExists()
