@@ -6,12 +6,27 @@
   },
   {
     "name": "partial-real",
-    "note": "The real invocation from session 0e4299a8: 6 of 11 fields supplied.",
+    "note": "The real invocation from session 0e4299a8: 6 of 11 fields supplied, and a URL where SURFACE belongs.",
     "input": "feature: Lifting page overhaul | surface: https://oliradlett.co.uk/fittrack/lifting | job: The lifting page has a lack of quality. Treat this as a complete overhaul. Enhance and improve the page with unlimited time and scope | current state: https://oliradlett.co.uk/fittrack/lifting | fixture: Use real data from a prod connection | limits: unlimited"
   },
   {
     "name": "empty",
     "note": "Nothing supplied: a bare /quality.",
     "input": ""
+  },
+  {
+    "name": "minimum",
+    "note": "The four required inputs and nothing else: the shortest form the command accepts.",
+    "input": "Route quality badge | surface: page | job: decide which ride to repeat | owner: Oli"
+  },
+  {
+    "name": "surface-combo",
+    "note": "Two surfaces in one value, an alias, and mixed case: the value is canonicalised, not rejected.",
+    "input": "feature: Ride detail | surface: UI + api | job: compare two rides | owner: Oli"
+  },
+  {
+    "name": "typo",
+    "note": "A misspelled field name becomes prose; the warning must name the field it probably meant.",
+    "input": "feature: Badge | surface: page | job: scan routes | owner: Oli | refrences: https://linear.app"
   }
 ]

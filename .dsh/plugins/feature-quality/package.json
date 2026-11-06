@@ -1,8 +1,8 @@
 {
   "name": "@local/feature-quality",
-  "version": "1.6.0",
+  "version": "2.0.0",
   "private": true,
-  "description": "Adds a Quality prompt control above the message composer and the /quality command: fills the Generic Feature Quality Prompt and opens it as the session's next user message.",
+  "description": "Adds a Quality prompt control above the message composer, the /quality command and /quality-status: fills the Generic Feature Quality Prompt, previews it, opens it as the session's next user message, and tracks the run's deliverables.",
   "type": "module",
   "license": "MIT",
   "exports": {
@@ -13,8 +13,12 @@
   },
   "files": [
     "index.js",
+    "lib/",
     "client.js",
     "prompt.md",
+    "defaults.json",
+    "tools/",
+    "templates/",
     "eval/",
     "cordis.patch.yml",
     "locale/*.json",
