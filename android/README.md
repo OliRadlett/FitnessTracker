@@ -26,9 +26,11 @@ against those decisions.
 - **Session detail**: every set, grouped by exercise, with warm-ups flagged,
   AMRAP badges, per-set notes, the session note and the session's own RPE.
   Tapping a set edits it inline (weight, reps, RPE, warm-up/AMRAP, note); a set
-  can be deleted, and so can the whole session. Synced rows are written back with
-  `PATCH`/`DELETE` and revert with a reason if the server refuses; local-only
-  rows edit in place.
+  can be deleted, and so can the whole session. `+ Set` adds a missed set,
+  `+ Add exercise` adds a whole exercise, and `Edit` moves the date (by whole
+  days), renames the focus and edits the session note. Synced rows are written
+  back with `PATCH`/`POST`/`DELETE` and revert with a reason if the server
+  refuses; local-only rows edit in place.
 - **History sync (pull)**: once signed in, lifting history is fetched from
   `GET /api/v1/lifting/sessions` and merged into the local log, so "last time"
   reflects what you actually lifted. Fail-open: no signal means no sync, never a

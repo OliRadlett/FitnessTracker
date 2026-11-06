@@ -135,4 +135,36 @@ class HistoryEngineTest {
 
         assertEquals(360.0, strip.sumOf { it.second }, 0.001)
     }
+
+    @Test
+    fun `moving a session a day keeps its clock time across the dst boundary`() {
+        // British Summer Time ends at 02:00 on 2026-10-25. Adding 86,400,000 ms
+        // would land this 18:00 session at 17:00; plusDays keeps 18:00.
+        val session = finished("2026-10-24", sets = listOf(set("Squat", 120.0, 5)))
+
+        val moved = HistoryEngine.shifted(session, 1, zone)
+        val start = java.time.Instant.ofEpochMilli(moved.startedAt).atZone(zone)
+
+        assertEquals(LocalDate.parse("2026-10-25"), start.toLocalDate())
+        assertEquals(18, start.hour)
+        assertEquals(session.endedAt - session.startedAt, moved.endedAt - moved.startedAt)
+    }
+
+    @Test
+    fun `moving a session backwards keeps its clock time`() {
+        val session = finished("2026-10-26", sets = listOf(set("Squat", 120.0, 5)))
+
+        val moved = HistoryEngine.shifted(session, -2, zone)
+        val start = java.time.Instant.ofEpochMilli(moved.startedAt).atZone(zone)
+
+        assertEquals(LocalDate.parse("2026-10-24"), start.toLocalDate())
+        assertEquals(18, start.hour)
+    }
+
+    @Test
+    fun `a zero-day move is the same session`() {
+        val session = finished("2026-10-24", sets = listOf(set("Squat", 120.0, 5)))
+
+        assertEquals(session, HistoryEngine.shifted(session, 0, zone))
+    }
 }

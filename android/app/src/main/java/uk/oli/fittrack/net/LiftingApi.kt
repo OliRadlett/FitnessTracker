@@ -61,6 +61,10 @@ object LiftingJson {
     fun decode(body: String): List<FinishedSession> =
         json.decodeFromString<List<SessionDto>>(body).mapNotNull { it.toFinished() }
 
+    /** One set as the append endpoint returns it (a `LiftingSetRead`). */
+    fun decodeSet(body: String, at: Long = System.currentTimeMillis()): LoggedSet? =
+        runCatching { json.decodeFromString<SetDto>(body).toLoggedSet(at) }.getOrNull()
+
     private fun SessionDto.toFinished(): FinishedSession? {
         val start = parseInstant(started_at) ?: parseDate(session_date) ?: return null
         val end = parseInstant(ended_at) ?: (start + (duration_seconds ?: 0) * 1000L)
@@ -79,21 +83,9 @@ object LiftingJson {
             startedAt = start,
             endedAt = end,
             sets = ordered.map { set ->
-                LoggedSet(
-                    exercise = set.exercise_name,
-                    weightKg = set.weight_kg,
-                    reps = set.reps,
-                    // Null stays null: the website shows an empty RPE, so inventing
-                    // a 7 here would make the two surfaces disagree.
-                    rpe = set.rpe,
-                    // The wire has no per-set timestamp; the session's own end is
-                    // the only honest value to hang a set on.
-                    at = end,
-                    isWarmup = set.is_warmup,
-                    isAmrap = set.is_amrap,
-                    note = set.notes?.takeIf { it.isNotBlank() },
-                    serverId = set.id
-                )
+                // The wire has no per-set timestamp; the session's own end is
+                // the only honest value to hang a set on.
+                set.toLoggedSet(at = end)
             },
             // It came from the server; pushing it back would be a loop.
             synced = true,
@@ -101,6 +93,20 @@ object LiftingJson {
             rpeSession = rpe_session
         )
     }
+
+    private fun SetDto.toLoggedSet(at: Long) = LoggedSet(
+        exercise = exercise_name,
+        weightKg = weight_kg,
+        reps = reps,
+        // Null stays null: the website shows an empty RPE, so inventing a 7 here
+        // would make the two surfaces disagree.
+        rpe = rpe,
+        at = at,
+        isWarmup = is_warmup,
+        isAmrap = is_amrap,
+        note = notes?.takeIf { it.isNotBlank() },
+        serverId = id
+    )
 
     /** The API writes offsets, but tolerate a naive timestamp rather than dropping the row. */
     private fun parseInstant(raw: String?): Long? {
@@ -223,8 +229,92 @@ class LiftingApi(private val baseUrl: String) {
             }
         }
 
+    /** Edit the session's own fields. Only the scalars; sets have their own endpoints. */
+    suspend fun updateSession(token: String, sessionId: String, patch: SessionPatch) =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId")
+                .header("Authorization", "Bearer $token")
+                .patch(LiftingPatchJson.encodeToString(patch).toRequestBody(jsonMedia))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not save the session (${response.code})")
+                }
+            }
+        }
+
+    /** Append one set to a session that already exists. Returns the server's row. */
+    suspend fun addSet(token: String, sessionId: String, body: NewSetBody): LoggedSet =
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url("$baseUrl/lifting/sessions/$sessionId/sets")
+                .header("Authorization", "Bearer $token")
+                .post(LiftingPatchJson.encodeToString(body).toRequestBody(jsonMedia))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                val responseBody = response.body?.string().orEmpty()
+                if (!response.isSuccessful) {
+                    throw ApiException(response.code, "Could not add the set (${response.code})")
+                }
+                LiftingJson.decodeSet(responseBody)
+                    ?: throw ApiException(response.code, "The server's set was unreadable.")
+            }
+        }
+
     private val json = Json { ignoreUnknownKeys = true }
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
+}
+
+/** A session's editable scalars, in the wire's names. */
+@Serializable
+data class SessionPatch(
+    val session_date: String,
+    val focus: String?,
+    val notes: String?,
+    val started_at: String,
+    val ended_at: String,
+    val duration_seconds: Int
+)
+
+/** One set to append, in the wire's names. `order_index` is the server's to assign. */
+@Serializable
+data class NewSetBody(
+    val exercise_name: String,
+    val set_number: Int,
+    val weight_kg: Double,
+    val reps: Int,
+    val rpe: Double?,
+    val is_warmup: Boolean,
+    val is_amrap: Boolean,
+    val notes: String?,
+    val client_id: String
+)
+
+/** Builds the session patch. Pure, so the date/time conventions are testable. */
+object LiftingSessionPatch {
+
+    /**
+     * The date is the **device-local** calendar date, and the timestamps carry
+     * the device's offset. Moving the session a day keeps its time of day and
+     * its duration: `plusDays` on a zoned time survives a DST boundary.
+     */
+    fun of(session: FinishedSession, zone: ZoneId = ZoneId.systemDefault()): SessionPatch {
+        val start = Instant.ofEpochMilli(session.startedAt).atZone(zone)
+        val end = Instant.ofEpochMilli(session.endedAt).atZone(zone)
+        return SessionPatch(
+            session_date = start.toLocalDate().toString(),
+            focus = session.planTitle.takeIf { it.isNotBlank() },
+            notes = session.note,
+            started_at = start.toOffsetDateTime().toString(),
+            ended_at = end.toOffsetDateTime().toString(),
+            duration_seconds = ((session.endedAt - session.startedAt) / 1000)
+                .coerceAtLeast(0)
+                .toInt()
+        )
+    }
 }
 
 /** The six fields a set edit owns, in the wire's names. */

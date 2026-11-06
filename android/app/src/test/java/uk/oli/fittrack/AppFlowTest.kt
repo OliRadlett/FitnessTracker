@@ -3,12 +3,15 @@ package uk.oli.fittrack
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.view.View
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -105,6 +108,37 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-11-set-edited")
         compose.onNodeWithText("92.5 kg × 4").assertExists()
+
+        // The session's own fields: move it a day and rename it. Both must be
+        // visible immediately, because the header is the only confirmation.
+        compose.onNodeWithText("Edit").performClick()
+        compose.waitForIdle()
+        save("app-12-session-editor")
+        compose.onNodeWithTag("focus-field").performTextReplacement("Legs")
+        compose.onAllNodesWithText("+").onFirst().performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Save").performClick()
+        compose.waitForIdle()
+        save("app-13-session-edited")
+        compose.onNodeWithText("Legs").assertExists()
+        compose.onNodeWithText("Sat 7 Nov 2026", substring = true).assertExists()
+
+        // A missed set: add one to the exercise it belongs to.
+        compose.onNodeWithText("+ Set").performClick()
+        compose.waitForIdle()
+        save("app-14-add-set")
+        compose.onNodeWithText("Add").performClick()
+        compose.waitForIdle()
+        compose.onAllNodesWithText("92.5 kg × 4").assertCountEquals(2)
+
+        // A missed exercise, added in one go.
+        compose.onNodeWithText("+ Add exercise").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("exercise-name").performTextInput("Leg Press")
+        compose.onNodeWithText("Add").performClick()
+        compose.waitForIdle()
+        save("app-15-add-exercise")
+        compose.onNodeWithText("Leg Press").assertExists()
     }
 
     private fun save(name: String) {

@@ -29,6 +29,8 @@ import uk.oli.fittrack.domain.SessionState
 import uk.oli.fittrack.net.ApiException
 import uk.oli.fittrack.net.AuthApi
 import uk.oli.fittrack.net.LiftingApi
+import uk.oli.fittrack.net.LiftingSessionPatch
+import uk.oli.fittrack.net.NewSetBody
 import uk.oli.fittrack.net.SetEdit
 
 data class AuthUiState(
@@ -334,6 +336,134 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     _syncError.value = e.message ?: "Could not delete the session."
                 }
             }
+        }
+    }
+
+    /**
+     * Edit the session's own fields: its date (by whole days), its focus and its
+     * note. Optimistic like a set edit, and reverted the same way.
+     */
+    fun editSession(sessionId: String, dayDelta: Long, focus: String?, note: String?) {
+        val old = _history.value.firstOrNull { it.id == sessionId } ?: return
+        val title = focus?.trim()?.takeIf { it.isNotEmpty() } ?: "Lifting"
+        val updated = HistoryEngine.shifted(old, dayDelta).copy(
+            planTitle = title,
+            note = note?.trim()?.takeIf { it.isNotEmpty() }
+        )
+        if (updated == old) return
+        replaceSession(old, updated)
+
+        if (!old.synced) return
+        val token = _auth.value.token
+        if (token == null) {
+            replaceSession(updated, old)
+            _syncError.value = "Sign in to edit a session that is on the server."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                try {
+                    liftingApi.updateSession(token, sessionId, LiftingSessionPatch.of(updated))
+                    _syncError.value = null
+                } catch (e: Exception) {
+                    replaceSession(updated, old)
+                    _syncError.value = e.message ?: "Could not save the session."
+                }
+            }
+        }
+    }
+
+    /**
+     * Append sets to a finished session — a missed set, or a whole exercise you
+     * forgot to log. Local rows appear immediately; a synced session posts each
+     * set and swaps the row for the server's, which carries the id an edit
+     * needs later.
+     */
+    fun addSets(sessionId: String, exercise: String, specs: List<SetEdit>) {
+        if (specs.isEmpty()) return
+        val session = _history.value.firstOrNull { it.id == sessionId } ?: return
+        val name = exercise.trim().ifBlank { return }
+        val now = System.currentTimeMillis()
+        val local = specs.map { spec ->
+            LoggedSet(
+                exercise = name,
+                weightKg = spec.weight_kg,
+                reps = spec.reps,
+                rpe = spec.rpe,
+                at = now,
+                isWarmup = spec.is_warmup,
+                isAmrap = spec.is_amrap,
+                note = spec.notes?.takeIf { it.isNotBlank() },
+                clientId = "$sessionId:add:${java.util.UUID.randomUUID()}"
+            )
+        }
+        mutateSession(sessionId) { it.copy(sets = it.sets + local) }
+
+        if (!session.synced) return
+        val token = _auth.value.token
+        if (token == null) {
+            removeByClientIds(sessionId, local.mapNotNull { it.clientId })
+            _syncError.value = "Sign in to add a set to a session that is on the server."
+            return
+        }
+        viewModelScope.launch {
+            writeLock.withLock {
+                var added = 0
+                for (set in local) {
+                    val number = session.sets.count { it.exercise == set.exercise } + added + 1
+                    try {
+                        val created = liftingApi.addSet(
+                            token,
+                            sessionId,
+                            NewSetBody(
+                                exercise_name = set.exercise,
+                                set_number = number,
+                                weight_kg = set.weightKg,
+                                reps = set.reps,
+                                rpe = set.rpe,
+                                is_warmup = set.isWarmup,
+                                is_amrap = set.isAmrap,
+                                notes = set.note,
+                                client_id = set.clientId ?: "$sessionId:add:$number"
+                            )
+                        )
+                        replaceByClientId(sessionId, set.clientId, created.copy(at = set.at))
+                        added++
+                    } catch (e: Exception) {
+                        removeByClientIds(sessionId, listOfNotNull(set.clientId))
+                        val kept = if (added == 0) "" else " — $added of ${local.size} were saved"
+                        _syncError.value = (e.message ?: "Could not add the set.") + kept
+                        return@withLock
+                    }
+                }
+                _syncError.value = null
+            }
+        }
+    }
+
+    private fun replaceSession(old: FinishedSession, new: FinishedSession) {
+        val updated = _history.value.map { if (it.id == old.id) new else it }
+        _history.value = HistoryEngine.newestFirst(updated)
+        historyStore.save(_history.value)
+    }
+
+    private fun replaceByClientId(
+        sessionId: String,
+        clientId: String?,
+        replacement: uk.oli.fittrack.domain.LoggedSet
+    ) {
+        if (clientId == null) return
+        mutateSession(sessionId) { session ->
+            session.copy(
+                sets = session.sets.map { if (it.clientId == clientId) replacement else it }
+            )
+        }
+    }
+
+    private fun removeByClientIds(sessionId: String, clientIds: List<String>) {
+        if (clientIds.isEmpty()) return
+        mutateSession(sessionId) { session ->
+            session.copy(sets = session.sets.filterNot { it.clientId in clientIds })
         }
     }
 
