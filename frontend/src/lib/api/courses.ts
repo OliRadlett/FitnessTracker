@@ -3,6 +3,9 @@ import type {
   CourseCreatePayload,
   CourseDetail,
   CourseMergeCandidate,
+  ManualRideLinkResult,
+  ManualRideOption,
+  ManualRouteOption,
   CourseRoute,
   CourseSuggestion,
   CourseSummary,
@@ -154,6 +157,51 @@ export async function rejectRideLink(
   return apiFetch<RideLinkResult>(
     `/api/v1/courses/ride-links/${activityId}/reject`,
     { method: 'POST' },
+    token,
+  );
+}
+
+export async function searchRoutesForManualLink(
+  query: string,
+  token?: string,
+): Promise<ManualRouteOption[]> {
+  return apiFetch<ManualRouteOption[]>(
+    `/api/v1/courses/routes/search?q=${encodeURIComponent(query)}`,
+    {},
+    token,
+  );
+}
+
+export async function searchRidesForManualLink(
+  query: string,
+  token?: string,
+): Promise<ManualRideOption[]> {
+  return apiFetch<ManualRideOption[]>(
+    `/api/v1/courses/rides/search?q=${encodeURIComponent(query)}`,
+    {},
+    token,
+  );
+}
+
+export async function linkRideToRoute(
+  activityId: string,
+  routeId: string,
+  token?: string,
+): Promise<ManualRideLinkResult> {
+  return apiFetch<ManualRideLinkResult>(
+    `/api/v1/courses/ride-links/${activityId}/link`,
+    { method: 'POST', body: JSON.stringify({ route_id: routeId }) },
+    token,
+  );
+}
+
+export async function unlinkRide(
+  activityId: string,
+  token?: string,
+): Promise<ManualRideLinkResult> {
+  return apiFetch<ManualRideLinkResult>(
+    `/api/v1/courses/ride-links/${activityId}/link`,
+    { method: 'DELETE' },
     token,
   );
 }

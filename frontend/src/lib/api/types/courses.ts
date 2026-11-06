@@ -49,6 +49,33 @@ export interface CourseDetail extends CourseSummary {
   activities: CourseActivity[];
 }
 
+export interface ManualRouteOption {
+  id: string;
+  name: string;
+  distance_meters: number;
+  preview_polyline: string | null;
+  course_id: string | null;
+  course_name: string | null;
+}
+
+export interface ManualRideOption {
+  id: string;
+  name: string;
+  start_date: string;
+  distance_meters: number | null;
+  route_id: string | null;
+  route_name: string | null;
+  course_id: string | null;
+  course_name: string | null;
+  route_link_status: string | null;
+}
+
+export interface ManualRideLinkResult {
+  activity_id: string;
+  route_id: string | null;
+  status: string;
+}
+
 export interface CourseMergeCandidate {
   course_a: CourseSummary;
   course_b: CourseSummary;

@@ -408,7 +408,76 @@ class TestCourseMergeCandidates:
         assert resp.status_code == 200
         candidates = resp.json()
         pair = {first.json()["id"], second.json()["id"]}
-        assert any(
-            {candidate["course_a"]["id"], candidate["course_b"]["id"]} == pair
-            for candidate in candidates
+        candidate = next(
+            item
+            for item in candidates
+            if {item["course_a"]["id"], item["course_b"]["id"]} == pair
         )
+        assert candidate
+
+        dismiss = await client.post(
+            "/api/v1/courses/suggestions/"
+            f"{candidate['course_a']['canonical_route_id']}/"
+            f"{candidate['course_b']['canonical_route_id']}/dismiss"
+        )
+        assert dismiss.status_code == 200
+        after = await client.get("/api/v1/courses/merge-candidates")
+        assert not any(
+            {item["course_a"]["id"], item["course_b"]["id"]} == pair
+            for item in after.json()
+        )
+
+
+class TestManualLinks:
+    async def test_search_routes_and_link_rides(
+        self, client, db_session, test_user, test_route
+    ):
+        from datetime import UTC, datetime
+
+        from app.models.activity import Activity
+
+        route_search = await client.get(
+            "/api/v1/courses/routes/search", params={"q": "Richmond"}
+        )
+        assert route_search.status_code == 200
+        assert any(item["id"] == str(test_route.id) for item in route_search.json())
+
+        activity = Activity(
+            user_id=test_user.id,
+            source="strava",
+            sport_type="cycling",
+            name="Unlinked manual ride",
+            start_date=datetime.now(UTC),
+            distance_meters=15000.0,
+        )
+        db_session.add(activity)
+        await db_session.flush()
+
+        ride_search = await client.get(
+            "/api/v1/courses/rides/search", params={"q": "Unlinked manual"}
+        )
+        assert ride_search.status_code == 200
+        assert any(item["id"] == str(activity.id) for item in ride_search.json())
+
+        linked = await client.post(
+            f"/api/v1/courses/ride-links/{activity.id}/link",
+            json={"route_id": str(test_route.id)},
+        )
+        assert linked.status_code == 200
+        assert linked.json()["status"] == "confirmed"
+
+        course = await client.post(
+            "/api/v1/courses",
+            json={"name": "Manual link course", "route_ids": [str(test_route.id)]},
+        )
+        detail = await client.get(f"/api/v1/courses/{course.json()['id']}")
+        row = next(
+            item
+            for item in detail.json()["activities"]
+            if item["id"] == str(activity.id)
+        )
+        assert row["route_link_status"] == "confirmed"
+
+        unlinked = await client.delete(f"/api/v1/courses/ride-links/{activity.id}/link")
+        assert unlinked.status_code == 200
+        assert unlinked.json()["status"] == "unlinked"

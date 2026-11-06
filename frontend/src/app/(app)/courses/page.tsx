@@ -21,6 +21,10 @@ import {
   getCourse,
   getCourseMergeCandidates,
   getCourseSuggestions,
+  linkRideToRoute,
+  searchRidesForManualLink,
+  searchRoutesForManualLink,
+  unlinkRide,
   getCourses,
   getDismissedCourseSuggestions,
   getUncoursedRoutes,
@@ -37,6 +41,8 @@ import type {
   CourseDetail,
   CourseMergeCandidate,
   CourseRoute,
+  ManualRideOption,
+  ManualRouteOption,
   CourseSuggestion,
   CourseSummary,
   DismissedCourseSuggestion,
@@ -215,11 +221,15 @@ function SuggestionCard({
 function CourseMergeCandidateCard({
   candidate,
   onMerge,
+  onDismiss,
   busy,
+  dismissing,
 }: {
   candidate: CourseMergeCandidate;
   onMerge: () => void;
+  onDismiss: () => void;
   busy: boolean;
+  dismissing: boolean;
 }) {
   const [mapOpen, setMapOpen] = useState(false);
   return (
@@ -256,6 +266,16 @@ function CourseMergeCandidateCard({
           <Button variant="ghost" size="sm" onClick={() => setMapOpen(true)}>
             <MapPin className="h-4 w-4" aria-hidden />
             Map
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            loading={dismissing}
+            onClick={onDismiss}
+            title="Hide this pair; it will not be suggested again"
+          >
+            <X className="h-4 w-4" aria-hidden />
+            Not the same
           </Button>
           <Button
             variant="secondary"
@@ -475,6 +495,236 @@ function RideShapeCompare({
         <span className="block text-[9px] uppercase tracking-wide text-accent">ride</span>
       </div>
     </div>
+  );
+}
+
+function ManualLinksCard({
+  course,
+  routes,
+  token,
+  onChanged,
+}: {
+  course: CourseSummary;
+  routes: CourseRoute[];
+  token?: string;
+  onChanged: () => void;
+}) {
+  const toast = useToast();
+  const [routeTerm, setRouteTerm] = useState('');
+  const [rideTerm, setRideTerm] = useState('');
+  const [routeSearch, setRouteSearch] = useState('');
+  const [rideSearch, setRideSearch] = useState('');
+  const [targetRouteId, setTargetRouteId] = useState('');
+
+  const routeOptions = useQuery<ManualRouteOption[]>({
+    queryKey: ['manual-route-search', course.id, routeSearch],
+    queryFn: () => searchRoutesForManualLink(routeSearch, token),
+    enabled: !!token && routeSearch.trim().length >= 2,
+  });
+  const rideOptions = useQuery<ManualRideOption[]>({
+    queryKey: ['manual-ride-search', course.id, rideSearch],
+    queryFn: () => searchRidesForManualLink(rideSearch, token),
+    enabled: !!token && rideSearch.trim().length >= 2,
+  });
+  const group = useMutation({
+    mutationFn: (routeId: string) => groupRoute(course.id, routeId, token),
+    onSuccess: () => {
+      onChanged();
+      toast.success('Route added to this course.');
+    },
+    onError: (err) => toast.error(`Could not add the route: ${(err as Error).message}`),
+  });
+  const link = useMutation({
+    mutationFn: ({ activityId, routeId }: { activityId: string; routeId: string }) =>
+      linkRideToRoute(activityId, routeId, token),
+    onSuccess: () => {
+      onChanged();
+      toast.success('Ride linked as course history.');
+    },
+    onError: (err) => toast.error(`Could not link the ride: ${(err as Error).message}`),
+  });
+  const unlink = useMutation({
+    mutationFn: (activityId: string) => unlinkRide(activityId, token),
+    onSuccess: () => {
+      onChanged();
+      toast.success('Ride link removed.');
+    },
+    onError: (err) => toast.error(`Could not unlink the ride: ${(err as Error).message}`),
+  });
+
+  const targetRoute = targetRouteId || routes[0]?.id || '';
+
+  return (
+    <Card className="mt-4 p-4">
+      <div>
+        <h2 className="text-sm font-semibold text-foreground">Manual links</h2>
+        <p className="mt-1 text-[11px] text-muted">
+          Use these when the matcher is wrong or has no suggestion. A linked ride is
+          confirmed immediately.
+        </p>
+      </div>
+      <div className="mt-3 grid gap-4 md:grid-cols-2">
+        <div>
+          <label className="text-[11px] font-medium uppercase tracking-wide text-muted">
+            Add a route to this course
+          </label>
+          <div className="mt-1 flex gap-1">
+            <input
+              value={routeTerm}
+              onChange={(e) => setRouteTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setRouteSearch(routeTerm.trim());
+              }}
+              placeholder="Search routes…"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-surface-light/60 bg-background px-3 text-xs text-foreground outline-none focus:border-accent"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setRouteSearch(routeTerm.trim())}
+              disabled={routeTerm.trim().length < 2}
+            >
+              Search
+            </Button>
+          </div>
+          {routeSearch.length >= 2 && (
+            <div className="mt-2 space-y-1">
+              {routeOptions.isLoading && (
+                <p className="text-[11px] text-muted">Searching…</p>
+              )}
+              {routeOptions.data?.map((route) => (
+                <div
+                  key={route.id}
+                  className="flex items-center gap-2 rounded-lg border border-surface-light/40 px-2 py-1.5"
+                >
+                  <RouteShape
+                    encoded={route.preview_polyline}
+                    width={40}
+                    height={30}
+                    className="shrink-0 text-muted"
+                    strokeWidth={1.8}
+                    showEndpoints={false}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-foreground">{route.name}</p>
+                    <p className="text-[10px] text-muted">
+                      {formatKm(route.distance_meters)} ·{' '}
+                      {route.course_name ?? 'uncoursed'}
+                    </p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={route.course_id === course.id}
+                    loading={group.isPending && group.variables === route.id}
+                    onClick={() => group.mutate(route.id)}
+                  >
+                    {route.course_id === course.id ? 'In course' : 'Add'}
+                  </Button>
+                </div>
+              ))}
+              {!routeOptions.isLoading && routeOptions.data?.length === 0 && (
+                <p className="text-[11px] text-muted">No matching routes.</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="text-[11px] font-medium uppercase tracking-wide text-muted">
+            Link a ride to this course
+          </label>
+          <div className="mt-1 flex gap-1">
+            <input
+              value={rideTerm}
+              onChange={(e) => setRideTerm(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setRideSearch(rideTerm.trim());
+              }}
+              placeholder="Search rides…"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-surface-light/60 bg-background px-3 text-xs text-foreground outline-none focus:border-accent"
+            />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setRideSearch(rideTerm.trim())}
+              disabled={rideTerm.trim().length < 2}
+            >
+              Search
+            </Button>
+          </div>
+          {routes.length > 0 ? (
+            <select
+              value={targetRoute}
+              onChange={(e) => setTargetRouteId(e.target.value)}
+              className="mt-2 h-9 w-full rounded-lg border border-surface-light/60 bg-background px-3 text-xs text-foreground outline-none focus:border-accent"
+              aria-label="Route to link the ride to"
+            >
+              {routes.map((route) => (
+                <option key={route.id} value={route.id}>
+                  Link to: {route.name} ({formatKm(route.distance_meters)})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <p className="mt-2 text-[11px] text-muted">
+              Add a route to this course first.
+            </p>
+          )}
+          {rideSearch.length >= 2 && (
+            <div className="mt-2 space-y-1">
+              {rideOptions.isLoading && (
+                <p className="text-[11px] text-muted">Searching…</p>
+              )}
+              {rideOptions.data?.map((ride) => (
+                <div
+                  key={ride.id}
+                  className="flex items-center gap-2 rounded-lg border border-surface-light/40 px-2 py-1.5"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-xs text-foreground">{ride.name}</p>
+                    <p className="text-[10px] text-muted">
+                      {formatDate(ride.start_date)}
+                      {ride.distance_meters
+                        ? ` · ${formatKm(ride.distance_meters)}`
+                        : ''}
+                      {' · '}
+                      {ride.route_name ?? 'no route'}
+                      {ride.course_name ? ` · ${ride.course_name}` : ''}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    loading={unlink.isPending && unlink.variables === ride.id}
+                    onClick={() => unlink.mutate(ride.id)}
+                    disabled={!ride.route_id}
+                  >
+                    Unlink
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    disabled={!targetRoute}
+                    loading={
+                      link.isPending && link.variables?.activityId === ride.id
+                    }
+                    onClick={() =>
+                      link.mutate({ activityId: ride.id, routeId: targetRoute })
+                    }
+                  >
+                    Link
+                  </Button>
+                </div>
+              ))}
+              {!rideOptions.isLoading && rideOptions.data?.length === 0 && (
+                <p className="text-[11px] text-muted">No matching rides.</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -1148,6 +1398,23 @@ export default function CoursesPage() {
                   mergeMutation.isPending &&
                   mergeMutation.variables?.sourceId === candidate.course_b.id
                 }
+                dismissing={
+                  dismissMutation.isPending &&
+                  dismissMutation.variables?.routeBId ===
+                    candidate.course_b.canonical_route_id
+                }
+                onDismiss={() => {
+                  if (
+                    !candidate.course_a.canonical_route_id ||
+                    !candidate.course_b.canonical_route_id
+                  ) {
+                    return;
+                  }
+                  dismissMutation.mutate({
+                    routeAId: candidate.course_a.canonical_route_id,
+                    routeBId: candidate.course_b.canonical_route_id,
+                  });
+                }}
                 onMerge={() =>
                   mergeMutation.mutate({
                     targetId: candidate.course_a.id,
@@ -1272,6 +1539,14 @@ export default function CoursesPage() {
             busyActivityId={busyActivityId}
             renaming={renameMutation.isPending}
           />
+          {activeCourse && (
+            <ManualLinksCard
+              course={activeCourse}
+              routes={detailQuery.data?.routes ?? []}
+              token={token}
+              onChanged={invalidate}
+            />
+          )}
         </section>
       </div>
 

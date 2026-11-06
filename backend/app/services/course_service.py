@@ -196,6 +196,20 @@ async def list_course_merge_candidates(
         .all()
     )
     rides = await _rides_by_route(db, user_id)
+    dismissed = (
+        (
+            await db.execute(
+                select(CourseSuggestionDismissal).where(
+                    CourseSuggestionDismissal.user_id == user_id
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    dismissed_pairs = {
+        frozenset((str(row.route_a_id), str(row.route_b_id))) for row in dismissed
+    }
 
     groups: dict[str, list[Course]] = {}
     for course in courses:
@@ -233,6 +247,8 @@ async def list_course_merge_candidates(
                 )
                 if start_m > 1000:
                     continue
+                if frozenset((str(route_a.id), str(route_b.id))) in dismissed_pairs:
+                    continue
                 delta_m = abs(route_a.distance_meters - route_b.distance_meters)
                 candidates.append(
                     {
@@ -254,6 +270,119 @@ async def list_course_merge_candidates(
         )
     )
     return candidates[:limit]
+
+
+async def search_routes_for_manual_link(
+    db: AsyncSession, user_id: uuid.UUID, query: str, *, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Routes a user can add to a course, with their current course name."""
+    rows = (
+        await db.execute(
+            select(Route, Course.name)
+            .outerjoin(Course, Route.course_id == Course.id)
+            .where(
+                Route.user_id == user_id,
+                Route.name.ilike(f"%{query.strip()}%"),
+            )
+            .order_by(Route.name, Route.created_at)
+            .limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": route.id,
+            "name": route.name,
+            "distance_meters": route.distance_meters,
+            "preview_polyline": preview_polyline(route.encoded_polyline),
+            "course_id": route.course_id,
+            "course_name": course_name,
+        }
+        for route, course_name in rows
+    ]
+
+
+async def search_rides_for_manual_link(
+    db: AsyncSession, user_id: uuid.UUID, query: str, *, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Rides a user can link to a route, including their current link state."""
+    rows = (
+        await db.execute(
+            select(Activity, Route.name, Course.id, Course.name)
+            .outerjoin(Route, Activity.route_id == Route.id)
+            .outerjoin(Course, Route.course_id == Course.id)
+            .where(
+                Activity.user_id == user_id,
+                Activity.name.ilike(f"%{query.strip()}%"),
+            )
+            .order_by(Activity.start_date.desc())
+            .limit(limit)
+        )
+    ).all()
+    return [
+        {
+            "id": activity.id,
+            "name": activity.name,
+            "start_date": activity.start_date,
+            "distance_meters": activity.distance_meters,
+            "route_id": activity.route_id,
+            "route_name": route_name,
+            "course_id": course_id,
+            "course_name": course_name,
+            "route_link_status": activity.route_link_status,
+        }
+        for activity, route_name, course_id, course_name in rows
+    ]
+
+
+async def link_ride_to_route(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    activity_id: uuid.UUID,
+    route_id: uuid.UUID,
+) -> Activity | None:
+    """Manually set a ride's route link and make it course history."""
+    activity = (
+        await db.execute(
+            select(Activity).where(
+                Activity.id == activity_id, Activity.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    route = (
+        await db.execute(
+            select(Route).where(Route.id == route_id, Route.user_id == user_id)
+        )
+    ).scalar_one_or_none()
+    if activity is None or route is None:
+        return None
+    activity.route_id = route.id
+    activity.route_link_status = "confirmed"
+    activity.route_link_source = "manual"
+    activity.route_link_confidence = 1.0
+    activity.route_link_confirmed_at = datetime.now(UTC)
+    await db.flush()
+    return activity
+
+
+async def unlink_ride(
+    db: AsyncSession, user_id: uuid.UUID, activity_id: uuid.UUID
+) -> Activity | None:
+    activity = (
+        await db.execute(
+            select(Activity).where(
+                Activity.id == activity_id, Activity.user_id == user_id
+            )
+        )
+    ).scalar_one_or_none()
+    if activity is None:
+        return None
+    activity.route_id = None
+    activity.route_link_status = None
+    activity.route_link_source = None
+    activity.route_link_confidence = None
+    activity.route_link_confirmed_at = None
+    await db.flush()
+    return activity
 
 
 async def get_course(

@@ -172,7 +172,14 @@ conservative below-floor list: **same normalized name**, starts within **1 km**
 and distances within **10%**. It catches provider rewrites that move enough GPS
 points to keep the geometry score below 0.55 (the production copy had two
 same-name/identical-distance pairs the scan missed). Each candidate shows both
-shapes and a shared map; nothing is merged automatically.
+shapes and a shared map; nothing is merged automatically. A candidate can be
+dismissed with the same durable route-pair dismissal as a suggestion.
+
+Manual links are the escape hatch when the matcher is wrong or has no
+suggestion: `GET /courses/routes/search` and `/rides/search` back a **Manual
+links** card on the selected course. It can add any route to the course and
+link any ride to a course route as `confirmed` + `manual` (or unlink it), so the
+user never needs the matcher to create the association.
 
 The scan also no longer skips pairs when road/embedding signals are absent
 (`(None, None)`); that bug emptied the cache on accounts with 0/86 road matches.

@@ -62,6 +62,31 @@ class CourseDetail(CourseSummary):
     activities: list[CourseActivityRead] = []
 
 
+class ManualRouteOption(BaseModel):
+    id: uuid.UUID
+    name: str
+    distance_meters: float
+    preview_polyline: str | None = None
+    course_id: uuid.UUID | None = None
+    course_name: str | None = None
+
+
+class ManualRideOption(BaseModel):
+    id: uuid.UUID
+    name: str
+    start_date: datetime
+    distance_meters: float | None = None
+    route_id: uuid.UUID | None = None
+    route_name: str | None = None
+    course_id: uuid.UUID | None = None
+    course_name: str | None = None
+    route_link_status: str | None = None
+
+
+class RideLinkRequest(BaseModel):
+    route_id: uuid.UUID
+
+
 class CourseMergeCandidate(BaseModel):
     """Two courses with independent evidence that they may be the same course.
 
@@ -128,4 +153,10 @@ class CourseCreate(BaseModel):
 class RideLinkResult(BaseModel):
     activity_id: uuid.UUID
     route_id: uuid.UUID
+    status: str
+
+
+class ManualRideLinkResult(BaseModel):
+    activity_id: uuid.UUID
+    route_id: uuid.UUID | None = None
     status: str

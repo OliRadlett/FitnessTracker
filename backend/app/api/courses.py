@@ -24,6 +24,10 @@ from app.schemas.course import (
     CourseSummary,
     CourseUpdate,
     DismissedSuggestion,
+    ManualRideLinkResult,
+    ManualRideOption,
+    ManualRouteOption,
+    RideLinkRequest,
     RideLinkResult,
 )
 from app.services import course_service
@@ -105,6 +109,57 @@ async def list_course_merge_candidates(
     (pitfall 13). This is review evidence only; nothing is merged automatically.
     """
     return await course_service.list_course_merge_candidates(db, current_user.id)
+
+
+@router.get("/routes/search", response_model=list[ManualRouteOption])
+async def search_routes_for_manual_link(
+    q: str = Query("", max_length=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search every route for the manual course-link picker."""
+    return await course_service.search_routes_for_manual_link(db, current_user.id, q)
+
+
+@router.get("/rides/search", response_model=list[ManualRideOption])
+async def search_rides_for_manual_link(
+    q: str = Query("", max_length=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Search rides for the manual ride→route picker."""
+    return await course_service.search_rides_for_manual_link(db, current_user.id, q)
+
+
+@router.post("/ride-links/{activity_id}/link", response_model=ManualRideLinkResult)
+async def link_ride_to_route(
+    activity_id: uuid.UUID,
+    payload: RideLinkRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manually link a ride to a route and make it course history."""
+    result = await course_service.link_ride_to_route(
+        db, current_user.id, activity_id, payload.route_id
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="Ride or route not found")
+    return ManualRideLinkResult(
+        activity_id=result.id, route_id=result.route_id, status="confirmed"
+    )
+
+
+@router.delete("/ride-links/{activity_id}/link", response_model=ManualRideLinkResult)
+async def unlink_ride_from_route(
+    activity_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a ride's route link; the ride and route are kept."""
+    result = await course_service.unlink_ride(db, current_user.id, activity_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Ride not found")
+    return ManualRideLinkResult(activity_id=result.id, route_id=None, status="unlinked")
 
 
 @router.get("/suggestions/dismissed", response_model=list[DismissedSuggestion])

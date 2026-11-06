@@ -275,7 +275,8 @@ group/ungroup under `/{course_id}/routes/{route_id}`, merge
 `/{target_id}/merge/{source_id}`, `PATCH /{course_id}` (rename), list dismissed suggestions at
 `/suggestions/dismissed`, dismiss/restore a pair at
 `/suggestions/{a}/{b}/dismiss`, confirm/reject at
-`/ride-links/{activity_id}/...`);
+`/ride-links/{activity_id}/...`, manual pickers at `/routes/search` and
+`/rides/search`, and a manual confirmed link at `/ride-links/{activity_id}/link`);
 the UI is `/courses` (More → Courses),
 built on `lib/api/courses.ts`. The 86-route investigation (11 cached pairs,
 start-offset collapse, 86 → 79 grouping) lives in `prototype/route-merging/` on
