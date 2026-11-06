@@ -155,12 +155,13 @@ class PlanApi(private val baseUrl: String) {
         today: LocalDate,
         history: List<FinishedSession>
     ): PlanLookup = withContext(Dispatchers.IO) {
-        val plansBody = runCatching { get("$baseUrl/training/plans", token) }.getOrNull()
+        // The router is mounted at /api/v1/training-plans (backend/app/main.py).
+        val plansBody = runCatching { get("$baseUrl/training-plans", token) }.getOrNull()
             ?: return@withContext PlanLookup.Unavailable
         val active = PlanJson.activePlan(PlanJson.plans(plansBody), today)
             ?: return@withContext PlanLookup.Unavailable
 
-        val planBody = runCatching { get("$baseUrl/training/plans/${active.id}", token) }.getOrNull()
+        val planBody = runCatching { get("$baseUrl/training-plans/${active.id}", token) }.getOrNull()
             ?: return@withContext PlanLookup.Unavailable
         val plan = PlanJson.plan(planBody) ?: return@withContext PlanLookup.Unavailable
 
