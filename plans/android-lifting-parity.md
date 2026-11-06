@@ -229,6 +229,28 @@ the end, because installing per-fix wastes the only real screen we have.
   is read-only: a ride comes from Strava or Komoot, and the phone is not where it
   gets edited.
 
+- [x] **P22 — the dashboard.** The website's `/dashboard` replicated on the
+  phone's home. It keeps the verdict and the plan at the top (the action), then
+  the review below it — the reverse of the website's order, on purpose.
+  - **LOAD** — `GET /cycling/training-load?days=42`: CTL/ATL/TSB, the form in
+    words (`formLabel`), the 7-day change with its direction, and a CTL line.
+  - **THIS WEEK** — sessions, volume, rides, distance and TSS for the last seven
+    days, computed from the log and the rides (never the server's stored
+    volume), with a 28-day line beneath it.
+  - **TODAY SO FAR** — from `/dashboard/today`: TSS, volume, distance, time and
+    how many sessions/activities, hidden when the day is empty.
+  - **READINESS** — `/metrics/readiness` (score, HRV, resting HR) plus
+    `/metrics/sleep-debt?days=7`; no Whoop means the server's own message, not a
+    zero.
+  - **GOALS** — `/goals`, up to three active ones, soonest first, progress from
+    the starting value (a server percentage wins where it exists).
+  - **RECENT** — the last four things done, lifts and rides merged newest-first.
+  - Every section is fetched independently and fails alone: a dead endpoint
+    costs that card, not the dashboard. Deliberately absent: the weather widget
+    (the phone has a weather app) and the website's Year chart (Train › Progress
+    already draws eight weeks of volume, and a year chart on a 360dp phone is a
+    chart you cannot read).
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates

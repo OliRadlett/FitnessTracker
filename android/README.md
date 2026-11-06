@@ -15,8 +15,13 @@ against those decisions.
 - **Body**: bodyweight — the latest weigh-in, its 30-day change, the 7-day
   rolling average as a line, and the weigh-ins behind it with their source.
   Logging one upserts by date; only a manual entry can be deleted.
-- Today: today and nothing else — the plan (or "Rest day"), one action. Resumes
-  an unfinished session.
+- **Today is the dashboard**: the plan (or "Rest day") and one action at the top,
+  then the website dashboard's review underneath — **load** (CTL/ATL/TSB, the
+  form in words, the 7-day change), **this week** and 28 days across lifts and
+  rides, **today so far** (TSS, volume, distance, time), **readiness** with sleep
+  debt, **goals** with progress from their starting value, and the **recent**
+  lifts and rides merged newest-first. Each section loads independently and fails
+  alone.
 - **Train**: the training surface in three views — **Sessions** (the log),
   **Progress** and **Week** (the active plan's current week, read-only, with
   completed, partial, missed and rest days marked and today outlined).

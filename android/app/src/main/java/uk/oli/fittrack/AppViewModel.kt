@@ -67,6 +67,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val todayApi = uk.oli.fittrack.net.TodayApi(BuildConfig.API_BASE_URL)
     private val bodyApi = uk.oli.fittrack.net.BodyApi(BuildConfig.API_BASE_URL)
     private val ridesApi = uk.oli.fittrack.net.RidesApi(BuildConfig.API_BASE_URL)
+    private val dashboardApi = uk.oli.fittrack.net.DashboardApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -127,6 +128,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadBrief(token)
                 loadWeight(token)
                 loadRides(token)
+                loadDashboard(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -205,6 +207,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _brief.value = null
         _weightTrend.value = null
         _rides.value = null
+        _dashboard.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -553,6 +556,31 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             uk.oli.fittrack.net.PlanLookup.Unavailable -> Unit
         }
     }
+
+    /** The dashboard's server data: load, readiness, sleep, goals. */
+    private val _dashboard = MutableStateFlow<uk.oli.fittrack.net.DashboardSnapshot?>(null)
+    val dashboard: StateFlow<uk.oli.fittrack.net.DashboardSnapshot?> = _dashboard.asStateFlow()
+
+    private suspend fun loadDashboard(token: String) {
+        _dashboard.value = dashboardApi.snapshot(token)
+    }
+
+    /** The Today screen refreshes its dashboard sections when it opens. */
+    fun refreshDashboard() {
+        val token = _auth.value.token ?: return
+        if (_dashboardLoading.value) return
+        _dashboardLoading.value = true
+        viewModelScope.launch {
+            try {
+                loadDashboard(token)
+            } finally {
+                _dashboardLoading.value = false
+            }
+        }
+    }
+
+    private val _dashboardLoading = MutableStateFlow(false)
+    val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
 
     /** Recent rides, for the Ride tab. Null until fetched. */
     private val _rides = MutableStateFlow<List<uk.oli.fittrack.domain.Ride>?>(null)

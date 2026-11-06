@@ -160,6 +160,16 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   the server's headline, up to three reasons, and TSB/recovery. It shows the
   server's sentence rather than composing one, keeps an unavailable engine in
   the list as "unavailable", and renders nothing at all when there is no verdict.
+- **Today is the dashboard**: [`ui/today/DashboardCards.kt`](android/app/src/main/java/uk/oli/fittrack/ui/today/DashboardCards.kt)
+  renders the website's dashboard on the phone — LOAD (CTL/ATL/TSB + form in
+  words + 7-day delta, `/cycling/training-load`), THIS WEEK (from the log and
+  rides, with a 28-day line), TODAY SO FAR (`/dashboard/today`), READINESS +
+  sleep debt (`/metrics/readiness`, `/metrics/sleep-debt`), GOALS (`/goals`,
+  progress from the starting value) and RECENT (lifts and rides merged). Data
+  comes from [`net/DashboardApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/DashboardApi.kt),
+  four independent fetches that each fail alone. The plan and the verdict stay
+  **above** the review — the opposite of the website, because Today's job is to
+  say what you are doing.
 - **AI analysis**: the session detail asks for the cached analysis (`GET
   /lifting/sessions/{id}/ai-analysis`, JSON `null` before one exists) and can
   generate one (`POST`, on a 120 s client because a model is reading the

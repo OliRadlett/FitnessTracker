@@ -24,7 +24,9 @@ data class TodayBrief(
     val consensus: List<EngineVote>,
     val tsb: Double?,
     val recovery: Double?,
-    val volumeKg: Double
+    val volumeKg: Double,
+    /** What has already been done today, for the dashboard's "so far" band. */
+    val done: uk.oli.fittrack.domain.TodayDone = uk.oli.fittrack.domain.TodayDone()
 )
 
 @Serializable
@@ -32,7 +34,32 @@ private data class TodayDto(
     val today_volume_kg: Double = 0.0,
     val current_tsb: Double? = null,
     val latest_recovery: Double? = null,
+    val today_tss: Double = 0.0,
+    val today_distance_meters: Double = 0.0,
+    val today_duration_seconds: Int = 0,
+    val current_ctl: Double = 0.0,
+    val current_atl: Double = 0.0,
+    val latest_hrv_ms: Double? = null,
+    val latest_sleep_hours: Double? = null,
+    val today_activities: List<ActivitySummaryDto> = emptyList(),
+    val today_lifting_sessions: List<LiftingSummaryDto> = emptyList(),
     val verdict: VerdictDto? = null
+)
+
+@Serializable
+private data class ActivitySummaryDto(
+    val id: String = "",
+    val name: String = "",
+    val sport_type: String = "",
+    val duration_seconds: Int? = null,
+    val distance_meters: Double? = null
+)
+
+@Serializable
+private data class LiftingSummaryDto(
+    val id: String = "",
+    val focus: String? = null,
+    val total_volume_kg: Double? = null
 )
 
 @Serializable
@@ -79,7 +106,15 @@ object TodayJson {
                 },
             tsb = dto.current_tsb,
             recovery = dto.latest_recovery,
-            volumeKg = dto.today_volume_kg
+            volumeKg = dto.today_volume_kg,
+            done = uk.oli.fittrack.domain.TodayDone(
+                tss = dto.today_tss,
+                volumeKg = dto.today_volume_kg,
+                distanceMeters = dto.today_distance_meters,
+                durationSeconds = dto.today_duration_seconds,
+                activities = dto.today_activities.size,
+                sessions = dto.today_lifting_sessions.size
+            )
         )
     }
 }
