@@ -14,6 +14,7 @@ import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.body.BodyScreen
 import uk.oli.fittrack.ui.goals.GoalsScreen
+import uk.oli.fittrack.ui.routes.RoutesScreen
 import uk.oli.fittrack.ui.ride.RideScreen
 import uk.oli.fittrack.ui.done.DoneScreen
 import uk.oli.fittrack.ui.live.LiveScreen
@@ -34,6 +35,7 @@ object Routes {
     const val SESSION = "session/{id}"
     const val PLAN_EDIT = "plan-edit"
     const val GOALS = "goals"
+    const val ROUTES = "routes"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -71,6 +73,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val goalCheckIns by vm.goalCheckIns.collectAsStateWithLifecycle()
     val goalBusy by vm.goalBusy.collectAsStateWithLifecycle()
     val goalMessage by vm.goalMessage.collectAsStateWithLifecycle()
+    val routesList by vm.routes.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -179,6 +182,14 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.ROUTES) {
+            RoutesScreen(
+                routes = routesList,
+                onRefresh = vm::refreshRoutes,
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.PLAN_EDIT) {
             PlanEditorScreen(
                 plan = plan,
@@ -231,7 +242,9 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     syncedAt = syncedAt,
                     syncError = syncError,
                     goalCount = goalList?.count { it.isActive } ?: 0,
+                    routeCount = routesList?.size ?: 0,
                     onOpenGoals = { nav.navigate(Routes.GOALS) },
+                    onOpenRoutes = { nav.navigate(Routes.ROUTES) },
                     onSignIn = { nav.navigate(Routes.SIGNIN) },
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab

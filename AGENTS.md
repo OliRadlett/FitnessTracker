@@ -212,6 +212,17 @@ web UI: its decisions come from [`prototype/android/`](prototype/android/README.
   [`domain/Goals.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Goals.kt)
   `Goal` is what both the dashboard card and this page use, so their percentages
   cannot disagree.
+- **Routes page**: [`ui/routes/RoutesScreen.kt`](android/app/src/main/java/uk/oli/fittrack/ui/routes/RoutesScreen.kt)
+  replicates `/routes` as a **shape-led atlas**: every route is drawn from its
+  own `preview_polyline` ([`domain/Polyline.kt`](android/app/src/main/java/uk/oli/fittrack/domain/Polyline.kt)
+  decodes Google's format, `normalise` keeps the aspect at the route's latitude),
+  because a shape is what tells one route from another and it needs no tiles, no
+  key and no signal. Filters (All / Loops / Unridden / Favourites), favourites
+  first then longest, and tapping one shows locality, loop/point-to-point,
+  surface, quality and whether it is starred. Data from
+  [`net/RoutesApi.kt`](android/app/src/main/java/uk/oli/fittrack/net/RoutesApi.kt).
+  Reached from You → Routes. The web's map, segments and duplicate-maintenance
+  screen are deliberately not here.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](plans/android-lifting-parity.md)), the

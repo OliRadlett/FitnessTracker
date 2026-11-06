@@ -70,6 +70,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val dashboardApi = uk.oli.fittrack.net.DashboardApi(BuildConfig.API_BASE_URL)
     private val cyclingApi = uk.oli.fittrack.net.CyclingApi(BuildConfig.API_BASE_URL)
     private val goalsApi = uk.oli.fittrack.net.GoalsApi(BuildConfig.API_BASE_URL)
+    private val routesApi = uk.oli.fittrack.net.RoutesApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -133,6 +134,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 loadCycling(token)
                 loadDashboard(token)
                 loadGoals(token)
+                loadRoutes(token)
             } catch (e: Exception) {
                 _syncError.value = e.message ?: "Sync failed."
             } finally {
@@ -215,6 +217,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _dashboard.value = null
         _goalList.value = null
         _goalCheckIns.value = emptyMap()
+        _routes.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -605,6 +608,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _dashboardLoading = MutableStateFlow(false)
     val dashboardLoading: StateFlow<Boolean> = _dashboardLoading.asStateFlow()
+
+    /** The routes atlas. Null until fetched. */
+    private val _routes = MutableStateFlow<List<uk.oli.fittrack.domain.BikeRoute>?>(null)
+    val routes: StateFlow<List<uk.oli.fittrack.domain.BikeRoute>?> = _routes.asStateFlow()
+
+    private suspend fun loadRoutes(token: String) {
+        _routes.value = routesApi.routes(token)
+    }
+
+    fun refreshRoutes() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadRoutes(token) }
+    }
 
     /** The goals page: the goals themselves and the metric registry. */
     private val _goalList = MutableStateFlow<List<uk.oli.fittrack.domain.Goal>?>(null)
