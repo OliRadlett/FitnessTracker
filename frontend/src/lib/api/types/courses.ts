@@ -49,6 +49,14 @@ export interface CourseDetail extends CourseSummary {
   activities: CourseActivity[];
 }
 
+export interface CourseMergeCandidate {
+  course_a: CourseSummary;
+  course_b: CourseSummary;
+  start_distance_m: number;
+  distance_delta_m: number;
+  reason: string;
+}
+
 export interface CourseSuggestion {
   route_a_id: string;
   route_a_name: string;

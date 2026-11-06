@@ -62,6 +62,22 @@ class CourseDetail(CourseSummary):
     activities: list[CourseActivityRead] = []
 
 
+class CourseMergeCandidate(BaseModel):
+    """Two courses with independent evidence that they may be the same course.
+
+    This deliberately does **not** use the geometry score: the suggestion queue
+    already covers pairs above the review floor. It catches the below-threshold
+    case where the same name, distance and start survive a provider rewrite that
+    the matcher sees as a different trace.
+    """
+
+    course_a: CourseSummary
+    course_b: CourseSummary
+    start_distance_m: float
+    distance_delta_m: float
+    reason: str
+
+
 class CourseSuggestion(BaseModel):
     """A review-tier pair from the cached similarity graph.
 

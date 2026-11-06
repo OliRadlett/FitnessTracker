@@ -270,7 +270,7 @@ Migration **119** stores durable suggestion dismissals; the suggestion query
 skips both pair orientations. Grouping is an `UPDATE routes SET course_id`, not
 a merge; `merge_routes` stays
 for identical variants. The API is `/api/v1/courses` (`GET/POST /`, `GET
-/uncoursed`, `GET /suggestions` (review-tier pairs from `route_similarity`),
+/uncoursed`, `GET /suggestions` (review-tier pairs from `route_similarity`), `GET /merge-candidates` (same-name courses below the geometry floor),
 group/ungroup under `/{course_id}/routes/{route_id}`, merge
 `/{target_id}/merge/{source_id}`, `PATCH /{course_id}` (rename), list dismissed suggestions at
 `/suggestions/dismissed`, dismiss/restore a pair at

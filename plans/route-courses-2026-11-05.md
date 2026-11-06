@@ -3,7 +3,8 @@
 > Status: **migrations 117–119, course service/API and the `/courses` surface
 > implemented on `feature/route-courses`; not deployed.** The API is
 > `GET/POST /api/v1/courses`, `GET /uncoursed`, `GET /suggestions` (review-tier
-> pairs from `route_similarity`), group/ungroup under
+> pairs from `route_similarity`), `GET /merge-candidates` (same-name below-floor
+> pairs), group/ungroup under
 > `/{course_id}/routes/{route_id}`, merge `/{target_id}/merge/{source_id}`,
 > `PATCH /{course_id}` (rename), list dismissed suggestions at
 > `/suggestions/dismissed`, dismiss/restore a suggestion at
@@ -165,6 +166,13 @@ order-independent. With the fix the rescan returns **21 review pairs, 0 auto**:
 all 11 old pairs are retained (2 scores changed) and 10 are new. The queue is
 richer, not cleaner — the added pairs include low-coverage candidates down to
 0.5532, which is why they are review-tier suggestions and nothing auto-merges.
+
+The suggestion queue is not exhaustive. `/courses/merge-candidates` adds a
+conservative below-floor list: **same normalized name**, starts within **1 km**
+and distances within **10%**. It catches provider rewrites that move enough GPS
+points to keep the geometry score below 0.55 (the production copy had two
+same-name/identical-distance pairs the scan missed). Each candidate shows both
+shapes and a shared map; nothing is merged automatically.
 
 The scan also no longer skips pairs when road/embedding signals are absent
 (`(None, None)`); that bug emptied the cache on accounts with 0/86 road matches.

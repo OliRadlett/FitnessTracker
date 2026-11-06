@@ -18,6 +18,7 @@ from app.models.user import User
 from app.schemas.course import (
     CourseCreate,
     CourseDetail,
+    CourseMergeCandidate,
     CourseRouteRead,
     CourseSuggestion,
     CourseSummary,
@@ -90,6 +91,20 @@ async def list_course_suggestions(
     ``/uncoursed`` (single static segment, pitfall 13). Nothing is auto-merged.
     """
     return await course_service.list_suggestions(db, current_user.id, limit)
+
+
+@router.get("/merge-candidates", response_model=list[CourseMergeCandidate])
+async def list_course_merge_candidates(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Same-name courses the geometry scan is too strict to suggest.
+
+    Registered before ``GET /{course_id}``: ``merge-candidates`` is a single
+    static segment and would otherwise be claimed by the dynamic route
+    (pitfall 13). This is review evidence only; nothing is merged automatically.
+    """
+    return await course_service.list_course_merge_candidates(db, current_user.id)
 
 
 @router.get("/suggestions/dismissed", response_model=list[DismissedSuggestion])

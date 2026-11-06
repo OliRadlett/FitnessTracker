@@ -2,6 +2,7 @@ import { apiFetch } from './fetch';
 import type {
   CourseCreatePayload,
   CourseDetail,
+  CourseMergeCandidate,
   CourseRoute,
   CourseSuggestion,
   CourseSummary,
@@ -31,6 +32,16 @@ export async function updateCourse(
 
 export async function getUncoursedRoutes(token?: string): Promise<CourseRoute[]> {
   return apiFetch<CourseRoute[]>('/api/v1/courses/uncoursed', {}, token);
+}
+
+export async function getCourseMergeCandidates(
+  token?: string,
+): Promise<CourseMergeCandidate[]> {
+  return apiFetch<CourseMergeCandidate[]>(
+    '/api/v1/courses/merge-candidates',
+    {},
+    token,
+  );
 }
 
 export async function getCourseSuggestions(

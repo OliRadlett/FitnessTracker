@@ -19,6 +19,7 @@ import {
   createCourse,
   dismissCourseSuggestion,
   getCourse,
+  getCourseMergeCandidates,
   getCourseSuggestions,
   getCourses,
   getDismissedCourseSuggestions,
@@ -34,6 +35,7 @@ import { getRouteScanStatus, refreshRouteScan } from '@/lib/api/routes';
 import type {
   CourseActivity,
   CourseDetail,
+  CourseMergeCandidate,
   CourseRoute,
   CourseSuggestion,
   CourseSummary,
@@ -204,6 +206,87 @@ function SuggestionCard({
               Close
             </Button>
           </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+function CourseMergeCandidateCard({
+  candidate,
+  onMerge,
+  busy,
+}: {
+  candidate: CourseMergeCandidate;
+  onMerge: () => void;
+  busy: boolean;
+}) {
+  const [mapOpen, setMapOpen] = useState(false);
+  return (
+    <div className="rounded-xl border border-surface-light/60 bg-surface p-3">
+      <div className="flex items-center justify-between gap-2">
+        <Badge variant="warning">possible merge</Badge>
+        <span className="text-[11px] text-muted">{candidate.reason}</span>
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        {[candidate.course_a, candidate.course_b].map((course) => (
+          <div key={course.id} className="flex min-w-0 items-center gap-2">
+            <RouteShape
+              encoded={course.preview_polyline}
+              width={52}
+              height={38}
+              className="shrink-0 text-muted"
+              strokeWidth={2}
+              showEndpoints={false}
+            />
+            <div className="min-w-0">
+              <p className="truncate text-xs text-foreground">{course.name}</p>
+              <p className="text-[11px] text-muted">
+                {course.route_count} {course.route_count === 1 ? 'variant' : 'variants'}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] text-muted">
+          Same name, within 1 km start and 10% length — below the geometry scan floor.
+        </span>
+        <div className="flex gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setMapOpen(true)}>
+            <MapPin className="h-4 w-4" aria-hidden />
+            Map
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={busy}
+            onClick={onMerge}
+            title="Merge the two courses, keeping every route"
+          >
+            <Link2 className="h-4 w-4" aria-hidden />
+            Merge
+          </Button>
+        </div>
+      </div>
+      <Modal
+        open={mapOpen}
+        onClose={() => setMapOpen(false)}
+        size="xl"
+        aria-label="Compare the possible course merge on a map"
+      >
+        <div className="p-1">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-foreground">Where they are</h2>
+            <p className="mt-1 text-[11px] text-muted">{candidate.reason}</p>
+          </div>
+          <CompareRoutesMap
+            encodedA={candidate.course_a.preview_polyline ?? ''}
+            encodedB={candidate.course_b.preview_polyline ?? ''}
+            labelA={candidate.course_a.name}
+            labelB={candidate.course_b.name}
+            className="h-[380px] w-full overflow-hidden rounded-xl"
+          />
         </div>
       </Modal>
     </div>
@@ -634,6 +717,11 @@ export default function CoursesPage() {
     queryFn: () => getCourseSuggestions(token),
     enabled: !!token,
   });
+  const mergeCandidatesQuery = useQuery({
+    queryKey: ['course-merge-candidates'],
+    queryFn: () => getCourseMergeCandidates(token),
+    enabled: !!token,
+  });
   const dismissedQuery = useQuery({
     queryKey: ['course-suggestions', 'dismissed'],
     queryFn: () => getDismissedCourseSuggestions(token),
@@ -664,6 +752,7 @@ export default function CoursesPage() {
 
   const courses = coursesQuery.data ?? [];
   const uncoursed = uncoursedQuery.data ?? [];
+  const mergeCandidates = mergeCandidatesQuery.data ?? [];
   const suggestions = suggestionsQuery.data ?? [];
   const dismissed = dismissedQuery.data ?? [];
   const scan = scanQuery.data;
@@ -700,6 +789,7 @@ export default function CoursesPage() {
     queryClient.invalidateQueries({ queryKey: ['courses'] });
     queryClient.invalidateQueries({ queryKey: ['course'] });
     queryClient.invalidateQueries({ queryKey: ['course-suggestions'] });
+    queryClient.invalidateQueries({ queryKey: ['course-merge-candidates'] });
   };
 
   const createMutation = useMutation({
@@ -1022,6 +1112,51 @@ export default function CoursesPage() {
               ))}
             </div>
           </Card>
+        )}
+      </section>
+
+      <section aria-label="Possible course merges" className="mb-5">
+        <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              Possible course merges
+            </h2>
+            <p className="text-xs text-muted">
+              Same name, start and distance — the cases the geometry scan is too strict
+              to suggest. Nothing is merged automatically.
+            </p>
+          </div>
+          <Badge variant="muted">{mergeCandidates.length} candidates</Badge>
+        </div>
+        {mergeCandidatesQuery.isLoading ? (
+          <Card className="p-4">
+            <p className="text-sm text-muted">Looking for same-name courses…</p>
+          </Card>
+        ) : mergeCandidates.length === 0 ? (
+          <Card className="p-4">
+            <p className="text-sm text-muted">
+              No same-name duplicates at the current 1 km start / 10% distance rule.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid gap-2 md:grid-cols-2">
+            {mergeCandidates.map((candidate) => (
+              <CourseMergeCandidateCard
+                key={`${candidate.course_a.id}-${candidate.course_b.id}`}
+                candidate={candidate}
+                busy={
+                  mergeMutation.isPending &&
+                  mergeMutation.variables?.sourceId === candidate.course_b.id
+                }
+                onMerge={() =>
+                  mergeMutation.mutate({
+                    targetId: candidate.course_a.id,
+                    sourceId: candidate.course_b.id,
+                  })
+                }
+              />
+            ))}
+          </div>
         )}
       </section>
 

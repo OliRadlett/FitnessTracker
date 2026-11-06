@@ -369,3 +369,46 @@ class TestRideLinkTrust:
 
         resp = await client.post(f"/api/v1/courses/ride-links/{activity.id}/confirm")
         assert resp.status_code == 404
+
+
+class TestCourseMergeCandidates:
+    async def test_same_name_courses_are_listed_below_the_scan(
+        self, client, db_session, test_user, test_route
+    ):
+        from app.models.route import Route
+
+        twin = Route(
+            user_id=test_user.id,
+            name="Twin Loop",
+            sport_type="cycling",
+            distance_meters=15000.0,
+            elevation_gain_meters=200.0,
+            encoded_polyline="o}~mH~}xMz@z@z@z@z@z@",
+            start_lat=51.4430,
+            start_lng=-0.2710,
+            end_lat=51.4430,
+            end_lng=-0.2710,
+            is_loop=True,
+        )
+        db_session.add(twin)
+        await db_session.flush()
+
+        first = await client.post(
+            "/api/v1/courses",
+            json={"name": "Twin Loop", "route_ids": [str(test_route.id)]},
+        )
+        second = await client.post(
+            "/api/v1/courses",
+            json={"name": "Twin Loop", "route_ids": [str(twin.id)]},
+        )
+        assert first.status_code == 201
+        assert second.status_code == 201
+
+        resp = await client.get("/api/v1/courses/merge-candidates")
+        assert resp.status_code == 200
+        candidates = resp.json()
+        pair = {first.json()["id"], second.json()["id"]}
+        assert any(
+            {candidate["course_a"]["id"], candidate["course_b"]["id"]} == pair
+            for candidate in candidates
+        )

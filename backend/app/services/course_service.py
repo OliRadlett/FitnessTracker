@@ -28,7 +28,11 @@ from app.models.route import (
     Route,
     RouteSimilarity,
 )
-from app.services.polyline_utils import extract_activity_polyline, preview_polyline
+from app.services.polyline_utils import (
+    extract_activity_polyline,
+    haversine_distance,
+    preview_polyline,
+)
 
 
 def _route_payload(
@@ -161,6 +165,95 @@ async def list_courses(db: AsyncSession, user_id: uuid.UUID) -> list[dict[str, A
     )
     rides = await _rides_by_route(db, user_id)
     return [_course_payload(course, rides) for course in courses]
+
+
+async def list_course_merge_candidates(
+    db: AsyncSession, user_id: uuid.UUID, *, limit: int = 20
+) -> list[dict[str, Any]]:
+    """Same-name courses whose shape evidence is too weak for the scan.
+
+    The similarity queue already covers route pairs above the review floor.
+    This is the fallback for the case the matcher misses: two courses with the
+    same name, near-identical distance and a shared start, but a provider
+    rewrite that moves enough GPS points to keep the pair below the floor.
+    It is deliberately conservative (same name, distance within 10%, starts
+    within 1 km), because a broad "nearby" list would propose every Edinburgh
+    loop against every other one.
+    """
+    courses = (
+        (
+            await db.execute(
+                select(Course)
+                .options(
+                    selectinload(Course.routes),
+                    selectinload(Course.canonical_route),
+                )
+                .where(Course.user_id == user_id)
+                .order_by(Course.name, Course.created_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    rides = await _rides_by_route(db, user_id)
+
+    groups: dict[str, list[Course]] = {}
+    for course in courses:
+        key = " ".join(course.name.casefold().split())
+        groups.setdefault(key, []).append(course)
+
+    candidates: list[dict[str, Any]] = []
+    for group in groups.values():
+        if len(group) < 2:
+            continue
+        for index, course_a in enumerate(group):
+            route_a = course_a.canonical_route or (
+                course_a.routes[0] if course_a.routes else None
+            )
+            if route_a is None:
+                continue
+            for course_b in group[index + 1 :]:
+                route_b = course_b.canonical_route or (
+                    course_b.routes[0] if course_b.routes else None
+                )
+                if route_b is None:
+                    continue
+                if route_a.distance_meters <= 0 or route_b.distance_meters <= 0:
+                    continue
+                ratio = min(route_a.distance_meters, route_b.distance_meters) / max(
+                    route_a.distance_meters, route_b.distance_meters
+                )
+                if ratio < 0.9:
+                    continue
+                start_m = haversine_distance(
+                    route_a.start_lat,
+                    route_a.start_lng,
+                    route_b.start_lat,
+                    route_b.start_lng,
+                )
+                if start_m > 1000:
+                    continue
+                delta_m = abs(route_a.distance_meters - route_b.distance_meters)
+                candidates.append(
+                    {
+                        "course_a": _course_payload(course_a, rides),
+                        "course_b": _course_payload(course_b, rides),
+                        "start_distance_m": round(start_m, 1),
+                        "distance_delta_m": round(delta_m, 1),
+                        "reason": (
+                            f"Same name · {start_m:.0f} m apart · "
+                            f"{delta_m:.0f} m length difference"
+                        ),
+                    }
+                )
+
+    candidates.sort(
+        key=lambda item: (
+            item["start_distance_m"],
+            item["distance_delta_m"],
+        )
+    )
+    return candidates[:limit]
 
 
 async def get_course(
