@@ -20,7 +20,7 @@
 | [`AGENTS.md`](../AGENTS.md) | Current | The always-injected agent guide: routing, rules, architecture, conventions, pitfall index. |
 | [`DSH.md`](DSH.md) | Current | How this repo runs on DeepSeek Harness: tools, delegation, skills, plugins, approvals. |
 | [`RUNNING.md`](RUNNING.md) | Current | Commands, host-side tests, lint, migrations, verification by change type. |
-| [`PITFALLS.md`](PITFALLS.md) | Current | Canonical numbered pitfalls (1–43). Numbering is stable. |
+| [`PITFALLS.md`](PITFALLS.md) | Current | Canonical numbered pitfalls; numbering is stable and append-only. |
 | [`algorithms.md`](algorithms.md) | Current | Scoring formulas, thresholds, chart registry, specialised algorithms. |
 | [`ANDROID.md`](ANDROID.md) | Current | Android feature map, screen-by-screen decisions, build/test. |
 | [`ANDROID-AUTH.md`](ANDROID-AUTH.md) | Reference | Google sign-in setup, verification, failure table. |
