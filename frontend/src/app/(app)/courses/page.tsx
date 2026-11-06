@@ -45,6 +45,8 @@ import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { RouteShape } from '@/components/routes/atlas/RouteShape';
+import { CompareRoutesMap } from '@/components/maps/CompareRoutesMap';
+import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatKm } from '@/lib/routeAtlas';
 import { usePageTitle } from '@/lib/usePageTitle';
@@ -75,6 +77,9 @@ function SuggestionCard({
   const bd = suggestion.breakdown as
     | { min_coverage?: number; frechet_similarity?: number }
     | null;
+  const [mapOpen, setMapOpen] = useState(false);
+  const canMap =
+    !!suggestion.route_a_preview_polyline || !!suggestion.route_b_preview_polyline;
 
   return (
     <div className="rounded-xl border border-surface-light/60 bg-surface p-3">
@@ -82,9 +87,22 @@ function SuggestionCard({
         <Badge variant="warning">
           {Math.round(suggestion.score * 100)}% pair
         </Badge>
-        <span className="text-[11px] uppercase tracking-wide text-muted">
-          {suggestion.tier}
-        </span>
+        <div className="flex items-center gap-1">
+          {canMap && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setMapOpen(true)}
+              title="See both routes on a map"
+            >
+              <MapPin className="h-4 w-4" aria-hidden />
+              Map
+            </Button>
+          )}
+          <span className="text-[11px] uppercase tracking-wide text-muted">
+            {suggestion.tier}
+          </span>
+        </div>
       </div>
       <div className="mt-2 grid grid-cols-2 gap-2">
         {[
@@ -156,6 +174,38 @@ function SuggestionCard({
           </Button>
         </div>
       </div>
+
+      <Modal
+        open={mapOpen}
+        onClose={() => setMapOpen(false)}
+        size="xl"
+        aria-label="Compare the two routes on a map"
+      >
+        <div className="p-1">
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-foreground">Where they are</h2>
+            <p className="mt-1 text-[11px] text-muted">
+              Same roads here usually means the same course. The map zooms to fit both.
+            </p>
+          </div>
+          <CompareRoutesMap
+            encodedA={suggestion.route_a_preview_polyline ?? ''}
+            encodedB={suggestion.route_b_preview_polyline ?? ''}
+            labelA={suggestion.route_a_name}
+            labelB={suggestion.route_b_name}
+            className="h-[380px] w-full overflow-hidden rounded-xl"
+          />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[11px] text-muted">
+              {formatKm(suggestion.route_a_distance_meters)} ·{' '}
+              {formatKm(suggestion.route_b_distance_meters)}
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => setMapOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
