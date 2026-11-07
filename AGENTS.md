@@ -265,6 +265,9 @@ Backend hot-reload: `uvicorn --reload`. Frontend hot-reload: `npm run dev`. Cele
   need approval is rejected — don't request escalation; follow the git rules.
 - **Long work**: `todo_write` for multi-step tasks; `create_goal` only for a
   genuinely long-running objective that should survive turns.
+- **Quality runs**: `quality.mjs` (new/check/status) and `contact-sheet.mjs` live
+  in `.dsh/plugins/feature-quality/tools/`; the `feature-quality` skill routes
+  them. `/quality` delivers the prompt, which names them too.
 
 ## graphify
 

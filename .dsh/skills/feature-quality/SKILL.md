@@ -51,6 +51,23 @@ front of the work. Changes to the prompt go through the plugin's own lab
    `plans/quality/<slug>/{CONTRACT,DECISIONS,REFERENCE,FIRST-LOOK,PRODUCTION}.md`
    and the lab at `prototype/<slug>/` with its harness in `qa/`.
 
+## Tools
+
+The repository ships the mechanics, so a session does not re-invent them. These
+are repo files, not profile files: they work whether or not the bundle is
+installed.
+
+```bash
+node .dsh/plugins/feature-quality/tools/quality.mjs new "<feature>" \
+  --surface page --owner Oli          # contract, reference, decisions, lab harness
+node .dsh/plugins/feature-quality/tools/quality.mjs check <slug>   # exit 1 until it is real
+node .dsh/plugins/feature-quality/tools/quality.mjs status <slug>
+node .dsh/plugins/feature-quality/tools/contact-sheet.mjs --out sheet.png frames/*.png
+```
+
+`check` is evidence, not judgement: it knows the contract is filled and an
+artifact exists, not whether the artifact is good.
+
 ## If the bundle is installed
 
 `/quality` and the composer control do steps 1–3 for you, including starting a

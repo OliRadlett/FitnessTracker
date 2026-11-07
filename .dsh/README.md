@@ -33,12 +33,13 @@ already installed there. Check with `plugin_manager action: list_plugins`.
 ```bash
 node .dsh/plugins/feature-quality/eval/harness.mjs   # delivery, placeholders, CRLF, contract
 node .dsh/plugins/feature-quality/eval/wiring.mjs    # apply(), routes, scan, client interaction
+node .dsh/plugins/feature-quality/eval/tools.mjs     # quality.mjs new/check/status, contact sheet
 ```
 
-Both exit non-zero on failure. The first is the gate that keeps the delivered
+All three exit non-zero on failure. The first is the gate that keeps the delivered
 prompt identical to the asset outside its Inputs block; the second catches
 registration, routing, scanning and interaction defects that the text lab cannot
-see.
+see; the third keeps the run's tools — and their paths — honest.
 
 `opencode-go-usage` has no lab; it is checked with `node --check` on both halves
 and by observing the pill under the composer.

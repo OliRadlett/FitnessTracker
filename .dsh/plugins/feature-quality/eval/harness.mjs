@@ -89,6 +89,13 @@ console.log('prompt.md')
     if (template.includes(deliverable.path)) ok(`prompt declares ${deliverable.path}`)
     else fail(`prompt does not declare the deliverable path ${deliverable.path}`)
   }
+
+  // The prompt is the only channel every /quality session reads. If it stops
+  // naming the tools, sessions silently hand-roll what the repo already ships.
+  for (const route of ['tools/quality.mjs', 'tools/contact-sheet.mjs', 'templates/states.mjs']) {
+    if (template.includes(route)) ok(`prompt names ${route}`)
+    else fail(`prompt does not name ${route} — the tools become undiscoverable`)
+  }
 }
 
 // --- delivery per fixture -----------------------------------------------------
