@@ -220,6 +220,73 @@ screenshots exist under `qa/`, and anything written to prod during it has been
 removed. Record the result in `plans/android-lifting-parity.md` (P20 for the
 first pass, P28 for this one), including what failed and the fix that followed.
 
+# Pass 3 — activities, notifications, settings, analytics
+
+Four more pages, all reached from **You**. Same preconditions and capture
+commands as pass 1; sections 9–14 do not need re-running unless something they
+touch has changed.
+
+## 16. Activities (#472)
+
+- [ ] You → Activities: a real feed. With ~100 activities the window chips should
+      visibly change the count; "30d" and "All" must not agree.
+- [ ] Rides and Lifts narrow correctly, and a lift borrows its focus ("Push"
+      rather than "WeightTraining").
+- [ ] Open a ride: the **shape is a real 90-point polyline**, not the test
+      fixture's three-point bend. Zoom mentally — a loop must look like a loop.
+- [ ] The detail's DISTANCE / TIME / CLIMB and POWER / HR / TSS / SPEED match the
+      website's activity page for the same ride.
+- [ ] An activity with streams says so ("the website shows the full replay") and
+      one without does not.
+- [ ] A lift with a linked session shows "Linked lift · Push · … kg".
+- Shots: `p3-activities`, `p3-activity-detail`.
+
+## 17. Notifications (#474)
+
+- [ ] You → Notifications: the unread count on the row matches the header's
+      "N unread", and unread cards are raised with an accent bar.
+- [ ] Tap one: it flattens immediately (no reload) **and** stays read after
+      leaving and returning.
+- [ ] "Mark all read" clears the accent bars and the button becomes "Refresh".
+- [ ] A warning-severity notification's type label is accent-coloured.
+- [ ] Ages read as a clock time today, "Yesterday" for yesterday, a weekday
+      inside the week, a date beyond it.
+- Shots: `p3-notifications`, `p3-notifications-read`.
+
+## 18. Settings (#475)
+
+- [ ] You → Settings: the email is right and the account card says where signing
+      in/out happens.
+- [ ] Flip to Imperial and back: the chip moves **and** the choice survives
+      leaving the screen (it is a `PATCH`, not local state).
+- [ ] Flip the clock 24h → 12h and back.
+- [ ] **Connections report real health**: Strava synced recently, Whoop's status
+      whatever it is. A `needs_reauth` or an error must be accent-coloured, and
+      the header must count it ("N connections · 1 needs attention").
+- [ ] With no providers connected the page says where to connect them rather than
+      showing an empty list.
+- Shots: `p3-settings`.
+
+## 19. Analytics (#477)
+
+- [ ] You → Analytics: the insight list. Each card's confidence chip and its
+      evidence line ("high confidence · 42 samples · over 28d") must be
+      plausible for the account's history.
+- [ ] **Recompute** runs against prod on the 90 s client: the button reads
+      "Recomputing…", then the list refreshes. If the account has too little
+      history, insights legitimately say "Not enough data to say anything yet" —
+      record that rather than calling it a failure.
+- [ ] No card shows a raw `{a=1}` object — nested `data` must be dropped, not
+      stringified.
+- Shots: `p3-analytics`, `p3-analytics-recomputed`.
+
+## 20. Recording pass 3
+
+Record the outcome in `plans/android-lifting-parity.md` under **P33**, in the
+same shape as P20 and P28: what was verified against prod, what failed, the fix
+that followed, and anything still outstanding (the `GET /api/v1/goals` 500 from
+pass 2 is still open — a test goal on `ftp_watts` remains on the server).
+
 ## Cleanup after the pass
 
 Anything written to prod during the pass must be removed or corrected:
