@@ -214,7 +214,10 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-13-session-edited")
         compose.onNodeWithText("Legs").assertExists()
-        compose.onNodeWithText("Sat 7 Nov 2026", substring = true).assertExists()
+        // Month-level on purpose: the session is stamped when it is created, so
+        // a run that crosses midnight legitimately shows yesterday. A literal
+        // day is a test that fails the morning after it was written.
+        compose.onNodeWithText("Nov 2026", substring = true).assertExists()
 
         // A missed set: add one to the exercise it belongs to.
         compose.onNodeWithText("+ Set").performClick()

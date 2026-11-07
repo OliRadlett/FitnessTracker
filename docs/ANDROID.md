@@ -216,6 +216,15 @@ web UI: its decisions come from [`prototype/android/`](../prototype/android/READ
   connections are read-only (`GET /connections/`), since authorising a provider
   is an OAuth browser flow and belongs on the website — the page says so. Reached
   from You.
+- **Analytics page**: [`ui/analytics/AnalyticsScreen.kt`](../android/app/src/main/java/uk/oli/fittrack/ui/analytics/AnalyticsScreen.kt)
+  is the insight list from `GET /analytics/insights` with a `Recompute`
+  (`POST /analytics/recompute`, 90 s client). Each insight shows its title, a
+  confidence chip, its evidence ("high confidence · 42 samples · over 28d") and
+  every scalar in its open `data` object — the shapes differ per insight type, so
+  it is flattened rather than modelled, and nested objects are dropped rather
+  than stringified into noise. An insight with no data says so instead of
+  rendering an empty card. The website's season and load tabs stay there: load is
+  already on Today and the Ride tab. Reached from You.
 - **Not built yet**: nothing is a placeholder any more. The lifting matrix is
   complete (phase list P0–P20 in
   [`plans/android-lifting-parity.md`](../plans/android-lifting-parity.md)), the
