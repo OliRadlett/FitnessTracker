@@ -214,7 +214,12 @@ class AppFlowTest {
         compose.waitForIdle()
         save("app-13-session-edited")
         compose.onNodeWithText("Legs").assertExists()
-        compose.onNodeWithText("Sat 7 Nov 2026", substring = true).assertExists()
+        // Derived, not hardcoded: the session is created "today", so the day move
+        // has to come from the clock. A fixed date here passes for exactly one day
+        // — this one was written on 6 Nov 2026 and went red at midnight.
+        val tomorrow = java.time.LocalDate.now().plusDays(1)
+            .format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM yyyy", java.util.Locale.UK))
+        compose.onNodeWithText(tomorrow, substring = true).assertExists()
 
         // A missed set: add one to the exercise it belongs to.
         compose.onNodeWithText("+ Set").performClick()
