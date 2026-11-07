@@ -59,6 +59,7 @@ fun YouScreen(
     unread: Int = 0,
     onOpenNotifications: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
+    onOpenAnalytics: () -> Unit = {},
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
     onTab: (NavKind) -> Unit
@@ -168,6 +169,8 @@ fun YouScreen(
 
             Spacer(Modifier.height(20.dp))
             Label("SETTINGS")
+            Spacer(Modifier.height(8.dp))
+            NavRow("Analytics") { onOpenAnalytics() }
             Spacer(Modifier.height(8.dp))
             NavRow("Units, clock and connections") { onOpenSettings() }
 

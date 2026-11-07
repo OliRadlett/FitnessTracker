@@ -14,6 +14,7 @@ import uk.oli.fittrack.AppViewModel
 import uk.oli.fittrack.BuildConfig
 import uk.oli.fittrack.ui.body.BodyScreen
 import uk.oli.fittrack.ui.activities.ActivitiesScreen
+import uk.oli.fittrack.ui.analytics.AnalyticsScreen
 import uk.oli.fittrack.ui.goals.GoalsScreen
 import uk.oli.fittrack.ui.health.CalendarScreen
 import uk.oli.fittrack.ui.health.HealthScreen
@@ -48,6 +49,7 @@ object Routes {
     const val ACTIVITIES = "activities"
     const val NOTIFICATIONS = "notifications"
     const val SETTINGS = "settings"
+    const val ANALYTICS = "analytics"
     fun tab(kind: NavKind) = "tab/${kind.name.lowercase(Locale.UK)}"
     fun session(id: String) = "session/$id"
 }
@@ -101,6 +103,8 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
     val activityWindowValue by vm.activityWindow.collectAsStateWithLifecycle()
     val notifications by vm.notifications.collectAsStateWithLifecycle()
     val settings by vm.settings.collectAsStateWithLifecycle()
+    val insights by vm.insights.collectAsStateWithLifecycle()
+    val insightsBusy by vm.insightsBusy.collectAsStateWithLifecycle()
     val syncedAt by vm.syncedAt.collectAsStateWithLifecycle()
     val syncError by vm.syncError.collectAsStateWithLifecycle()
 
@@ -262,6 +266,16 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
             )
         }
 
+        composable(Routes.ANALYTICS) {
+            AnalyticsScreen(
+                insights = insights,
+                busy = insightsBusy,
+                onRecompute = vm::recomputeInsights,
+                onRefresh = vm::refreshInsights,
+                onBack = { nav.popBackStack() }
+            )
+        }
+
         composable(Routes.HEALTH) {
             HealthScreen(
                 health = health,
@@ -357,6 +371,7 @@ fun AppRoot(vm: AppViewModel = viewModel()) {
                     unread = notifications?.count { !it.read } ?: 0,
                     onOpenNotifications = { nav.navigate(Routes.NOTIFICATIONS) },
                     onOpenSettings = { nav.navigate(Routes.SETTINGS) },
+                    onOpenAnalytics = { nav.navigate(Routes.ANALYTICS) },
                     onSignIn = { nav.navigate(Routes.SIGNIN) },
                     onSignOut = vm::signOut,
                     onTab = nav::switchTab

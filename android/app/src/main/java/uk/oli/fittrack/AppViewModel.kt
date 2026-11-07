@@ -76,6 +76,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val activitiesApi = uk.oli.fittrack.net.ActivitiesApi(BuildConfig.API_BASE_URL)
     private val notificationsApi = uk.oli.fittrack.net.NotificationsApi(BuildConfig.API_BASE_URL)
     private val settingsApi = uk.oli.fittrack.net.SettingsApi(BuildConfig.API_BASE_URL)
+    private val analyticsApi = uk.oli.fittrack.net.AnalyticsApi(BuildConfig.API_BASE_URL)
 
     private val _auth = MutableStateFlow(
         AuthUiState(token = tokenStore?.token(), email = tokenStore?.email())
@@ -149,6 +150,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 attempt { loadActivities(token) }
                 attempt { loadNotifications(token) }
                 attempt { loadSettings(token) }
+                attempt { loadInsights(token) }
                 if (_syncError.value == null && firstFailure != null) {
                     // The history itself is fine; say which section lagged
                     // rather than claiming the whole sync failed.
@@ -257,6 +259,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _activityDetail.value = null
         _notifications.value = null
         _settings.value = null
+        _insights.value = null
         // Tell the server too: the JWT is valid for 30 days otherwise.
         if (token != null) {
             viewModelScope.launch { authApi.logout(token) }
@@ -695,6 +698,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshCalendar() {
         val token = _auth.value.token ?: return
         viewModelScope.launch { loadCalendar(token) }
+    }
+
+    /** Analytics: the computed insights, and whether a recompute is running. */
+    private val _insights = MutableStateFlow<List<uk.oli.fittrack.domain.Insight>?>(null)
+    val insights: StateFlow<List<uk.oli.fittrack.domain.Insight>?> = _insights.asStateFlow()
+
+    private val _insightsBusy = MutableStateFlow(false)
+    val insightsBusy: StateFlow<Boolean> = _insightsBusy.asStateFlow()
+
+    private suspend fun loadInsights(token: String) {
+        _insights.value = analyticsApi.insights(token)
+    }
+
+    fun refreshInsights() {
+        val token = _auth.value.token ?: return
+        viewModelScope.launch { loadInsights(token) }
+    }
+
+    fun recomputeInsights() {
+        val token = _auth.value.token ?: return
+        if (_insightsBusy.value) return
+        viewModelScope.launch {
+            _insightsBusy.value = true
+            try {
+                val fresh = runCatching { analyticsApi.recompute(token) }.getOrDefault(emptyList())
+                if (fresh.isNotEmpty()) _insights.value = fresh
+                loadInsights(token)
+            } finally {
+                _insightsBusy.value = false
+            }
+        }
     }
 
     /** Settings: preferences and provider connections. */

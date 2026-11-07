@@ -355,6 +355,14 @@ the end, because installing per-fix wastes the only real screen we have.
   with only the changed field; connections are read-only, because authorising a
   provider is an OAuth browser flow and belongs on the website. Reached from You.
 
+- [x] **P32 — analytics.** The insight half of `/analytics`: `GET
+  /analytics/insights` with a `Recompute`, each insight showing its title, a
+  confidence chip, its evidence and every scalar in its open `data` object
+  (flattened, because the keys differ per insight type; nested objects dropped
+  rather than stringified into noise). An insight with no data says so. The
+  website's season and load tabs stay there — load is already on Today and the
+  Ride tab. Reached from You.
+
 The lifting matrix is now complete: every row the website's `/lifting` surface
 has, the app has, except plan *editing* (deliberately the website's job — the
 app's Week view is read-only) and template *renaming/editing* (the Templates
